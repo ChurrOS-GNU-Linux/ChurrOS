@@ -104,6 +104,8 @@ pub fn is_mutation(cmd: &[&str]) -> bool {
         "niri" => has_arg(args, "action") || has_arg(args, "quit"),
         "hyprctl" => has_arg(args, "dispatch"),
         "id" | "date" | "pgrep" | "fc-list" | "lspci" | "curl" | "notify-send" => false,
+        // Sincroniza una copia temporal de las bases de pacman, sin root.
+        "checkupdates" => false,
         "xdg-open" | "thunar" => false,
         "sh" | "bash" => !args.iter().any(|a| a.contains("command -v")),
         "pkill" | "kill" | "killall" | "pkexec" | "sudo" | "churros-pkexec" | "calamares"
@@ -144,6 +146,7 @@ mod tests {
         assert!(!is_mutation(&["swapon", "--show", "--noheadings"]));
         assert!(!is_mutation(&["rfkill", "list", "bluetooth"]));
         assert!(!is_mutation(&["pacman", "-Q"]));
+        assert!(!is_mutation(&["checkupdates"]));
         assert!(!is_mutation(&[
             "sh",
             "-c",

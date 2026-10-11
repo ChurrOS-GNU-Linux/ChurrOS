@@ -131,15 +131,20 @@ fn volume_widget() -> gtk::Box {
             return glib::ControlFlow::Continue;
         }
 
-        let (cur_v, cur_m) = audio::get_volume_status();
-        let active = s2.state_flags().contains(gtk::StateFlags::ACTIVE);
-        if !active {
-            muted2.set(cur_m);
-            if s2.value().round() as u8 != cur_v {
-                s2.set_value(cur_v as f64);
+        let s3 = s2.clone();
+        let ic3 = ic2.clone();
+        let lb3 = lb2.clone();
+        let muted3 = muted2.clone();
+        crate::popup::run_bg(audio::get_volume_status, move |(cur_v, cur_m)| {
+            let active = s3.state_flags().contains(gtk::StateFlags::ACTIVE);
+            if !active {
+                muted3.set(cur_m);
+                if s3.value().round() as u8 != cur_v {
+                    s3.set_value(cur_v as f64);
+                }
+                update_icon_and_label(cur_v, cur_m, &ic3, &lb3);
             }
-            update_icon_and_label(cur_v, cur_m, &ic2, &lb2);
-        }
+        });
 
         glib::ControlFlow::Continue
     });

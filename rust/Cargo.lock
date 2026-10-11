@@ -70,6 +70,7 @@ name = "churros-control-center"
 version = "1.2.0"
 dependencies = [
  "churros-services",
+ "gio",
  "glib",
  "gtk4",
 ]
@@ -79,6 +80,7 @@ name = "churros-popup"
 version = "1.2.0"
 dependencies = [
  "churros-services",
+ "gio",
  "glib",
  "gtk4",
  "libc",
@@ -115,7 +117,6 @@ dependencies = [
  "gio",
  "glib",
  "gtk4",
- "libadwaita",
  "libc",
 ]
 
@@ -127,7 +128,6 @@ dependencies = [
  "gio",
  "glib",
  "gtk4",
- "libadwaita",
  "libc",
 ]
 

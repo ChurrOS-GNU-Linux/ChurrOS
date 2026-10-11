@@ -71,6 +71,7 @@ kio-extras
 kitty-terminfo
 konsole
 kpmcore
+kscreen
 kwallet
 kwallet-pam
 kwin
@@ -121,6 +122,9 @@ openssh
 openvpn
 os-prober
 otf-font-awesome
+# checkupdates (Ajustes > Actualizaciones) comprueba sin root; fakeroot lo necesita
+pacman-contrib
+fakeroot
 pacman-mirrorlist
 pamixer
 papirus-icon-theme

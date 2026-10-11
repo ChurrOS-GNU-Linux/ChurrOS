@@ -26,9 +26,7 @@
 row:selected,
 row:selected:focus,
 listview row:selected,
-listview row:selected:focus,
-flowboxchild:selected,
-flowboxchild:selected:focus {
-    background-color: #F97316;
+listview row:selected:focus {
+    background-color: var(--accent, #F97316);
     color: #FFFFFF;
 }

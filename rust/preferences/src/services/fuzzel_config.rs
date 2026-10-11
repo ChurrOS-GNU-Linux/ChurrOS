@@ -10,7 +10,7 @@ use std::process::Command;
 pub struct FuzzelConfig;
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home)
         .join(".config")
         .join("fuzzel")
@@ -178,11 +178,12 @@ impl FuzzelConfig {
     /// Recarga fuzzel (cierra la instancia actual para que relea su config).
     pub fn reload() {
         // OJO: `pkill -fuzzel` NO hace nada (se parsea como -f -u "zzel").
+        // status() recoge el proceso. Si fuzzel no está abierto, pkill sale distinto de 0.
         let _ = Command::new("pkill")
             .args(["-x", "fuzzel"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     pub fn apply_pywal(colors: &serde_json::Map<String, serde_json::Value>, special: &serde_json::Map<String, serde_json::Value>) {

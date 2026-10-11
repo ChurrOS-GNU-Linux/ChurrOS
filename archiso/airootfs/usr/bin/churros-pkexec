@@ -1,13 +1,27 @@
 #!/usr/bin/env bash
 #
-# churros-pkexec — Ejecuta con privilegios via pkexec o sudo.
-# Garantiza ejecucion sin prompts para usuarios autorizados.
+# churros-pkexec — ejecuta un comando como root vía pkexec.
 #
-# Importante: si pkexec ELEVA y ejecuta el comando, su código de salida es
-# el del propio comando. Solo 126/127 de pkexec significan "no pudo
-# elevar/ejecutar" y entonces se intenta sudo. Si el comando falló por su
-# cuenta (p. ej. una descarga con 404 -> exit 1), se propaga ese código
-# sin volver a ejecutar nada ni reportar un falso error de privilegios.
+# Uso:
+#   churros-pkexec /ruta/absoluta/al/programa [args...]
+#
+# Lo que se autoriza y cómo lo decide la regla polkit
+# /etc/polkit-1/rules.d/50-churros-store.rules: el programa por ruta absoluta
+# y el argv exacto. Pasa siempre la ruta absoluta; un nombre desnudo depende
+# del $PATH de quien llama.
+#
+# Se hace `exec pkexec`, no `pkexec` como hijo: pkexec toma como sujeto de
+# polkit al proceso padre, y polkit recuerda las autorizaciones
+# `auth_admin_keep` por sujeto. Con exec, el padre es la app que llama y la
+# contraseña sirve para los siguientes pasos durante unos minutos (actualizar
+# pacman, flatpak y las utilidades pide una sola vez). Si pkexec fuera hijo de
+# este script, cada llamada sería un sujeto nuevo y pediría la contraseña cada
+# vez.
+#
+# El código de salida es el de pkexec: el del propio comando si se ejecutó,
+# 126 si se cerró el diálogo y 127 si no se autorizó o no hay agente de
+# polkit. No se reintenta con `sudo -n`: en el sistema instalado sudo pide
+# contraseña y no habría servido; sudo solo se usa si pkexec no existe.
 
 set -u
 
@@ -16,28 +30,17 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
+if [ "$(id -u)" -eq 0 ]; then
+    exec "$@"
+fi
+
 if command -v pkexec >/dev/null 2>&1; then
-
-    pkexec "$@"
-    rc=$?
-
-    if [ "$rc" -eq 0 ]; then
-        exit 0
-    fi
-
-    if [ "$rc" -ne 126 ] && [ "$rc" -ne 127 ]; then
-        exit "$rc"
-    fi
-
+    exec pkexec "$@"
 fi
 
 if command -v sudo >/dev/null 2>&1; then
-
-    if sudo -n "$@"; then
-        exit 0
-    fi
-
+    exec sudo -n "$@"
 fi
 
-echo "churros-pkexec: no se pudo ejecutar con privilegios (pkexec o sudo -n fallaron)" >&2
+echo "churros-pkexec: no se pudo ejecutar con privilegios (no hay pkexec ni sudo)" >&2
 exit 1

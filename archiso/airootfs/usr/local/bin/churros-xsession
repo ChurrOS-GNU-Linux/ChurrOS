@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# churros-xsession — lanzador de sesión que resuelve la edición en runtime.
+#
+# Existe para que el instalador (Calamares) no tenga que conocer las ediciones:
+# displaymanager.conf declara un único `defaultDesktopEnvironment.executable`,
+# y ese comando decide aquí cuál es el escritorio que corresponde.
+#
+# /etc/churros-edition lo escribe ./churros build y viaja al sistema instalado.
+# Si no está, se asume la edición niri.
+#
+# Tabla:
+#   niri    -> churros-niri-session   (Wayland, compositor propio)
+#   xfce    -> churros-xfce-session   (X11; el wrapper limpia el entorno y
+#                                       pasa a Xorg el VT que asignó greetd)
+#   kde     -> startplasma-wayland    (Wayland)
+#   server  -> no hay sesión gráfica: greetd queda desactivado por
+#              configure-server, así que este script no llega a ejecutarse.
+
+set -e
+
+EDITION="niri"
+if [ -f /etc/churros-edition ]; then
+    EDITION="$(tr -d '[:space:]' < /etc/churros-edition | tr '[:upper:]' '[:lower:]')"
+fi
+
+case "$EDITION" in
+    xfce)
+        if [ -x /usr/bin/churros-xfce-session ]; then
+            exec /usr/bin/churros-xfce-session "$@"
+        fi
+        exec /usr/bin/startxfce4 "$@"
+        ;;
+    kde)
+        exec /usr/bin/startplasma-wayland "$@"
+        ;;
+    server)
+        # Sin display manager no hay sesión que lanzar. Si alguien lo invoca a
+        # mano, deja claro el motivo en vez de fallar en silencio.
+        echo "churros-xsession: la edición server no tiene sesión gráfica." >&2
+        echo "  Conéctate por SSH. Consulta docs/server.md." >&2
+        exit 1
+        ;;
+    pi)
+        if [ -x /usr/bin/churros-pi-session ]; then
+            exec /usr/bin/churros-pi-session "$@"
+        fi
+        exec /usr/bin/churros-niri-session "$@"
+        ;;
+esac

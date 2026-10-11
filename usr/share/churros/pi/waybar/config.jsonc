@@ -1,0 +1,62 @@
+{
+  "reload_style_on_change": true,
+  "layer": "top",
+  "position": "top",
+  "spacing": 0,
+  "height": 24,
+  "modules-left": ["custom/launcher"],
+  "modules-center": [],
+  "modules-right": ["network", "backlight", "pulseaudio", "custom/sep", "clock"],
+
+  "custom/launcher": {
+    "format": "",
+    "on-click": "fuzzel --show-describe",
+    "on-click-right": "foot",
+    "tooltip-format": "Launcher"
+  },
+
+  "network": {
+    "format": "{icon}",
+    "format-wifi": "{icon}",
+    "format-ethernet": "",
+    "format-disconnected": "",
+    "tooltip-format-wifi": "{essid} ({frequency} GHz)",
+    "interval": 3,
+    "spacing": 1
+  },
+
+  "backlight": {
+    "device": "intel_backlight",
+    "format": "{icon}",
+    "format-icons": ["", "", "", "", ""],
+    "on-click": "churros-popup brightness",
+    "on-scroll-up": "brightnessctl --class=backlight set +10%",
+    "on-scroll-down": "brightnessctl --class=backlight set 10%-",
+    "interval": 5
+  },
+
+  "pulseaudio": {
+    "format": "{icon}",
+    "format-muted": "",
+    "format-icons": {
+      "default": ["", "", ""]
+    },
+    "on-click": "churros-popup audio",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-scroll-up": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+    "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
+    "interval": 5,
+    "scroll-step": 5
+  },
+
+  "clock": {
+    "format": " {:%H:%M}",
+    "format-alt": " {:%A %e %B}",
+    "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+    "interval": 1
+  },
+
+  "custom/sep": {
+    "format": "|",
+  }
+}

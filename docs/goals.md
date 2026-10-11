@@ -20,7 +20,7 @@ ChurrOS es una distribución basada en Arch Linux enfocada en:
 
 - Instalador gráfico (Calamares).
 - Niri por defecto.
-- Waybar, foot, Fuzzel y Mako.
+- Noctalia, foot, Fuzzel y Mako (alternativas).
 - Tema propio.
 - Wallpapers propios.
 - greetd con autologin en la sesión Live.

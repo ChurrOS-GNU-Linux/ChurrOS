@@ -59,7 +59,7 @@ Presentation
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: logo.bottom
             anchors.topMargin: 62
-            text: qsTr("Arch. Niri. GTK4.")
+            text: qsTr("Arch. @EDITION@. GTK4.")
             color: "#A8A8A8"
             font.family: "Inter"
             font.pixelSize: 15
@@ -81,8 +81,8 @@ Presentation
     }
 
     Slide {
-        title: qsTr("Niri")
-        centeredText: qsTr("Compositor Wayland con scrollable-tiling.\nRápido, predecible, sin ruido.")
+        title: qsTr("Escritorios")
+        centeredText: qsTr("Niri, XFCE y KDE Plasma,\ncon la misma identidad.")
     }
 
     Slide {

@@ -23,6 +23,13 @@ pub struct ChurrosUpdate {
     pub sha256: String,
 }
 
+/// La comprobación no pudo completarse: sin red, comando ausente, timeout...
+///
+/// Es distinto de "no hay actualizaciones": la página no puede decir "al día"
+/// ni "0" cuando en realidad no sabe nada (#137).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckFailed;
+
 /// Snapshot btrfs del sistema (rollback). Campos de `churros-snapshot list --json`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
@@ -32,7 +39,7 @@ pub struct Snapshot {
 }
 
 /// Parsea el updates.json del servidor de releases, seleccionando la edición correspondiente
-/// (niri o xfce) si está definida en el mapa "editions", o usando los campos globales como fallback.
+/// (niri, xfce, kde o server) si está definida en el mapa "editions", o usando los campos globales como fallback.
 fn parse_updates_json(raw: &str) -> Option<ChurrosUpdate> {
     let v: serde_json::Value = serde_json::from_str(raw).ok()?;
     let version = v.get("version")?.as_str()?.to_string();
@@ -61,7 +68,7 @@ fn parse_updates_json(raw: &str) -> Option<ChurrosUpdate> {
 }
 
 fn home() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home)
 }
 
@@ -77,6 +84,18 @@ fn run_capture(args: &[&str], timeout_secs: u64) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
+
+    // Drenar stdout en un thread mientras esperamos: evita el deadlock por
+    // pipe lleno en comandos con mucha salida.
+    let mut out_pipe = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = String::new();
+        if let Some(mut out) = out_pipe.take() {
+            let _ = out.read_to_string(&mut buf);
+        }
+        buf
+    });
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let status = loop {
@@ -94,14 +113,43 @@ fn run_capture(args: &[&str], timeout_secs: u64) -> Option<String> {
         }
     };
 
-    let mut buf = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        use std::io::Read;
-        let _ = out.read_to_string(&mut buf);
-    }
-    let _ = status;
     let _ = child.wait();
+    let buf = reader.join().unwrap_or_default();
+    if !status.success() {
+        return None;
+    }
     Some(buf.trim().to_string())
+}
+
+/// Líneas no vacías de una salida.
+fn lines(out: &str) -> Vec<String> {
+    out.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// Interpreta `checkupdates`: sale con 0 y la lista, con 2 si no hay nada que
+/// actualizar y con cualquier otro código si falla (sin red, sin fakeroot...).
+fn parse_checkupdates(
+    result: Option<churros_services::RunOut>,
+) -> Result<Vec<String>, CheckFailed> {
+    match result {
+        Some((0, out, _)) => Ok(lines(&out)),
+        Some((2, _, _)) => Ok(Vec::new()),
+        _ => Err(CheckFailed),
+    }
+}
+
+/// Interpreta `pacman -Qu`: sale con 1 tanto si no hay nada que actualizar
+/// como si falla; solo stderr los distingue.
+fn parse_pacman_qu(result: Option<churros_services::RunOut>) -> Result<Vec<String>, CheckFailed> {
+    match result {
+        Some((0, out, _)) => Ok(lines(&out)),
+        Some((1, out, err)) if out.trim().is_empty() && err.trim().is_empty() => Ok(Vec::new()),
+        _ => Err(CheckFailed),
+    }
 }
 
 /// Ejecuta un comando con streaming: llama `cb` con cada línea de salida
@@ -174,31 +222,43 @@ impl UpdateService {
 
     // -------------------------------------------------------- checks
 
-    /// Lista de paquetes actualizables de pacman (`pacman -Qu`).
-    pub fn check_pacman() -> Option<Vec<String>> {
-        // Refrescar las bases (root) y luego listar upgrades.
-        let _ = run_capture(&["churros-pkexec", "pacman", "-Sy"], 60);
-        let out = run_capture(&["pacman", "-Qu"], 30)?;
-        Some(out.lines().map(|s| s.to_string()).collect())
+    /// Paquetes de pacman con actualización pendiente.
+    ///
+    /// Usa `checkupdates` (pacman-contrib): sincroniza una copia temporal de
+    /// las bases sin root. Antes se hacía `pacman -Sy` como root solo para
+    /// refrescar, que deja el sistema expuesto a una actualización parcial y
+    /// necesitaba pkexec (#137). Sin pacman-contrib (instalaciones previas) se
+    /// recurre a `pacman -Qu`, que compara con la última sincronización.
+    pub fn check_pacman() -> Result<Vec<String>, CheckFailed> {
+        if churros_services::which("checkupdates") {
+            parse_checkupdates(churros_services::run(&["checkupdates"], 120_000))
+        } else {
+            parse_pacman_qu(churros_services::run(&["pacman", "-Qu"], 30_000))
+        }
     }
 
-    /// Lista de actualizaciones flatpak (`flatpak remote-ls --updates`).
-    pub fn check_flatpak() -> Option<Vec<String>> {
-        let out = run_capture(&["flatpak", "remote-ls", "--updates"], 30)?;
-        Some(out.lines().map(|s| s.to_string()).collect())
+    /// Actualizaciones de flatpak (`flatpak remote-ls --updates`).
+    pub fn check_flatpak() -> Result<Vec<String>, CheckFailed> {
+        run_capture(&["flatpak", "remote-ls", "--updates"], 30)
+            .map(|out| lines(&out))
+            .ok_or(CheckFailed)
     }
 
     // -------------------------------------------------------- updates
+    //
+    // Lo que pasa por churros-pkexec va con ruta absoluta y el argv exacto que
+    // autoriza la regla polkit (50-churros-store.rules). Si cambias un argv,
+    // cambia también la regla y scripts/test-polkit-rules.js.
 
     pub fn update_pacman(cb: &dyn Fn(&str)) -> bool {
         run_streaming(
-            &["churros-pkexec", "pacman", "-Syu", "--noconfirm"],
+            &["churros-pkexec", "/usr/bin/pacman", "-Syu", "--noconfirm"],
             cb,
         )
     }
 
     pub fn update_flatpak(cb: &dyn Fn(&str)) -> bool {
-        run_streaming(&["churros-pkexec", "flatpak", "update", "-y"], cb)
+        run_streaming(&["churros-pkexec", "/usr/bin/flatpak", "update", "-y"], cb)
     }
 
     // ------------------------------------------- utilidades de ChurrOS
@@ -244,8 +304,9 @@ impl UpdateService {
     }
 
     /// Comprueba si hay una versión nueva de las utilidades de ChurrOS.
-    /// `Some` = hay actualización disponible (versión != instalada).
-    pub fn check_churros() -> Option<ChurrosUpdate> {
+    /// `Ok(Some)`: hay actualización (versión != instalada); `Ok(None)`: al
+    /// día; `Err`: no se pudo descargar o leer el manifiesto.
+    pub fn check_churros() -> Result<Option<ChurrosUpdate>, CheckFailed> {
         let base = Self::churros_url();
         let url = format!("{base}updates.json");
         let out = run_capture(
@@ -260,12 +321,13 @@ impl UpdateService {
                 url.as_str(),
             ],
             15,
-        )?;
-        let update = parse_updates_json(&out)?;
+        )
+        .ok_or(CheckFailed)?;
+        let update = parse_updates_json(&out).ok_or(CheckFailed)?;
         if update.version == Self::installed_churros_version() {
-            None
+            Ok(None)
         } else {
-            Some(update)
+            Ok(Some(update))
         }
     }
 
@@ -274,7 +336,7 @@ impl UpdateService {
     /// No se le pasa la URL: `churros-update-utils` la tiene fijada y rechaza
     /// cualquier argumento.
     pub fn update_churros(cb: &dyn Fn(&str)) -> bool {
-        run_streaming(&["churros-pkexec", "churros-update-utils"], cb)
+        run_streaming(&["churros-pkexec", "/usr/bin/churros-update-utils"], cb)
     }
 
     // ------------------------------------------------ snapshots (rollback)
@@ -282,7 +344,12 @@ impl UpdateService {
     /// Lista los snapshots btrfs disponibles (vía churros-snapshot, root).
     pub fn list_snapshots() -> Vec<Snapshot> {
         let Some(out) = run_capture(
-            &["churros-pkexec", "churros-snapshot", "list", "--json"],
+            &[
+                "churros-pkexec",
+                "/usr/local/bin/churros-snapshot",
+                "list",
+                "--json",
+            ],
             30,
         ) else {
             return Vec::new();
@@ -316,7 +383,12 @@ impl UpdateService {
     /// Crea un snapshot btrfs manual (razón "manual").
     pub fn create_snapshot() -> bool {
         run_streaming(
-            &["churros-pkexec", "churros-snapshot", "create", "manual"],
+            &[
+                "churros-pkexec",
+                "/usr/local/bin/churros-snapshot",
+                "create",
+                "manual",
+            ],
             &|_| {},
         )
     }
@@ -324,7 +396,12 @@ impl UpdateService {
     /// Elimina un snapshot btrfs por su stamp.
     pub fn delete_snapshot(stamp: &str) -> bool {
         run_streaming(
-            &["churros-pkexec", "churros-snapshot", "delete", stamp],
+            &[
+                "churros-pkexec",
+                "/usr/local/bin/churros-snapshot",
+                "delete",
+                stamp,
+            ],
             &|_| {},
         )
     }
@@ -377,7 +454,7 @@ impl UpdateService {
             .args(["-a", "ChurrOS", summary, body])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn();
+            .status();
     }
 }
 
@@ -403,5 +480,40 @@ mod tests {
     fn parse_updates_json_invalid() {
         assert!(parse_updates_json("not json").is_none());
         assert!(parse_updates_json(r#"{"version":"1.0"}"#).is_none());
+    }
+
+    fn out(code: i32, stdout: &str, stderr: &str) -> Option<churros_services::RunOut> {
+        Some((code, stdout.to_string(), stderr.to_string()))
+    }
+
+    #[test]
+    fn checkupdates_distinguishes_none_from_failure() {
+        assert_eq!(
+            parse_checkupdates(out(0, "linux 6.1-1 -> 6.2-1\nmesa 1-1 -> 2-1\n", "")),
+            Ok(vec![
+                "linux 6.1-1 -> 6.2-1".to_string(),
+                "mesa 1-1 -> 2-1".to_string()
+            ])
+        );
+        assert_eq!(parse_checkupdates(out(2, "", "")), Ok(Vec::new()));
+        assert_eq!(
+            parse_checkupdates(out(1, "", "==> ERROR: Cannot fetch updates")),
+            Err(CheckFailed)
+        );
+        assert_eq!(parse_checkupdates(None), Err(CheckFailed));
+    }
+
+    #[test]
+    fn pacman_qu_distinguishes_none_from_failure() {
+        assert_eq!(
+            parse_pacman_qu(out(0, "linux 6.1-1 -> 6.2-1\n", "")).map(|v| v.len()),
+            Ok(1)
+        );
+        assert_eq!(parse_pacman_qu(out(1, "", "")), Ok(Vec::new()));
+        assert_eq!(
+            parse_pacman_qu(out(1, "", "error: failed to init transaction")),
+            Err(CheckFailed)
+        );
+        assert_eq!(parse_pacman_qu(None), Err(CheckFailed));
     }
 }

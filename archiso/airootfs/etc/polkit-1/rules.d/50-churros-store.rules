@@ -1,15 +1,55 @@
-// Autorización de ejecución privilegiada para los usuarios de `wheel`.
+// Autorización de ejecución privilegiada (pkexec) para los usuarios de `wheel`.
+//
+// QUÉ PUBLICA PKEXEC
+// La acción `org.freedesktop.policykit.exec` llega con estos detalles
+// (comprobado con polkitd 124 y en el código de pkexec):
+//   program       ruta absoluta del ejecutable; desde polkit 127, su realpath
+//   command_line  argv unido con espacios, empezando por la ruta llamada
+//   user          usuario destino: root salvo con `pkexec --user`
+// No existe un detalle `command` ni `action.getDetails()`. La versión anterior
+// de esta regla los leía y por eso no autorizaba nunca nada (#152).
+// scripts/test-polkit-rules.js fija este contrato y la tabla de abajo.
 //
 // REGLA DE ORO: autorizar por RUTA ABSOLUTA exacta, nunca por basename ni por
 // comodín de nombre. pkexec resuelve rutas relativas (`./x`, `../x`) y busca
 // en $PATH, así que un comodín tipo `^churros-[\w-]+$` sobre el basename
 // concede root sin contraseña a cualquier fichero que el usuario pueda crear
-// en su home o en un directorio de su $PATH.
+// en su home o en un directorio de su $PATH. Todas las rutas de la lista viven
+// bajo /usr o /usr/local, propiedad de root. No se autoriza ningún wrapper
+// genérico (`churros-pkexec`): reenviaría argumentos libres a pkexec.
 //
-// La lista es cerrada y todas las rutas viven bajo /usr o /usr/local, que son
-// propiedad de root y no escribibles por el usuario. No se autoriza ningún
-// wrapper genérico (`churros-pkexec`), porque reenviaría argumentos libres a
-// pkexec y anularía esta misma lista.
+// QUÉ SE AUTORIZA
+// Solo el argv exacto de los llamadores reales (Ajustes y churros-update-auto;
+// lista en docs/privileged-execution.md). Los argumentos se comparan como una
+// sola cadena contra expresiones ancladas, así que no cabe nada más: ni
+// `--opt=valor`, ni `--config`, ni `-H host`, ni un argumento extra.
+//
+//   programa                                  argumentos                  resultado
+//   /usr/local/bin/churros-snapshot           list --json                 YES
+//                                             create manual               YES (1)
+//                                             delete AAAAMMDD-HHMMSS      AUTH_ADMIN_KEEP
+//   /usr/bin/timedatectl                      set-timezone <Zona/Ciudad>  YES
+//                                             set-ntp true|false          YES
+//   /usr/bin/pacman                           -Syu --noconfirm            AUTH_ADMIN_KEEP
+//   /usr/bin/flatpak                          update -y                   AUTH_ADMIN_KEEP
+//   /usr/bin/churros-update-utils             (sin argumentos)            AUTH_ADMIN_KEEP
+//   /usr/local/bin/churros-write-root-config  greetd-autologin on|off     AUTH_ADMIN_KEEP
+//                                             lightdm-autologin on|off    AUTH_ADMIN_KEEP
+//                                             regreet-wallpaper <ruta>    AUTH_ADMIN_KEEP
+//                                             regreet-greeting <texto>    AUTH_ADMIN_KEEP
+//   cualquier otra cosa                                                   NOT_HANDLED
+//
+// YES: sin contraseña, solo para lo inocuo.
+// AUTH_ADMIN_KEEP: contraseña de administrador, que polkit recuerda unos
+//   minutos para el mismo proceso. churros-pkexec hace `exec pkexec` para que
+//   ese proceso sea la app que llama y la contraseña sirva para varios pasos.
+// NOT_HANDLED: política por defecto de pkexec (auth_admin, contraseña cada vez).
+// (1) `create` rota los snapshots: conserva los 5 más recientes y borra el
+//     resto. Si no se quiere que un proceso del usuario pueda descartar puntos
+//     de restauración sin contraseña, hay que pasarlo a AUTH_ADMIN_KEEP.
+//
+// La regla tiene que seguir siendo ES5 (polkitd usa duktape): ni `let`, ni
+// `const`, ni funciones flecha.
 
 polkit.addRule(function(action, subject) {
     // NOTA: no usar subject.active — en sesiones de greetd/niri puede
@@ -28,177 +68,75 @@ polkit.addRule(function(action, subject) {
         return polkit.Result.NOT_HANDLED;
     }
 
-    var cmd = "";
-    try {
-        if (typeof action.lookup === "function") {
-            cmd = action.lookup("command") || "";
-        }
-        if (!cmd && typeof action.getDetails === "function") {
-            cmd = action.getDetails() || "";
-        }
-        if (cmd && typeof cmd === "object" && cmd["command"]) {
-            cmd = cmd["command"];
-        }
-    } catch (e) {
-        cmd = "";
-    }
+    var YES = polkit.Result.YES;
+    var ADMIN_KEEP = polkit.Result.AUTH_ADMIN_KEEP;
 
-    cmd = String(cmd || "").replace(/^\s+/, "");
+    // Por programa, pares [argumentos, resultado]. `null` significa "sin
+    // argumentos"; una expresión regular se compara con los argumentos unidos
+    // por espacios, tal como los publica pkexec, y siempre va anclada.
+    var ALLOWED = {
+        "/usr/local/bin/churros-snapshot": [
+            [/^list --json$/, YES],
+            [/^create manual$/, YES],
+            [/^delete [0-9]{8}-[0-9]{6}$/, ADMIN_KEEP]
+        ],
+        "/usr/bin/timedatectl": [
+            // Nombres de la base tz: componentes alfanuméricos con _ + -,
+            // hasta tres niveles (America/Argentina/Buenos_Aires).
+            [/^set-timezone [A-Za-z0-9][A-Za-z0-9_+-]*(\/[A-Za-z0-9][A-Za-z0-9_+-]*){0,2}$/, YES],
+            [/^set-ntp (true|false)$/, YES]
+        ],
+        "/usr/bin/pacman": [
+            [/^-Syu --noconfirm$/, ADMIN_KEEP]
+        ],
+        "/usr/bin/flatpak": [
+            [/^update -y$/, ADMIN_KEEP]
+        ],
+        "/usr/bin/churros-update-utils": [
+            [null, ADMIN_KEEP]
+        ],
+        "/usr/local/bin/churros-write-root-config": [
+            // El helper valida el valor por su cuenta; aquí solo se acota
+            // la operación.
+            [/^(greetd|lightdm)-autologin (on|off)$/, ADMIN_KEEP],
+            [/^regreet-wallpaper \/.+$/, ADMIN_KEEP],
+            [/^regreet-greeting .+$/, ADMIN_KEEP]
+        ]
+    };
 
-    // Todo lo autorizado es una ruta absoluta: se descarta cualquier ruta
-    // relativa o nombre desnudo (pkexec las resolvería contra $PATH).
-    if (cmd.indexOf("/") !== 0) {
+    var prog = action.lookup("program");
+    var line = action.lookup("command_line");
+    if (typeof prog !== "string" || typeof line !== "string" ||
+        !Object.prototype.hasOwnProperty.call(ALLOWED, prog)) {
         return polkit.Result.NOT_HANDLED;
     }
 
-    // Separación por espacios en blanco. No hay sintaxis de comillas en la
-    // línea de órdenes de pkexec, así que un argumento con espacio solo puede
-    // haber sido quoted por el cliente; en ese caso no coincide con la
-    // allowlist y se deniega, que es el comportamiento correcto.
-    var argv = cmd.split(/\s+/);
-    var prog = argv[0];
-
-    // pkexec no entrecomilla al componer la línea de órdenes, pero algunos
-    // clientes sí lo hacen: se normaliza quitando comillas envolventes antes
-    // de validar (nunca se reinterpreta el contenido).
-    function unquote(a) {
-        if (a.length >= 2) {
-            var f = a.charAt(0), l = a.charAt(a.length - 1);
-            if ((f === "'" && l === "'") || (f === '"' && l === '"')) {
-                return a.slice(1, -1);
-            }
-        }
-        return a;
-    }
-
-    var args = argv.slice(1).map(unquote);
-
-    // Argumentos que convertirían una utilidad en un vector de escalada
-    // (pacman --hookdir/--config/--dbpath, btrfs/churros-snapshot con rutas
-    // arbitrarias, etc.).
-    var FORBIDDEN = [
-        "--hookdir", "--config", "--dbpath", "--cachedir", "--gpgdir",
-        "--root", "--sysroot", "--arch", "--config-file", "--color",
-        "-C", "--target", "--mount", "--o", "--options", "-o"
-    ];
-
-    function hasForbidden() {
-        for (var i = 0; i < args.length; i++) {
-            for (var j = 0; j < FORBIDDEN.length; j++) {
-                if (args[i] === FORBIDDEN[j]) {
-                    return true;
-                }
-            }
-            // Cualquier ruta absoluta o con .. en un argumento es sospechosa.
-            if (args[i].indexOf("/") === 0 || args[i].indexOf("../") === 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // -S / -Sy / -Syu / -R / -Q y paquetes. Se rechazan las opciones
-    // estructurales del propio pacman para que el binario no pueda redirigir
-    // sus ganchos, base de datos o caché a rutas controladas por el usuario.
-    var PACMAN_OPS = ["-S", "-Sy", "-Syy", "-Syu", "-R", "-Sc", "-Q", "-Qs"];
-    var PACMAN_FLAGS = ["--noconfirm", "-y", "--needed", "--asdeps"];
-
-    function pacmanOk() {
-        var opSeen = false;
-        for (var i = 0; i < args.length; i++) {
-            var a = args[i];
-            if (a === "--") {
-                return false;
-            }
-            var isOp = PACMAN_OPS.indexOf(a) !== -1;
-            var isFlag = PACMAN_FLAGS.indexOf(a) !== -1;
-            if (isOp) {
-                opSeen = true;
-                continue;
-            }
-            if (isFlag) {
-                continue;
-            }
-            // Debe ser un nombre de paquete: no empieza por - y no contiene
-            // rutas ni separadores de versión.
-            if (a.charAt(0) === "-" || /[\/=]/.test(a)) {
-                return false;
-            }
-        }
-        return opSeen;
-    }
-
-    // churros-snapshot: solo verbos conocidos y stamps con formato fijo.
-    function snapshotOk() {
-        if (args.length === 0) {
-            return false;
-        }
-        var verb = args[0];
-        var known = ["create", "list", "info", "delete", "cleanup", "restore"];
-        if (known.indexOf(verb) === -1) {
-            return false;
-        }
-        var stamp = /^\d{8}-\d{6}$/;
-        // Razón de `create`: texto libre usado como etiqueta en meta.txt.
-        // Se restringe a un alfabeto inocuo para que no pueda inyectar
-        // líneas extra en ese fichero.
-        var reason = /^[A-Za-z0-9._:@%+=,-]+$/;
-        var rest = args.slice(1);
-        for (var i = 0; i < rest.length; i++) {
-            if (rest[i] === "--json" || rest[i] === "--plain" || rest[i] === "-p") {
-                continue;
-            }
-            if (/^\\d{1,3}$/.test(rest[i])) {
-                continue;
-            }
-            if (stamp.test(rest[i]) || reason.test(rest[i])) {
-                continue;
-            }
-            return false;
-        }
-        return true;
-    }
-
-    // timedatectl: solo las operaciones de reloj/zona horaria, nunca el resto
-    // de sus subcomandos.
-    var TIMEDATECTL_OPS = [
-        "set-time", "set-timezone", "set-local-rtc", "set-ntp",
-        "show", "status", "list-timezones", "show-timesync"
-    ];
-
-    function timedatectlOk() {
-        if (args.length === 0) {
-            return TIMEDATECTL_OPS.indexOf("status") !== -1;
-        }
-        return TIMEDATECTL_OPS.indexOf(args[0]) !== -1;
-    }
-
-    if (hasForbidden()) {
+    // Solo para ejecutar como root: `pkexec --user otro` queda fuera.
+    if (action.lookup("user") !== "root") {
         return polkit.Result.NOT_HANDLED;
     }
 
-    switch (prog) {
-    case "/usr/bin/pacman":
-        return pacmanOk() ? polkit.Result.YES : polkit.Result.NOT_HANDLED;
-    case "/usr/bin/flatpak":
-    case "/usr/bin/yay":
-    case "/usr/bin/paru":
-        return polkit.Result.YES;
-    case "/usr/bin/timedatectl":
-        return timedatectlOk() ? polkit.Result.YES : polkit.Result.NOT_HANDLED;
-    case "/usr/bin/churros-update-utils":
-        return polkit.Result.YES;
-    case "/usr/local/bin/churros-write-root-config":
-        // El helper valida el destino contra su propia lista cerrada y lee
-        // el contenido de stdin: un único argumento.
-        return args.length === 1 ? polkit.Result.YES : polkit.Result.NOT_HANDLED;
-    case "/usr/local/bin/churros-snapshot":
-        return snapshotOk() ? polkit.Result.YES : polkit.Result.NOT_HANDLED;
-    case "/usr/local/bin/churros-theme":
-        // Solo sin argumentos: escribe en $HOME/.cache, cualquier ruta extra
-        // no aporta nada y ensucia la comprobacion.
-        return args.length === 0 ? polkit.Result.YES : polkit.Result.NOT_HANDLED;
-    default:
+    // command_line empieza por la ruta con la que se llamó al programa. Se
+    // exige que sea la misma que `program`; si no (un enlace simbólico
+    // resuelto por polkit >= 127, una ruta con espacios), los argumentos no
+    // se pueden separar con certeza y no se autoriza nada.
+    var args;
+    if (line === prog) {
+        args = null;
+    } else if (line.indexOf(prog + " ") === 0) {
+        args = line.substring(prog.length + 1);
+    } else {
         return polkit.Result.NOT_HANDLED;
     }
+
+    var entries = ALLOWED[prog];
+    for (var i = 0; i < entries.length; i++) {
+        var pattern = entries[i][0];
+        var match = pattern === null ? args === null
+                                     : args !== null && pattern.test(args);
+        if (match) {
+            return entries[i][1];
+        }
+    }
+    return polkit.Result.NOT_HANDLED;
 });

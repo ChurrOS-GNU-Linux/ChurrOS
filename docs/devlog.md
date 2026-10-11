@@ -1,5 +1,107 @@
 # Devlog
 
+## 2026-10-08 — Noctalia v5 desde [extra]
+
+`noctalia-qs` 0.0.12 (AUR) ya no compila con Qt 6.12 y rompía `./churros build`. La edición Niri pasa al paquete `noctalia` 5.2.1 de `[extra]`, también disponible en Arch Linux ARM: Noctalia v5, escrita en C++ sin Qt ni Quickshell. La v5 no lee el `settings.json` de la v4.
+
+**Shell**
+
+- Niri arranca `noctalia` en lugar de `qs -c noctalia-shell` y abre flotante la ventana de ajustes de Noctalia (`dev.noctalia.Noctalia`). Los atajos no cambian.
+- `~/.config/noctalia/config.toml` (skel y `usr/share/churros/defaults/noctalia/`) sustituye a `settings.json` con los mismos ajustes donde hay equivalente: barra, dock, menú de sesión sin hibernar, idle 600/660/28800 s, notificaciones y OSD arriba a la derecha, colores desde el wallpaper, sin clima, geolocalización, telemetría ni sonidos. `polkit-gnome` sigue siendo el agente de polkit.
+- En el Live, `desktop.sh` permite desbloquear con la contraseña vacía (`live.toml`), porque el usuario `churros` no tiene contraseña y la v5 ignora ese Enter.
+- `churros-apply-wallpaper` y el cambio de tema de `churros-settings` avisan a Noctalia (`noctalia msg wallpaper-set` / `theme-mode-set`), que pinta su fondo encima de swaybg y reescribe el `color-scheme` de GNOME al arrancar.
+- "Restaurar valores por defecto" vacía `~/.local/state/noctalia/settings.toml` y repone `config.toml` en su sitio (conserva `live.toml`): la v5 no ve borrados ni carpetas recreadas.
+- Instalaciones de desarrollo con la v4: `sudo pacman -S noctalia && sudo pacman -Rns noctalia-shell noctalia-qs`, y restaurar los valores por defecto o cambiar el autostart de Niri a mano.
+
+**Construcción**
+
+- `build-aur.sh` deja de compilar `noctalia-qs` y `noctalia-shell`; `build.sh` ya no los exige y retira los que hayan quedado en `archiso/packages/` y en `churros.db`.
+- `packages.x86_64` cambia `noctalia-shell`, `noctalia-qs`, `qt6-multimedia` y `cliphist` por `noctalia`; `packages.aarch64` gana `noctalia`.
+- `./churros check` ya no da por bueno el binario `qs`.
+
+---
+
+## 2026-10-06 — Polkit con las claves reales de pkexec; actualizador endurecido
+
+**Seguridad**
+
+- `50-churros-store.rules` lee los detalles que publica pkexec (`program` y `command_line`). La regla anterior leía `command`, que no existe, y no autorizaba nunca nada: todo pedía contraseña (#152).
+- La allowlist pasa a ser de argv exacto por programa y se limita a los llamadores reales: sin contraseña solo `churros-snapshot list --json` / `create manual` y `timedatectl set-timezone` / `set-ntp`; con contraseña recordada (`auth_admin_keep`) las actualizaciones, `churros-snapshot delete` y `churros-write-root-config`. Salen `yay`, `paru`, `churros-theme` y el resto de operaciones de pacman y flatpak. Tabla en [`docs/privileged-execution.md`](privileged-execution.md#tabla-de-decisiones).
+- `churros-pkexec` hace `exec pkexec` para que la contraseña recordada sirva entre pasos, y los llamadores pasan rutas absolutas.
+- `churros-write-root-config` recibe operaciones acotadas (`greetd-autologin on|off`, `lightdm-autologin on|off`, `regreet-wallpaper`, `regreet-greeting`) en vez del fichero entero. El usuario sale de `PKEXEC_UID` y la sesión de la edición, con la tabla que comparte con la instalación (`edition-session.sh`); el autologin de Niri vuelve a pasar por `churros-niri-session`.
+- `churros-update-utils` instala fichero a fichero y ya no deja `/` en 0700 (#130), verifica la firma después de descargar el manifiesto (#139) y solo acepta `churros-*` en `usr/bin` y `usr/local/bin`, `usr/share/churros/` y tres ficheros de `etc`.
+
+**Ajustes**
+
+- Buscar actualizaciones usa `checkupdates` (nuevo `pacman-contrib` + `fakeroot` en las cuatro ediciones) en vez de `pkexec pacman -Sy`, y la página distingue "no se pudo comprobar" de "0 actualizaciones" o "al día" (#137).
+
+**CI**
+
+- `scripts/test-polkit-rules.js` (Node) prueba todas las decisiones de la regla y que cada llamador sigue escrito así; `scripts/test-privileged-helpers.py` prueba los helpers sobre un root falso. Los dos corren en `./churros check` y en CI, y `./churros check` falla si la regla vuelve a leer `lookup("command")`.
+- Nuevo workflow `polkit.yml`: sonda con polkitd y pkexec reales en un contenedor Arch.
+
+---
+
+## 2026-10-05 — Pulido de la config de Noctalia
+
+- Esquema de color derivado de los wallpapers (`useWallpaperColors: true`, `tonal-spot`, dark mode) y fondos `solidColor`/`fillColor` en Midnight `#111827`, acorde a la paleta oficial.
+- Idle/lock propio de Noctalia activado (`lockOnSuspend` ya estaba; `~/.config/noctalia/settings.json` ahora define timeouts 600/660/1800 s). swayidle no se autoarranca en Niri, así que no hay conflicto.
+- Tarjeta de brillo habilitada en el control center y `launcherUseDistroLogo: true` en el dock.
+- Copia idéntica en `etc/skel` y `usr/share/churros/defaults/noctalia/`.
+
+## 2026-10-05 — Noctalia Shell como shell del escritorio Niri
+
+**Shell**
+
+- Noctalia Shell (Quickshell, Qt/QML) pasa a ser la capa de shell de la edición Niri: barra, notificaciones, OSD, dock y widgets. Waybar, Fuzzel, Mako, wlogout y swaybg se mantienen instalados como alternativa (convivencia); `Mod+Space` sigue abriendo Fuzzel.
+- `archiso/airootfs/etc/skel/.config/niri/config.kdl` (y su copia en `usr/share/churros/defaults/niri/`) arrancan `qs -c noctalia-shell` en autostart en lugar de `waybar` + `mako`.
+- Config base de Noctalia en `~/.config/noctalia/settings.json` (terminal `foot -e`, cliphist, wallpapers de ChurrOS, fuentes JetBrains Mono, opacidad de paneles), desplegada también en `usr/share/churros/defaults/noctalia/`.
+
+**Construcción**
+
+- `scripts/build-aur.sh` compila además `noctalia-qs` (Quickshell) y `noctalia-shell` desde AUR hacia `archiso/packages/`.
+- `archiso/packages.x86_64` gana `noctalia-shell`, `noctalia-qs`, `qt6-multimedia`, `wlr-randr`, `imagemagick`, `cliphist` y `power-profiles-daemon`.
+
+**CI**
+
+- `./churros check` reconoce el binario `qs` (paquete `noctalia-qs`) en la resolución de comandos de Niri.
+
+---
+
+## 2026-10-01 — Tercera edición, auditoría de seguridad y apps
+
+Trabajo integrado en `main`, todavía sin número de versión.
+
+**Ediciones**
+
+- **KDE Plasma**: tercera edición de escritorio, con su propia lista de paquetes (`archiso/packages.kde.x86_64`) y sesión Wayland nativa. Detalle en [`docs/desktop-config.md`](desktop-config.md).
+
+**Seguridad**
+
+- La regla de polkit pasa a ser una allowlist estricta: se autoriza por ruta absoluta exacta, nunca por basename ni comodín, y se rechazan las opciones que convierten una utilidad en vector de escalada (`--hookdir`, `--config`, `--dbpath`, `--root`).
+- `churros-pkexec` deja de estar autorizado: reenvía argumentos libres a `pkexec` y anularía la allowlist entera.
+- El actualizador fija la URL de descarga a `https://download.churroslinux.org/churros/` y solo admite otro espejo con `CHURROS_UPDATE_ALLOW_MIRROR=1` y base `https`. El JSON de actualizaciones se parsea sin `unwrap`.
+- El instalador deja de arrastrar la configuración SSH del Live: `shellprocess@post-install` borra `/etc/ssh/sshd_config.d/10-archiso.conf` y las claves de host.
+- `churros-welcome` lanza las acciones sin shell: pasa el `Exec` del `.desktop` como `argv` a `execvp` y solo si el binario está en su lista de permitidos.
+- Nuevo documento [`docs/privileged-execution.md`](privileged-execution.md): modelo, allowlist y checklist para añadir helpers.
+
+**Apps**
+
+- `churros-welcome`: `AdwToolbarView` con `AdwClamp`, tarjeta de información del sistema y 17 tests sobre los parsers que leen `/proc` y `/etc/os-release`.
+- `MAINTAINERS`: cada área del repositorio tiene una persona responsable.
+
+**Construcción**
+
+- `rust` y `cargo` salen de la ISO de niri y de XFCE: solo hacen falta en el host, durante la construcción.
+- La fuente Nerd Font se sustituye por `JetBrains Mono` + `Symbols Nerd Font Mono`, que es lo que usan los iconos.
+
+**Correcciones**
+
+- `procps-ng` y `pciutils` en la ISO de niri y XFCE: los invocaba el código que faltaba.
+- El tour se limpia al terminar la instalación y no aparece en el sistema instalado.
+
+---
+
 ## 2026-09-23 — ChurrOS 1.2
 
 Release pública **v1.2**. Optimizaciones de rendimiento, rediseño de UI y mejoras de conectividad y audio:
@@ -478,4 +580,9 @@ ThemeService y AccentService tienen **hooks pywal** — cuando pywal está activ
 - **El problema:** Tras corregir el error del DRM con `sleep 1`, persistía una pantalla negra que devolvía a Greetd. Al ejecutar `unset DISPLAY` globalmente al inicio del wrapper, se borraba la variable `$DISPLAY` inyectada por Xorg en la sesión cliente. Como resultado, `startxfce4` creía que no había un servidor gráfico activo y lanzaba `xinit` por segunda vez dentro del propio `xinit`, colapsando inmediatamente.
 - **La solución:** Se ha reubicado el `unset DISPLAY` y `unset WAYLAND_DISPLAY` para que solo afecten al proceso padre (Greetd) y no al proceso hijo (la sesión X11 iniciada con `--xinit`). De esta forma, `startxfce4` reconoce `$DISPLAY=:0` correctamente.
 
+### Bucle de login en XFCE instalado (vuelve al greeter)
+- **El problema:** En el sistema instalado de la edición XFCE, al iniciar sesión (sobre todo sin inicio automático, desde ReGreet) el escritorio parecía arrancar y volvía al greeter en bucle.
+- **La causa:** El parche de `xfce.desktop` (`Exec=churros-xfce-session`) vivía solo en `desktop.sh`, que se ejecuta en el Live; el sistema instalado se copia del squashfs y conservaba el `Exec=startxfce4` del paquete, más `xfce-wayland.desktop` (que exige `labwc`). ReGreet lanza `xsessions/*.desktop` como `startx /usr/bin/env <Exec>`, sin el wrapper ni `vt`/`-keeptty`. Además el inicio automático escribía `/usr/bin/startxfce4` en `[initial_session]`, otra vez sin wrapper. Para greetd, un Xorg que se desconecta del TTY es una sesión terminada.
+- **La solución:** `edition-session.sh` y `build.sh` usan `/usr/bin/churros-xfce-session` como sesión XFCE. `configure-greetd-session` ejecuta `fix-xfce-sessions` al instalar (quita la sesión Wayland y reescribe `Exec`), y el hook `92-churros-xfce-x11-session` lo reaplica tras cada `pacman -Syu`. El wrapper resuelve su ruta absoluta (startx descarta rutas relativas y cae a `xterm`), detecta si ya hay un X en marcha (caso ReGreet) y, si no, lanza `startx` con `vt$XDG_VTNR -keeptty`.
+- **Sin verificar en arranque real:** solo `./churros check`; falta probarlo instalando la ISO en QEMU.
 

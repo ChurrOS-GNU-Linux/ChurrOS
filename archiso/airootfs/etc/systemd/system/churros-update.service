@@ -1,0 +1,8 @@
+[Unit]
+Description=Actualización automática de ChurrOS (pacman + flatpak + utilidades)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/churros-update-auto

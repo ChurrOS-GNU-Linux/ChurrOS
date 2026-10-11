@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#
+# linux-aarch64 (Arch Linux ARM) instala /boot/Image, no vmlinuz-*.
+# mkarchiso copia vmlinuz-* al arranque de la ISO, y grub-mkconfig empareja
+# /boot/vmlinuz-<sufijo> con initramfs-<sufijo>.img. Este script publica los
+# nombres estables:
+#   /boot/Image                  -> /boot/vmlinuz-linux-aarch64
+#   /boot/initramfs-linux.img    -> /boot/initramfs-linux-aarch64.img
+#
+# La copia del initramfs solo ocurre si el destino no existe o si el
+# initramfs-linux.img del paquete es más nuevo. Así no se pisa el initramfs
+# que generó mkinitcpio en initramfs-linux-aarch64.img después de que
+# fix-boot reescribiera el preset.
+#
+# Copia con cp, no con enlace: en btrfs un symlink o un reflink se queda
+# comprimido y GRUB no lo lee. make-boot-grub-readable reescribe después
+# el inodo. CHURROS_ROOT permite probarlo fuera de /.
+#
+#   publish-aarch64-kernel           sale 0 si no hay /boot/Image (x86_64)
+#   publish-aarch64-kernel --require falla si no hay /boot/Image
+
+set -euo pipefail
+
+require=0
+if [ "${1:-}" = --require ]; then
+    require=1
+elif [ -n "${1:-}" ]; then
+    printf 'publish-aarch64-kernel: opción desconocida: %s\n' "$1" >&2
+    exit 1
+fi
+
+root="${CHURROS_ROOT:-}"
+boot="${root}/boot"
+image="${boot}/Image"
+kernel="${boot}/vmlinuz-linux-aarch64"
+initrd_src="${boot}/initramfs-linux.img"
+initrd_dst="${boot}/initramfs-linux-aarch64.img"
+
+if [ ! -f "$image" ]; then
+    if [ "$require" -eq 1 ]; then
+        printf 'publish-aarch64-kernel: falta %s\n' "$image" >&2
+        exit 1
+    fi
+    exit 0
+fi
+
+cp -a --remove-destination -- "$image" "$kernel"
+
+if [ -f "$initrd_src" ]; then
+    if [ ! -f "$initrd_dst" ] || [ "$initrd_src" -nt "$initrd_dst" ]; then
+        cp -a --remove-destination -- "$initrd_src" "$initrd_dst"
+    fi
+fi

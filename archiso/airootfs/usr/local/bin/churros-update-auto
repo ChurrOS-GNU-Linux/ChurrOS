@@ -3,16 +3,25 @@
 # churros-update-auto — actualización automática (timer de systemd).
 # Actualiza pacman y flatpak vía churros-pkexec y notifica el resultado.
 #
+# Los programas van por ruta absoluta: la regla polkit los autoriza por ruta
+# exacta y argv exacto. Instalar paquetes pide contraseña de administrador
+# (auth_admin_keep), así que desde el timer de usuario, sin agente de polkit,
+# estos pasos fallan; ver #142 (comprobar y notificar en vez de instalar).
+#
 
 LOG=/tmp/churros-update.log
 
 {
     echo "=== $(date) ==="
-    churros-pkexec pacman -Syu --noconfirm 2>&1
+    churros-pkexec /usr/bin/pacman -Syu --noconfirm 2>&1
     PAC_RC=$?
-    churros-pkexec flatpak update -y 2>&1
-    FLAT_RC=$?
-    churros-pkexec churros-update-utils 2>&1
+    if command -v flatpak >/dev/null 2>&1; then
+        churros-pkexec /usr/bin/flatpak update -y 2>&1
+        FLAT_RC=$?
+    else
+        FLAT_RC=0
+    fi
+    churros-pkexec /usr/bin/churros-update-utils 2>&1
     CHURROS_RC=$?
     echo "=== fin ==="
 } >> "$LOG" 2>&1

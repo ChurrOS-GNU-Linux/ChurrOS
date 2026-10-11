@@ -75,11 +75,12 @@ Traducciones gettext.
 | Pieza | Implementación |
 |-------|----------------|
 | Compositor | Niri |
-| Display manager | greetd (tuigreet con autologin en Live) |
+| Shell | Noctalia v5 (paquete `noctalia` de [extra]) |
+| Display manager | greetd (regreet + cage con autologin en Live) |
 | Terminal | foot |
 | Launcher | Fuzzel |
-| Panel | Waybar |
-| Notificaciones | Mako |
+| Panel | Noctalia (Waybar como alternativa) |
+| Notificaciones | Noctalia (Mako como alternativa) |
 | Audio | PipeWire + WirePlumber |
 | Instalador | Calamares |
 | Arranque ISO | GRUB (UEFI) + Syslinux (BIOS) |

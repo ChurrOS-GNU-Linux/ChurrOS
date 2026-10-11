@@ -1,0 +1,129 @@
+# Containerfile.aarch64 — build nativo de la ISO aarch64.
+#
+# Cuando TARGET_ARCH=aarch64, ./churros build --container construye esta
+# imagen con --platform linux/arm64 y ejecuta dentro TODO el build: paquetes
+# locales (makepkg), Rust y mkarchiso/pacstrap. En un host x86_64 el motor la
+# corre con qemu-user (binfmt). En un host aarch64 corre nativa, sin emulación.
+# El keyring, la arquitectura de los paquetes y pacman.conf son los de Arch
+# Linux ARM; no hace falta un toolchain cruzado.
+#
+# ./churros rust en ARM sigue usando Containerfile (sin archiso). No cambies
+# esa ruta: Arch Linux ARM no empaqueta archiso y el job de rust no lo necesita.
+#
+# archiso es arch=('any') en extra de Arch Linux. Sus dependencias sí están
+# en ALARM, así que aquí se instala con pacman -U tras confiar el keyring de
+# Arch. grub sale de ALARM e incluye los módulos arm64-efi.
+
+ARG BASE_IMAGE=docker.io/menci/archlinuxarm:latest
+FROM ${BASE_IMAGE}
+
+# qemu-user: con solo DisableSandboxFilesystem, pacman 7 sigue aplicando
+# seccomp y falla con "error restricting syscalls via seccomp: 22" antes de
+# bajar nada. Landlock también falla en este contenedor. Las tres directivas
+# tienen que quedar en [options]: la imagen trae una sección [aur] al final,
+# y una línea añadida ahí pacman la ignora.
+#
+# El mirrorlist de menci/archlinuxarm (nj.us, mirror.archlinuxarm.org) no
+# responde desde algunas redes. Se sustituye antes del primer pacman -Sy.
+# makepkg -s y el resto del build usan este mismo /etc/pacman.conf.
+# Sin variables de shell: Docker sustituye $nombre y podman 4 deja $$
+# como el PID. El $ de $arch/$repo sale de printf '\044'.
+RUN set -eu \
+    && sed -i \
+        -e 's/^#DisableSandboxFilesystem$/DisableSandboxFilesystem/' \
+        -e 's/^#DisableSandboxSyscalls$/DisableSandboxSyscalls/' \
+        -e 's/^#DisableSandbox$/DisableSandbox/' \
+        /etc/pacman.conf \
+    && grep -qx DisableSandboxFilesystem /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandboxFilesystem' /etc/pacman.conf \
+    && grep -qx DisableSandboxSyscalls /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandboxSyscalls' /etc/pacman.conf \
+    && grep -qx DisableSandbox /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
+    && printf '%s\n' \
+        "Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$(printf '\044')arch/$(printf '\044')repo" \
+        "Server = http://mirror.archlinuxarm.org/$(printf '\044')arch/$(printf '\044')repo" \
+        "Server = https://ca.us.mirror.archlinuxarm.org/$(printf '\044')arch/$(printf '\044')repo" \
+        "Server = https://mirror.csclub.uwaterloo.ca/archlinuxarm/$(printf '\044')arch/$(printf '\044')repo" \
+        > /etc/pacman.d/mirrorlist \
+    && grep -qx DisableSandbox /etc/pacman.conf \
+    && grep -qx DisableSandboxFilesystem /etc/pacman.conf \
+    && grep -qx DisableSandboxSyscalls /etc/pacman.conf \
+    && grep -q "ftp.halifax.rwth-aachen.de/archlinux-arm/$(printf '\044')arch/$(printf '\044')repo" /etc/pacman.d/mirrorlist
+
+# Keyring de Arch Linux ARM (repos de la imagen y de la ISO) y el de Arch
+# (firma el paquete archiso de extra). Tras -Su se reaplican las directivas:
+# el paquete pacman puede dejar el conf de fábrica, y el -S siguiente
+# volvería a chocar con seccomp. makepkg hereda este fichero.
+RUN set -eu \
+    && pacman-key --init \
+    && pacman-key --populate archlinuxarm \
+    && pacman -Sy --noconfirm --needed archlinuxarm-keyring archlinux-keyring \
+    && pacman-key --populate archlinux \
+    && pacman -Su --noconfirm \
+    && sed -i \
+        -e 's/^#DisableSandboxFilesystem$/DisableSandboxFilesystem/' \
+        -e 's/^#DisableSandboxSyscalls$/DisableSandboxSyscalls/' \
+        -e 's/^#DisableSandbox$/DisableSandbox/' \
+        /etc/pacman.conf \
+    && grep -qx DisableSandboxFilesystem /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandboxFilesystem' /etc/pacman.conf \
+    && grep -qx DisableSandboxSyscalls /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandboxSyscalls' /etc/pacman.conf \
+    && grep -qx DisableSandbox /etc/pacman.conf \
+        || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
+    && pacman -S --noconfirm --needed \
+        base-devel \
+        git \
+        grub \
+        gtk4 \
+        libadwaita \
+        rust \
+        lld \
+        nodejs \
+        python \
+        sudo \
+        curl \
+        ca-certificates \
+        arch-install-scripts \
+        dosfstools \
+        e2fsprogs \
+        erofs-utils \
+        libarchive \
+        libisoburn \
+        mtools \
+        squashfs-tools \
+    && pacman -Scc --noconfirm
+
+# El nombre exacto (archiso-<ver>-any.pkg.tar.zst) se resuelve al construir
+# la imagen para no dejar una versión clavada. Cada descarga reintenta y, si
+# un espejo corta la conexión, pasa al siguiente.
+RUN set -e; \
+    mirrors="https://geo.mirror.pkgbuild.com https://mirror.rackspace.com/archlinux https://mirrors.kernel.org/archlinux https://ftp.fau.de/archlinux"; \
+    fetch() { for m in $mirrors; do \
+        if curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 20 -o "$2" "$m/extra/os/x86_64/$1"; then return 0; fi; \
+        echo "fallo $m, probando el siguiente espejo" >&2; done; return 1; }; \
+    db=$(mktemp); \
+    fetch extra.db "$db"; \
+    fname=$(tar -xOf "$db" --wildcards 'archiso-*/desc' \
+        | awk 'f { print; exit } $0 == "%FILENAME%" { f = 1 }'); \
+    rm -f "$db"; \
+    test -n "$fname"; \
+    fetch "$fname" "/tmp/$fname"; \
+    pacman -U --noconfirm "/tmp/$fname"; \
+    rm -f "/tmp/$fname"; \
+    command -v mkarchiso >/dev/null
+
+# makepkg no corre como root y build.sh llama a sudo (mkarchiso, pacman).
+RUN printf '%s\n' 'ALL ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/churros-builder \
+    && chmod 0440 /etc/sudoers.d/churros-builder
+
+# ALARM deja PKGEXT='.pkg.tar.xz' en /etc/makepkg.conf. Los scripts aceptan
+# xz y zst, pero el paquete nuevo tiene que salir en zst: es lo que usa Arch
+# y lo que el repo local espera por defecto. conf.d se carga después de
+# makepkg.conf, así que este drop-in gana. SRCEXT (.src.tar.gz) no se toca:
+# nadie busca los fuentes por extensión.
+RUN mkdir -p /etc/makepkg.conf.d \
+    && printf '%s\n' "PKGEXT='.pkg.tar.zst'" > /etc/makepkg.conf.d/churros.conf
+
+WORKDIR /churros

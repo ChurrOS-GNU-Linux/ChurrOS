@@ -88,13 +88,44 @@ windowhandle {
     background-color: transparent;
 }
 
+/*
+    Superficie explícita para ventanas ChurrOS GTK4 sin libadwaita.
+    gtk.css del usuario o el tema pueden asignar window_bg_color opaco;
+    esta regla, junto a la clase churros-glass del toplevel, asegura que el
+    nodo de ventana realmente dibuje el color con alpha que espera Niri.
+*/
+window.background.churros-glass {
+    background-color: var(--bg-window, rgba(13, 16, 22, 0.78));
+    background-image: none;
+}
+
+window.light.background.churros-glass,
+window.light.background,
+window.light {
+    background-color: var(--bg-window);
+    background-image: none;
+    color: var(--text-primary);
+}
+
+window.churros-glass scrolledwindow,
+window.churros-glass scrolledwindow viewport,
+window.churros-glass stack,
+window.churros-glass box,
+window.churros-glass grid {
+    background-color: transparent;
+    background-image: none;
+}
+
 window.preferences,
 window.welcome,
 window.controlcenter,
+window.control-center,
 window.popup,
+window.tour,
 .preferences,
 .welcome,
 .control-center,
+.tour,
 .popup {
     background-color: var(--bg-window);
     border-radius: 18px;
@@ -117,7 +148,9 @@ window.fullscreen,
 .preferences.maximized,
 .preferences.fullscreen,
 .welcome.maximized,
-.welcome.fullscreen {
+.welcome.fullscreen,
+.tour.maximized,
+.tour.fullscreen {
     background: var(--bg-window);
     background-color: var(--bg-window);
     border-radius: 0;

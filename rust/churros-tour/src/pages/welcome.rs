@@ -1,4 +1,3 @@
-use adw::prelude::*;
 use gtk::prelude::*;
 
 pub fn build() -> gtk::Box {

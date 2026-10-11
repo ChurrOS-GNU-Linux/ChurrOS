@@ -53,16 +53,22 @@ pub fn edition() -> String {
         .to_lowercase();
     if desktop.contains("xfce") {
         "xfce".to_string()
+    } else if desktop.contains("kde") || desktop.contains("plasma") {
+        "kde".to_string()
     } else {
         "niri".to_string()
     }
 }
 
-/// Nombre capitalizado del escritorio activo para la interfaz gráfica ("XFCE", "Niri", etc.).
+/// Nombre capitalizado del escritorio activo para la interfaz gráfica ("XFCE", "KDE Plasma", "Niri", etc.).
 pub fn desktop_name() -> &'static str {
     let ed = edition();
     if ed.contains("xfce") {
         "XFCE"
+    } else if ed.contains("kde") || ed.contains("plasma") {
+        "KDE Plasma"
+    } else if ed.contains("server") {
+        "Server"
     } else if ed.contains("hyprland") {
         "Hyprland"
     } else if ed.contains("sway") {

@@ -77,8 +77,9 @@ layout {
 | `SUPER + M` | Sale de Niri |
 | `SUPER + F` | Maximiza columna |
 | `SUPER + SHIFT + F` | Pantalla completa |
-| `SUPER + SPACE` | Abre el launcher (fuzzel) |
-| `SUPER + C` | Abre el centro de control |
+| `SUPER + SPACE` | Abre el lanzador de Noctalia |
+| `SUPER + SHIFT + SPACE` | Lanzador alternativo (Fuzzel) |
+| `SUPER + C` | Abre el centro de control de Noctalia |
 | `SUPER + P` | Abre preferencias (churros-settings) |
 | `SUPER + W` | Abre churros-welcome |
 | `SUPER + S` | Abre Bazaar (tienda Flatpak) |
@@ -86,12 +87,8 @@ layout {
 | `SUPER + SHIFT + V` | Cambiar foco entre floating y tiling |
 | `SUPER + O` | Toggle overview |
 | `SUPER + R` | Cambiar preset de ancho de columna |
-| `SUPER + SHIFT + N` | Popup de red |
-| `SUPER + SHIFT + A` | Popup de audio |
-| `SUPER + SHIFT + B` | Popup de bluetooth |
-| `SUPER + SHIFT + L` | Popup de brillo |
-| `SUPER + SHIFT + T` | Popup de batería |
-| `SUPER + SHIFT + E` | Popup de energía |
+| `SUPER + SHIFT + E` | Menú de sesión (wlogout) |
+| `SUPER + SHIFT + /` | Overlay de atajos |
 | `Print` | Screenshot interactivo |
 | `Ctrl + Print` | Screenshot de pantalla |
 | `Alt + Print` | Screenshot de ventana |
@@ -108,16 +105,54 @@ layout {
 ## Autostart
 
 ```kdl
-spawn-at-startup "swaybg" "-i" "/usr/share/churros/wallpapers/default.png" "-m" "fill"
 spawn-at-startup "churros-portal-start"
-spawn-at-startup "waybar"
-spawn-at-startup "mako"
+spawn-at-startup "noctalia"
 spawn-at-startup "churros-welcome"
 ```
 
-`swaybg` carga el wallpaper inicial y es el único gestor de wallpaper del autostart. `churros-portal-start` arranca los xdg-desktop-portals. `waybar` arranca la barra superior. `mako` es el daemon de notificaciones. `churros-welcome` muestra la pantalla de bienvenida.
+El fondo lo pinta Noctalia (`[wallpaper.default]` en `config.toml`, `default.png`). `swaybg` sigue instalado, pero no arranca con la sesión: si lo hiciera, se vería encima o debajo del fondo de Noctalia. `churros-portal-start` arranca los xdg-desktop-portals. Noctalia arranca la barra, notificaciones, OSD, lanzador y centro de control. Waybar, Fuzzel y Mako siguen instalados como alternativa; Fuzzel queda en `Mod+Shift+Space`. `churros-welcome` muestra la pantalla de bienvenida.
 
 ---
+
+# Noctalia
+
+**Binario:** `noctalia` (paquete `noctalia` de `[extra]`, también en Arch Linux ARM). Es Noctalia v5, escrita en C++ sin Qt ni Quickshell. Se controla con `noctalia msg <comando>` y escribe su log en `~/.cache/noctalia/noctalia.log`.
+
+**Config:** `~/.config/noctalia/config.toml`. Noctalia fusiona en orden alfabético todos los `*.toml` de esa carpeta; el `settings.json` de la v4 ya no se lee. ChurrOS despliega una base en `archiso/airootfs/etc/skel/.config/noctalia/config.toml` y otra idéntica en `usr/share/churros/defaults/noctalia/` para que "restaurar valores por defecto" sea coherente. `noctalia config validate` comprueba el archivo.
+
+- Terminal: Noctalia usa `$TERMINAL` o el primer terminal que encuentra (`foot` en ChurrOS).
+- Historial de portapapeles propio de Noctalia (sin `cliphist`), sin pegado automático.
+- Wallpapers desde `/usr/share/churros/wallpapers` (por defecto `default.png`, recorte `crop`), relleno `#111827`.
+- Paleta propia `palettes/ChurrOS.json` (naranja `#F97316`, midnight `#111827`, grafito `#1F2937`, texto `#F8FAFC`), con variante clara y oscura. `shell_mode = "follow"`: Ajustes → Apariencia → Modo oscuro llama a `noctalia msg theme-mode-set` y el shell cambia con las apps.
+- Fuente `Inter` (paquete `inter-font`), densidad cómoda (`ui_scale = 1.0`, lanzador no compacto), esquinas `corner_radius_scale = 1.2`, barra al 0.85 y paneles en modo `soft` (el modo `glass` deja el fondo al 55 % y, en oscuro sobre un wallpaper claro, el texto se vuelve ilegible).
+- Sin asistente de primer arranque, sin telemetría, sin clima ni geolocalización y sin sonidos de interfaz.
+- Idle/lock gestionado por Noctalia (pantalla 600 s, bloqueo 660 s, suspensión 28800 s); dock flotante que se oculta solo.
+- El agente de polkit sigue siendo `polkit-gnome` (`polkit_agent = false`).
+- En el Live, `desktop.sh` añade `~/.config/noctalia/live.toml` con `allow_empty_password = true`, porque el usuario `churros` no tiene contraseña. "Restaurar valores por defecto" lo conserva.
+
+Los cambios hechos desde la UI de Noctalia se guardan en `~/.local/state/noctalia/settings.toml` y tienen prioridad sobre el `config.toml`; "Restaurar valores por defecto" vacía ese archivo y repone `config.toml` sin borrar la carpeta, para que Noctalia lo aplique en caliente. `churros-apply-wallpaper` le pasa a Noctalia el fondo elegido en `churros-settings` (`noctalia msg wallpaper-set`).
+
+### Widgets y atajos
+
+Distribución de la barra (`[bar.default]` en `config.toml`):
+
+| Zona | Widgets |
+|------|---------|
+| Izquierda (`start`) | `launcher`, `clock`, `cpu`, `temp`, `ram`, `active_window`, `media` |
+| Centro (`center`) | `workspaces` |
+| Derecha (`end`) | `tray`, `notifications`, `battery`, `volume`, `brightness`, `control-center` |
+
+Atajos de Niri relacionados con el shell (`config.kdl`):
+
+| Atajo | Acción |
+|-------|--------|
+| `Mod+Space` | Lanzador de Noctalia (`noctalia msg panel-toggle launcher`) |
+| `Mod+Shift+Space` | Fuzzel, por si hace falta un lanzador aparte |
+| `Mod+C` | Centro de control de Noctalia (`noctalia msg panel-toggle control-center`) |
+| `Mod+Shift+E` | Menú de sesión (`wlogout`) |
+| `Mod+Shift+/` | Overlay de atajos de Niri, con esos títulos |
+
+El centro de control de Noctalia ya tiene pestañas de audio, red, bluetooth, brillo (`monitor`) y batería (`power`). Por eso Niri no ata `churros-popup` ni `churros-control-center`. Esos binarios siguen en la ISO: Waybar los lanza al hacer clic y se pueden abrir desde el lanzador. KDE y XFCE no usan este `config.kdl`.
 
 # Waybar
 
@@ -284,10 +319,11 @@ El comando de sesión queda escrito en `/etc/greetd/environments` por `configure
 
 La capa de shell de Niri no se instala en esta edición: `niri`, Waybar, foot, Fuzzel, Mako, swaybg, grim/slurp y swaylock/swayidle se sustituyen por los equivalentes de Plasma (KRunner, paneles de Plasma, Konsole, notificaciones de Plasma, capturas con Spectacle y kscreenlocker).
 
-## Limitaciones conocidas
+## Personalización e Integración con ChurrOS
 
-- `churros-apply-wallpaper` no funciona bajo Plasma: usa `swww`/`awww`, que dependen de *layer-shell* de wlroots y KWin no lo implementa. El fondo de ChurrOS sí se instala entre los predeterminados de Plasma.
-- Las páginas de `churros-settings` que editan `waybar`, `foot`, `fuzzel` o `mako` no tienen efecto en esta edición.
+- **Fondo de pantalla:** `churros-apply-wallpaper` y el selector de fondos de `churros-settings` aplican fondos en vivo vía `plasma-apply-wallpaperimage`. Además, el fondo predeterminado de ChurrOS se enlaza como fondo del sistema en Plasma.
+- **Branding y Tema:** ChurrOS Dark (`ChurroOSDark.colors`) con acento naranja (#F97316), iconos Papirus-Dark, fuentes Inter y cursor Adwaita se sincronizan automáticamente con Plasma 6 y sus apps GTK/Qt.
+- **Ajustes adaptados:** `churros-settings` detecta la edición KDE y oculta dinámicamente las páginas y opciones exclusivas de Niri/Waybar/Foot/Fuzzel/Mako, integrando accesos directos a las Preferencias del Sistema de KDE (KCM) para pantalla, teclado, ratón, bloqueo y luz nocturna.
 
 ## Estructura de configuración (xfconf y GTK)
 
@@ -347,8 +383,8 @@ Durante el arranque del Live, los servicios y la configuración se aplican en es
    - Copia la configuración de `/etc/skel/` a `/home/churros/` (`desktop.sh`)
    - Limpia la cache de pacman (`cleanup.sh`)
 5. greetd arranca, autologin como `churros`, carga `niri`.
-6. Niri lee `config.kdl` y ejecuta los `spawn-at-startup` (swaybg, waybar, churros-welcome, …).
-7. Waybar arranca y carga los popups de los módulos.
+6. Niri lee `config.kdl` y ejecuta los `spawn-at-startup` (noctalia, churros-welcome, …).
+7. Noctalia arranca (barra, notificaciones, widgets). Waybar puede lanzarse manualmente como respaldo.
 
 ---
 
@@ -370,7 +406,7 @@ input {
 
 ## Cambiar el wallpaper
 
-Reemplaza `archiso/airootfs/usr/share/churros/wallpapers/default.png` con tu imagen. `swaybg` la carga automáticamente al inicio.
+Reemplaza `archiso/airootfs/usr/share/churros/wallpapers/default.png` con tu imagen. Noctalia la carga al inicio (`[wallpaper.default]` en `~/.config/noctalia/config.toml`).
 
 ## Cambiar los gaps
 

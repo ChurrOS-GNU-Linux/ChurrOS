@@ -3,7 +3,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PACKAGE_DIR="$PROJECT_DIR/archiso/packages"
+# shellcheck source=scripts/lib/local-repo.sh
+source "$SCRIPT_DIR/lib/local-repo.sh"
+PACKAGE_DIR="$(churros_local_repo_dir)"
 
 choose_work_dir() {
     local parent="$PROJECT_DIR/work"
@@ -39,14 +41,15 @@ calamares_want_stamp() {
 
 WANT_STAMP="$(calamares_want_stamp)"
 
-if ls "$PACKAGE_DIR"/calamares-[0-9]*.pkg.tar.zst 1>/dev/null 2>&1; then
+if [ -n "$(churros_first_pkg "$PACKAGE_DIR" 'calamares-[0-9]*' || true)" ]; then
     HAVE_STAMP="$(cat "$STAMP_FILE" 2>/dev/null || true)"
     if [ "$HAVE_STAMP" = "$WANT_STAMP" ]; then
         echo "[skip] Calamares already built (python $HOST_PYTHON + patches stamp match)."
         exit 0
     fi
     echo "[rebuild] Calamares stamp mismatch (libpython or installer/patches changed)."
-    rm -f "$PACKAGE_DIR"/calamares-[0-9]*.pkg.tar.zst
+    churros_remove_pkgs "$PACKAGE_DIR" 'calamares-[0-9]*'
+    churros_remove_pkgs "$PACKAGE_DIR" 'calamares-debug-*' 
 fi
 
 choose_work_dir
@@ -121,6 +124,7 @@ open(path, "w", encoding="utf-8").write("\n".join(out) + "\n")
 PY
 
 echo "    PKGBUILD patched (source + prepare + checksum)"
+churros_pkgbuild_allow_arch "$WORK_DIR/PKGBUILD"
 
 echo "[3/4] Pre-downloading calamares source (codeberg can be flaky)..."
 
@@ -129,7 +133,14 @@ SRC_URL="https://codeberg.org/Calamares/calamares/releases/download/v$PKGVER/cal
 SRC_FILE="$WORK_DIR/calamares-$PKGVER.tar.gz"
 EXPECTED_SHA="$(sed -n 's/.*sha256sums=('"'"'\([0-9a-f]*\)'"'"'.*/\1/p' "$WORK_DIR/PKGBUILD")"
 
-if [[ -n "${SRCDEST:-}" ]] && [[ -s "$SRCDEST/calamares-$PKGVER.tar.gz" ]] \
+CACHE_DIR="$HOME/.cache/churros-build"
+mkdir -p "$CACHE_DIR"
+
+if [[ -s "$CACHE_DIR/calamares-$PKGVER.tar.gz" ]] \
+    && [[ "$(sha256sum "$CACHE_DIR/calamares-$PKGVER.tar.gz" | cut -d' ' -f1)" == "$EXPECTED_SHA" ]]; then
+    echo "    Using cached source from $CACHE_DIR..."
+    cp "$CACHE_DIR/calamares-$PKGVER.tar.gz" "$SRC_FILE"
+elif [[ -n "${SRCDEST:-}" ]] && [[ -s "$SRCDEST/calamares-$PKGVER.tar.gz" ]] \
     && [[ "$(sha256sum "$SRCDEST/calamares-$PKGVER.tar.gz" | cut -d' ' -f1)" == "$EXPECTED_SHA" ]]; then
     echo "    Using cached source from SRCDEST..."
     cp "$SRCDEST/calamares-$PKGVER.tar.gz" "$SRC_FILE"
@@ -142,19 +153,27 @@ for attempt in 1 2 3 4 5; do
     fi
     echo "    Downloading source (attempt $attempt)..."
     rm -f "$SRC_FILE"
-    curl -fsSL --http1.1 --connect-timeout 30 --max-time 900 -o "$SRC_FILE" "$SRC_URL"
-    if [[ "$(sha256sum "$SRC_FILE" | cut -d' ' -f1)" != "$EXPECTED_SHA" ]]; then
-        echo "    WARNING: checksum mismatch, retrying..."
+    if ! curl -4 -fsSL --connect-timeout 30 --max-time 900 --retry 3 --retry-delay 2 --retry-all-errors -o "$SRC_FILE" "$SRC_URL"; then
+        echo "    WARNING: curl download failed (attempt $attempt), retrying in 3s..."
         rm -f "$SRC_FILE"
+        sleep 3
+        continue
+    fi
+    if [[ ! -s "$SRC_FILE" ]] || [[ "$(sha256sum "$SRC_FILE" | cut -d' ' -f1)" != "$EXPECTED_SHA" ]]; then
+        echo "    WARNING: checksum mismatch or empty file, retrying..."
+        rm -f "$SRC_FILE"
+        sleep 2
         continue
     fi
     break
 done
 
-if [[ "$(sha256sum "$SRC_FILE" | cut -d' ' -f1)" != "$EXPECTED_SHA" ]]; then
+if [[ ! -s "$SRC_FILE" ]] || [[ "$(sha256sum "$SRC_FILE" | cut -d' ' -f1)" != "$EXPECTED_SHA" ]]; then
     echo "ERROR: could not download a valid calamares source tarball." >&2
     exit 1
 fi
+
+cp -f "$SRC_FILE" "$CACHE_DIR/calamares-$PKGVER.tar.gz" 2>/dev/null || true
 echo "    Source ready: $SRC_FILE ($(du -h "$SRC_FILE" | cut -f1))"
 
 echo "[4/4] Building calamares against Python $HOST_PYTHON (this may take a while)..."
@@ -169,12 +188,12 @@ echo "    makepkg done."
 
 echo "[5/5] Installing package to local repo..."
 
-cp "$WORK_DIR"/*.pkg.tar.zst "$PACKAGE_DIR/"
-rm -f "$PACKAGE_DIR"/calamares-debug-*.pkg.tar.zst 2>/dev/null || true
+churros_copy_pkgs "$WORK_DIR" "$PACKAGE_DIR" 'calamares-*'
+churros_remove_pkgs "$PACKAGE_DIR" 'calamares-debug-*' 
 
 (
     cd "$PACKAGE_DIR"
-    repo-add churros.db.tar.gz *.pkg.tar.zst
+    churros_repo_add "$PACKAGE_DIR"
 )
 
 rm -rf "$WORK_DIR"
@@ -186,6 +205,6 @@ echo "======================================"
 echo "  Calamares build complete."
 echo "======================================"
 echo "  Packages:"
-ls -la "$PACKAGE_DIR"/*.pkg.tar.zst
+churros_pkg_archives "$PACKAGE_DIR" 'calamares-[0-9]*' 
 echo
 echo "  Now run: ./churros build"

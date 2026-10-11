@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+#
+# verify-install — comprueba que la instalación quedó como debía, según la
+# edición, y deja constancia en /var/log/churros-install-verify.log.
+#
+# Se ejecuta desde shellprocess@post-install, después de configure-greetd-session
+# y configure-server. No falla la instalación: avisa. Un instalador que se
+# traga sus propios errores deja al usuario con un sistema que no arranca y
+# ningún sitio donde mirar.
+#
+# Lo que se comprueba por edición:
+#   niri / xfce / kde -> existe el lanzador de sesión y greetd está habilitado
+#   server           -> no hay display manager, el target es multi-user y
+#                        sshd está habilitado
+
+set -uo pipefail
+
+LOG=/var/log/churros-install-verify.log
+FAILURES=0
+
+log() {
+    printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG" 2>/dev/null || true
+}
+
+check() {
+    local what="$1" ok="$2"
+    if [ "$ok" = "yes" ]; then
+        log "OK   $what"
+    else
+        log "AVISO $what"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+unit_state() {
+    systemctl is-enabled "$1" 2>/dev/null || true
+}
+
+unit_enabled() {
+    case "$(unit_state "$1")" in
+        enabled|enabled-runtime|linked|linked-runtime|alias) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+unit_masked() {
+    case "$(unit_state "$1")" in
+        masked|masked-runtime) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+EDITION="niri"
+if [ -f /etc/churros-edition ]; then
+    EDITION="$(tr -d '[:space:]' < /etc/churros-edition | tr '[:upper:]' '[:lower:]')"
+fi
+
+log "--- verificación de la instalación (edición: $EDITION) ---"
+
+# ------------------------------------------------- común a todas las ediciones
+
+check "/etc/churros-edition legible" "$([ -r /etc/churros-edition ] && echo yes || echo no)"
+check "usuario root sin contraseña en el Live (limpio)" \
+    "$([ ! -e /etc/sudoers.d/churros ] && echo yes || echo no)"
+check "usuario del Live eliminado" \
+    "$(id churros >/dev/null 2>&1 && echo no || echo yes)"
+check "repo local [churros] fuera de pacman.conf" \
+    "$(grep -q '^\[churros\]$' /etc/pacman.conf && echo no || echo yes)"
+check "artefactos del Live borrados" \
+    "$([ ! -e /root/customize_airootfs.sh ] && [ ! -e /root/packages ] && echo yes || echo no)"
+check "claves SSH del Live eliminadas" \
+    "$(ls /etc/ssh/ssh_host_* >/dev/null 2>&1 && echo no || echo yes)"
+
+# NetworkManager owns interface configuration; systemd-resolved provides DNS
+# for the /etc/resolv.conf stub. Other network managers must not be enabled.
+check "NetworkManager habilitado" \
+    "$(unit_enabled NetworkManager.service && echo yes || echo no)"
+check "systemd-resolved habilitado para DNS" \
+    "$(unit_enabled systemd-resolved.service && echo yes || echo no)"
+check "NetworkManager usa systemd-resolved" \
+    "$(grep -Eq '^[[:space:]]*dns=systemd-resolved([[:space:]]*(#.*)?)?$' /etc/NetworkManager/conf.d/20-churros-dns.conf 2>/dev/null && echo yes || echo no)"
+check "/etc/resolv.conf apunta al stub de systemd-resolved" \
+    "$( [ -L /etc/resolv.conf ] && [ "$(readlink /etc/resolv.conf)" = /run/systemd/resolve/stub-resolv.conf ] && echo yes || echo no )"
+
+for unit in iwd.service systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service; do
+    check "$unit deshabilitado" "$(unit_enabled "$unit" && echo no || echo yes)"
+done
+for unit in hv_fcopy_daemon.service hv_kvp_daemon.service hv_vss_daemon.service vboxservice.service vmtoolsd.service vmware-vmblock-fuse.service; do
+    check "$unit deshabilitado" "$(unit_enabled "$unit" && echo no || echo yes)"
+done
+check "NetworkManager-wait-online habilitado y sin máscara" \
+    "$(unit_enabled NetworkManager-wait-online.service && ! unit_masked NetworkManager-wait-online.service && echo yes || echo no)"
+check "systemd-networkd-wait-online sin máscara pero deshabilitado" \
+    "$( ! unit_masked systemd-networkd-wait-online.service && ! unit_enabled systemd-networkd-wait-online.service && echo yes || echo no )"
+check "systemd-time-wait-sync sin máscara" \
+    "$( ! unit_masked systemd-time-wait-sync.service && echo yes || echo no )"
+networkd_files=0
+for path in /etc/systemd/network/20-ethernet.network /etc/systemd/network/20-wlan.network /etc/systemd/network/20-wwan.network /etc/systemd/networkd.conf.d/ipv6-privacy-extensions.conf /etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf; do
+    [ -e "$path" ] && networkd_files=$((networkd_files + 1))
+done
+check "configuración heredada de systemd-networkd retirada" \
+    "$([ "$networkd_files" -eq 0 ] && echo yes || echo no)"
+check "alias D-Bus de systemd-networkd retirado" \
+    "$([ ! -e /etc/systemd/system/dbus-org.freedesktop.network1.service ] && [ ! -L /etc/systemd/system/dbus-org.freedesktop.network1.service ] && echo yes || echo no)"
+
+# ------------------------------------------------------ por edición
+
+case "$EDITION" in
+    server)
+        check "display manager desactivado" \
+            "$(unit_enabled greetd.service && echo no || echo yes)"
+        check "arranque por consola (multi-user.target)" \
+            "$([ "$(systemctl get-default 2>/dev/null)" = "multi-user.target" ] && echo yes || echo no)"
+        check "sshd habilitado" "$(unit_enabled sshd.service && echo yes || echo no)"
+        check "sshd escuchando" \
+            "$([ -e /etc/systemd/system/multi-user.target.wants/sshd.service ] && echo yes || echo no)"
+        check "chrony habilitado" "$(unit_enabled chronyd.service && echo yes || echo no)"
+        check "sin escritorio (no queda greetd)" \
+            "$([ ! -e /usr/bin/startxfce4 ] && echo yes || echo no)"
+        ;;
+    *)
+        # El lanzador de sesión es el comando que va a /etc/greetd/environments.
+        SESSION=""
+        if [ -r /etc/greetd/environments ]; then
+            SESSION="$(head -n1 /etc/greetd/environments | tr -d '[:space:]')"
+        fi
+        check "sesión declarada en /etc/greetd/environments" \
+            "$([ -n "$SESSION" ] && echo yes || echo no)"
+        check "el lanzador de sesión existe en disco ($SESSION)" \
+            "$([ -n "$SESSION" ] && [ -x "$SESSION" ] && echo yes || echo no)"
+        if [ "$EDITION" = "xfce" ]; then
+            check "sesión XFCE usa el wrapper churros-xfce-session" \
+                "$(case "$SESSION" in *churros-xfce-session*) echo yes ;; *) echo no ;; esac)"
+            check "sesión experimental xfce-wayland desactivada" \
+                "$([ ! -e /usr/share/wayland-sessions/xfce-wayland.desktop ] && echo yes || echo no)"
+            check "xfce.desktop lanza churros-xfce-session" \
+                "$(grep -q '^Exec=/usr/bin/churros-xfce-session$' /usr/share/xsessions/xfce.desktop 2>/dev/null && echo yes || echo no)"
+            check "hook de pacman protege la sesión X11 ante actualizaciones" \
+                "$([ -f /etc/pacman.d/hooks/92-churros-xfce-x11-session.hook ] && [ -x /usr/share/churros/scripts/fix-xfce-sessions ] && echo yes || echo no)"
+        fi
+        check "greetd habilitado" "$(unit_enabled greetd.service && echo yes || echo no)"
+        check "config de greetd sin sección inicial_session" \
+            "$(grep -q '^\[initial_session\]' /etc/greetd/config.toml 2>/dev/null && echo no || echo yes)"
+        ;;
+esac
+
+if [ "$FAILURES" -eq 0 ]; then
+    log "--- todo correcto ---"
+else
+    log "--- $FAILURES comprobaciones con aviso; revisar $LOG ---"
+fi
+
+exit 0

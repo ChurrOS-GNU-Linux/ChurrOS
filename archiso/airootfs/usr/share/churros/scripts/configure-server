@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+#
+# configure-server — deja el sistema instalado sin escritorio.
+#
+# Se ejecuta desde el paso shellprocess@post-install de Calamares, en el
+# sistema ya instalado, y solo hace algo si la edición es `server`.
+#
+# Por qué existe: la ISO de la edición server lleva un escritorio mínimo
+# porque Calamares es gráfico y necesita una sesión donde dibujar la
+# ventana del instalador. Ese escritorio no tiene sentido en el destino, así
+# que aquí se quita.
+#
+# Todo es tolerante a fallos (|| true): si algo falla, la instalación
+# termina igual y queda registrado en el log.
+
+set -uo pipefail
+
+LOG=/var/log/churros-server.log
+
+log() {
+    printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG" 2>/dev/null || true
+    printf 'configure-server: %s\n' "$*" >&2
+}
+
+# ------------------------------------------------------------- solo server
+
+EDITION=""
+if [ -f /etc/churros-edition ]; then
+    EDITION="$(tr -d '[:space:]' < /etc/churros-edition | tr '[:upper:]' '[:lower:]')"
+fi
+
+if [ "$EDITION" != "server" ]; then
+    exit 0
+fi
+
+log "edición server detectada; dejando el sistema sin escritorio"
+
+# ------------------------------------------------- 1. arranque sin gráficos
+
+# greetd y graphical.target los habilita el módulo services-systemd de
+# Calamares, con mandatory: true. Aquí se revierten.
+systemctl disable greetd.service >> "$LOG" 2>&1 || true
+systemctl set-default multi-user.target >> "$LOG" 2>&1 || true
+log "display manager desactivado; target por defecto multi-user"
+
+# ---------------------------------------------------- 2. quitar escritorio
+
+# Escritorio de la ISO (XFCE), que solo estaba para el instalador.
+DESKTOP_PKGS="xfce4-session xfce4-panel xfce4-settings xfce4-notifyd xfce4-power-manager xfce4-pulseaudio-plugin xfce4-screenshooter xfce4-taskmanager xfce4-terminal xfce4-whiskermenu-plugin xfconf xfdesktop mousepad ristretto light-locker picom redshift thunar gvfs cage greetd greetd-regreet"
+
+# Las apps propias son binarios en /usr/bin, no paquetes: se borran aparte.
+CHURROS_APPS="/usr/bin/churros-welcome /usr/bin/churros-settings \
+/usr/bin/churros-control-center /usr/bin/churros-popup /usr/bin/churros-tour \
+/usr/bin/churros-apply-wallpaper /usr/bin/churros-pick-image"
+
+log "quitando paquetes de escritorio: $DESKTOP_PKGS"
+pacman -Rns --noconfirm $DESKTOP_PKGS >> "$LOG" 2>&1 || \
+    log "pacman -Rns devolvió error; se continúa (ver $LOG)"
+
+for app in $CHURROS_APPS; do
+    [ -e "$app" ] || continue
+    rm -f "$app" || log "no se pudo borrar $app"
+done
+log "apps propias de escritorio retiradas"
+
+# Los accesos directos del panel de XFCE apuntan a esos binarios.
+rm -rf /home/*/.config/xfce4/panel/launcher-* 2>/dev/null || true
+
+# ------------------------------------------------------ 3. servicios servidor
+
+# sshd y chrony solo se habilitan aquí: en una edición de escritorio no tiene
+# sentido dejar SSH escuchando a nadie.
+systemctl enable sshd.service >> "$LOG" 2>&1 || true
+systemctl enable chronyd.service >> "$LOG" 2>&1 || true
+systemctl enable NetworkManager.service >> "$LOG" 2>&1 || true
+systemctl enable ufw.service >> "$LOG" 2>&1 || true
+systemctl enable churros-update.timer >> "$LOG" 2>&1 || true
+log "sshd, chronyd, NetworkManager, ufw y churros-update.timer habilitados"
+
+# --------------------------------------------------------- 4. restos de config
+
+rm -f /etc/greetd/environments 2>/dev/null || true
+rm -rf /home/*/.config/autostart 2>/dev/null || true
+sed -i '/spawn-at-startup/d; /churros-welcome/d; /churros-tour/d' \
+    /etc/skel/.config/niri/config.kdl /home/*/.config/niri/config.kdl 2>/dev/null || true
+
+# El skel ya no debe Propagar un escritorio a los usuarios nuevos.
+rm -rf /etc/skel/.config/xfce4 2>/dev/null || true
+rm -f /etc/skel/.config/autostart/*.desktop 2>/dev/null || true
+
+log "limpieza de configuración del escritorio completada"
+log "resumen: servidor sin display manager, con SSH y sincronización horaria"
+exit 0

@@ -100,4 +100,10 @@ impl Row {
             label.set_label(text);
         }
     }
+
+    /// Etiqueta del subtítulo, para actualizarla desde el propio callback de
+    /// la fila sin que la fila se retenga a sí misma.
+    pub fn subtitle_label(&self) -> Option<&gtk::Label> {
+        self.subtitle_label.as_ref()
+    }
 }

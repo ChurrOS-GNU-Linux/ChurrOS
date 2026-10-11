@@ -30,7 +30,7 @@ const EMBEDDED_COLORS: &str = include_str!(concat!(
 ));
 
 fn home() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home)
 }
 
@@ -243,7 +243,8 @@ fn uid() -> u32 {
         .output()
         .ok()
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-        .unwrap_or(0)
+        // Fallo → no-root (nunca intentar escritura privilegiada por defecto)
+        .unwrap_or(1000)
 }
 
 fn build_env() -> Vec<(String, String)> {

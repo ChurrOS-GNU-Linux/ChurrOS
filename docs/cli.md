@@ -47,12 +47,15 @@ Construye una nueva imagen ISO de ChurrOS.
 ./churros build
 ./churros build --edition xfce
 ./churros build --edition kde
+./churros build --edition server
 ./churros build --edition niri
 ```
 
 Opciones:
-- `--edition <niri|xfce|kde>` (o `-e`): Selecciona el entorno de escritorio de la ISO (por defecto: `niri`).
-  - `niri`: Compositor Wayland con tiling dinámico horizontal (Waybar, foot, Fuzzel, Mako).
+- `--arch <x86_64|arm64>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64`. En aarch64 solo existe la edición niri. Un host que no es aarch64 no puede construir esa ISO fuera del contenedor.
+- `--container`: construye dentro del contenedor Arch (podman, o docker si no hay podman; con `sudo` y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. x86_64 usa `Containerfile`. `--arch arm64` usa `Containerfile.aarch64` (`--platform linux/arm64`): en x86_64 hace falta qemu-user-static con binfmt y la bandera `C`; en aarch64 el contenedor es nativo. Detalle en `docs/getting-started.md` y `docs/vm.md`.
+- `--edition <niri|xfce|kde|server>` (o `-e`): Selecciona la edición de la ISO (por defecto: `niri`). La edición `server` instala un sistema sin escritorio, accesible por SSH.
+  - `niri`: Compositor Wayland con tiling dinámico horizontal (Noctalia Shell, foot, Fuzzel, Mako).
   - `xfce`: Entorno de escritorio clásico X11 (XFCE 4, panel ChurrOS, xfwm4, xfce4-terminal).
 
 Este comando realiza automáticamente:
@@ -83,6 +86,7 @@ Este comando permite probar rápidamente los cambios realizados sin necesidad de
 
 Flags opcionales (detalle en `docs/vm.md`):
 
+- `--arch <x86_64|arm64>` — arquitectura de la ISO y de QEMU. Por defecto, la del equipo, igual que `build`. ARM usa `qemu-system-aarch64`, máquina `virt`, CD virtio-scsi (virt no tiene IDE) y consola `ttyAMA0`. Si no hay ISO de esa arquitectura y el host no es aarch64, el build automático lleva `--container`.
 - `--nokvm` — emulación por software, sin KVM.
 - `--fresh` — resetea `vm/OVMF_VARS.fd` para arrancar desde el CD-ROM.
 - `--clean` — borra el disco de la VM y las variables EFI antes de arrancar.
@@ -139,6 +143,20 @@ Es el mismo comando que ejecuta el CI en cada Pull Request (ver `.github/workflo
 
 ---
 
+## rust
+
+Compila y prueba las apps Rust (`rust/`) con los mismos pasos que el CI: `cargo build --workspace --all-targets`, `cargo test --workspace` y `cargo clippy` (sus avisos no fallan).
+
+```bash
+./churros rust                       # en el contenedor Arch (cualquier distro)
+./churros rust -p churros-services   # solo un crate
+./churros rust --host                # en este equipo (Arch al día)
+```
+
+Por defecto corre en el contenedor porque gtk4-rs y libadwaita-rs piden versiones que Debian, Ubuntu o Fedora no tienen. El CI (`.github/workflows/rust.yml`) ejecuta exactamente este comando.
+
+---
+
 ## doctor
 
 Comprueba que las herramientas del entorno de desarrollo estén instaladas (`mkarchiso`, `qemu-system-x86_64`, `xorriso`, `grub`, `dosfstools`, `mtools`, etc.) y verifica la aceleración por hardware KVM.
@@ -150,7 +168,9 @@ Comprueba que las herramientas del entorno de desarrollo estén instaladas (`mka
 
 Características:
 - Identifica el nombre del paquete exacto que provee cada comando faltante.
-- Si faltan paquetes, propone el comando `sudo pacman -S --needed ...` y pregunta interactivamente al usuario si desea instalarlos de inmediato (`[S/n]`).
+- Detecta la distro: propone `sudo pacman -S --needed ...`, `sudo apt-get install ...` o `sudo dnf install ...` con los nombres de paquete de cada una, y pregunta si instalarlos (`[S/n]`).
+- Fuera de Arch no busca `mkarchiso` ni `makepkg`: recomienda `./churros build --container` y comprueba que haya podman o docker.
+- Avisa si `rustc` es anterior a 1.85 (edition 2024).
 - Diagnostica si el usuario carece de permisos sobre `/dev/kvm` o si la virtualización (`Intel VT-x` o `AMD SVM`) está deshabilitada en la BIOS/UEFI.
 
 
@@ -166,11 +186,12 @@ Abre las apps propias de ChurrOS en el host, sin construir la ISO ni QEMU.
 ./churros apps welcome
 ./churros apps settings
 ./churros apps control-center
+./churros apps tour
 ./churros apps popup audio
 ./churros apps calamares
 ```
 
-Los targets GTK (`welcome`, `settings`, `control-center`, `popup`) se compilan desde `rust/`. Hace falta sesión gráfica y gtk4/libadwaita. Por defecto corren en modo preview: `HOME` es un directorio temporal y los comandos que cambian el sistema (volumen, red, energía, gsettings, pkill) no se ejecutan. Aparecen como `[churros-dev] blocked:` en stderr. `--live-host` desactiva ese aislamiento.
+Los targets GTK (`welcome`, `settings`, `control-center`, `tour`, `popup`) se compilan desde `rust/`. Hace falta sesión gráfica y gtk4/libadwaita. Por defecto corren en modo preview: `HOME` es un directorio temporal y los comandos que cambian el sistema (volumen, red, energía, gsettings, pkill) no se ejecutan. Aparecen como `[churros-dev] blocked:` en stderr. `--live-host` desactiva ese aislamiento.
 
 `calamares` copia la config del repo a un directorio temporal y lanza el instalador con `-c` sobre ese overlay: no escribe `/etc/calamares`, no usa `sudo`, no pide contraseña, no abre la página de particiones (eso dispara Polkit/KPMCore contra discos reales) y no aplica teclado ni zona horaria a esta sesión. El paso de instalar es un `sleep` (para ver el slideshow) y la página final no ofrece reiniciar. El overlay incluye `qml/` del paquete extraído. `--live-host` está prohibido con este target.
 

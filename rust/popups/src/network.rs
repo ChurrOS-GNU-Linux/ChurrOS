@@ -98,11 +98,19 @@ impl WifiWidget {
 
         let wifi2 = wifi.clone();
         self.sw.connect_state_set(move |_, state| {
-            if state {
-                wifi2.enable_wifi();
-            } else {
-                wifi2.disable_wifi();
-            }
+            let w = wifi2.clone();
+            crate::popup::run_bg(
+                move || {
+                    if state {
+                        wifi::enable();
+                    } else {
+                        wifi::disable();
+                    }
+                },
+                move |_| {
+                    w.reload();
+                },
+            );
             glib::Propagation::Proceed
         });
 
@@ -115,24 +123,16 @@ impl WifiWidget {
         });
     }
 
-    fn enable_wifi(self: &Rc<Self>) {
-        wifi::enable();
-        self.reload();
-    }
-
-    fn disable_wifi(self: &Rc<Self>) {
-        wifi::disable();
-        self.reload();
-    }
-
     fn auto_refresh(self: &Rc<Self>) {
         if self.stack.visible_child_name().as_deref() != Some("list") {
             return;
         }
-        let state = wifi::get();
-        if state != *self.last.borrow() {
-            self.reload();
-        }
+        let w = self.clone();
+        crate::popup::run_bg(wifi::get, move |state| {
+            if state != *w.last.borrow() {
+                w.reload();
+            }
+        });
     }
 
     fn show_message(&self, text: &str) {

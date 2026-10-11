@@ -19,6 +19,25 @@ fn run_with_timeout(args: &[&str], timeout_secs: u64) -> Option<std::process::Ou
         .spawn()
         .ok()?;
 
+    // Drenar stdout/stderr en threads mientras el proceso corre: sin esto, un
+    // comando que escriba más de ~64 KiB se bloquea en el pipe (deadlock).
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut o) = out_pipe.take() {
+            let _ = o.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let err_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut e) = err_pipe.take() {
+            let _ = e.read_to_end(&mut buf);
+        }
+        buf
+    });
+
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let status = loop {
         match child.try_wait() {
@@ -35,15 +54,9 @@ fn run_with_timeout(args: &[&str], timeout_secs: u64) -> Option<std::process::Ou
         }
     };
 
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    if let Some(mut out) = child.stdout.take() {
-        let _ = out.read_to_end(&mut stdout);
-    }
-    if let Some(mut err) = child.stderr.take() {
-        let _ = err.read_to_end(&mut stderr);
-    }
     let _ = child.wait();
+    let stdout = out_thread.join().unwrap_or_default();
+    let stderr = err_thread.join().unwrap_or_default();
 
     Some(std::process::Output {
         status,

@@ -54,6 +54,13 @@
 # ── Continuous integration ───────────────────────────────────────────────────
 /.github/workflows/              @Hoyuse @sebaspi0922
 
+# ── Shell de escritorio (Niri / Noctalia) ────────────────────────────────────
+/archiso/airootfs/etc/skel/.config/niri/          @Hoyuse
+/archiso/airootfs/etc/skel/.config/noctalia/     @Hoyuse
+/archiso/airootfs/usr/share/churros/defaults/niri/     @Hoyuse
+/archiso/airootfs/usr/share/churros/defaults/noctalia/ @Hoyuse
+/archiso/airootfs/etc/greetd/config.toml         @Hoyuse
+
 # ── Documentación ───────────────────────────────────────────────────────────
 /docs/                           @Hoyuse @sebaspi0922
 /docs/contributing.md            @Hoyuse @sebaspi0922

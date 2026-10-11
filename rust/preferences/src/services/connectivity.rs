@@ -91,13 +91,13 @@ fn wifi_run(args: &[&str]) -> (i32, String, String) {
     )
 }
 
-/// Comandos de cambio sin espera (nmcli radio / bluetoothctl power).
+/// Comandos de cambio (nmcli radio / bluetoothctl power). status() evita zombis.
 fn run_no_output(args: &[&str]) {
     let _ = Command::new(args[0])
         .args(&args[1..])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 fn which(cmd: &str) -> bool {

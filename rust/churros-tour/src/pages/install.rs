@@ -1,191 +1,208 @@
-use adw::prelude::*;
-use gtk::prelude::*;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::process::Command;
-use std::collections::HashSet;
-use glib::clone;
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::Duration;
 
-thread_local! {
-    static SELECTED_PACKAGES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    static PROGRESS_BAR: RefCell<Option<gtk::ProgressBar>> = RefCell::new(None);
-    static STATUS_LABEL: RefCell<Option<gtk::Label>> = RefCell::new(None);
+use churros_tour::installation::{INSTALL_SCRIPT, InstallReport, InstallState, write_autostart};
+use glib::ControlFlow;
+use gtk::prelude::*;
+
+#[derive(Clone)]
+pub struct InstallPage {
+    pub root: gtk::Box,
+    progress: gtk::ProgressBar,
+    status: gtk::Label,
+    state: Rc<Cell<InstallState>>,
 }
 
-pub fn add_packages(pkgs: &[&str]) {
-    SELECTED_PACKAGES.with(|set| {
-        for p in pkgs {
-            set.borrow_mut().insert(p.to_string());
-        }
-    });
-}
-
-pub fn remove_packages(pkgs: &[&str]) {
-    SELECTED_PACKAGES.with(|set| {
-        for p in pkgs {
-            set.borrow_mut().remove(*p);
-        }
-    });
-}
-
-pub fn build() -> gtk::Box {
+pub fn build() -> InstallPage {
     let container = gtk::Box::new(gtk::Orientation::Vertical, 10);
     container.set_valign(gtk::Align::Center);
     container.set_halign(gtk::Align::Center);
 
-    let title_label = gtk::Label::new(Some("Instalando y Configurando"));
-    title_label.add_css_class("page-title");
-    title_label.set_halign(gtk::Align::Center);
-
-    let subtitle = gtk::Label::new(Some("Estamos preparando tu sistema con los paquetes y controladores que elegiste."));
+    let title = gtk::Label::new(Some("Instalando y Configurando"));
+    title.add_css_class("page-title");
+    let subtitle = gtk::Label::new(Some(
+        "Actualizaremos el sistema e instalaremos las aplicaciones elegidas. Revisa y confirma la operación en la terminal.",
+    ));
     subtitle.add_css_class("page-subtitle");
-    subtitle.set_halign(gtk::Align::Center);
     subtitle.set_wrap(true);
+    subtitle.set_max_width_chars(70);
     subtitle.set_justify(gtk::Justification::Center);
 
-    let progress_bar = gtk::ProgressBar::new();
-    progress_bar.set_margin_start(32);
-    progress_bar.set_margin_end(32);
-
-    let label = gtk::Label::new(Some("Esperando para iniciar..."));
-
-    PROGRESS_BAR.with(|p| *p.borrow_mut() = Some(progress_bar.clone()));
-    STATUS_LABEL.with(|l| *l.borrow_mut() = Some(label.clone()));
-
-    container.append(&title_label);
-    container.append(&subtitle);
-    container.append(&progress_bar);
-    container.append(&label);
-
-    container
+    let progress = gtk::ProgressBar::new();
+    progress.set_margin_start(32);
+    progress.set_margin_end(32);
+    let status = gtk::Label::new(Some("Esperando para iniciar..."));
+    status.set_wrap(true);
+    status.set_max_width_chars(70);
+    for widget in [
+        title.upcast_ref::<gtk::Widget>(),
+        subtitle.upcast_ref(),
+        progress.upcast_ref(),
+        status.upcast_ref(),
+    ] {
+        container.append(widget);
+    }
+    InstallPage {
+        root: container,
+        progress,
+        status,
+        state: Rc::new(Cell::new(InstallState::Idle)),
+    }
 }
 
-fn detect_drivers() -> Vec<String> {
-    let mut drivers = Vec::new();
-    
-    // Simple GPU detection
-    if let Ok(output) = Command::new("lspci").output() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
-        if stdout.contains("nvidia") {
-            drivers.push("nvidia".to_string());
-            drivers.push("nvidia-utils".to_string());
-            drivers.push("nvidia-settings".to_string());
-        } else if stdout.contains("amd") || stdout.contains("radeon") {
-            drivers.push("xf86-video-amdgpu".to_string());
-            drivers.push("vulkan-radeon".to_string());
-        } else if stdout.contains("intel") {
-            drivers.push("vulkan-intel".to_string());
+fn detect_terminal() -> (String, Vec<String>) {
+    let edition = churros_services::version::edition();
+    let candidates: &[&str] = match edition.as_str() {
+        "kde" => &["konsole", "foot", "xfce4-terminal", "xterm"],
+        "xfce" => &["xfce4-terminal", "konsole", "xterm"],
+        _ => &["foot", "konsole", "xfce4-terminal", "xterm"],
+    };
+    for &bin in candidates {
+        if churros_services::which(bin) {
+            let flags: &[&str] = match bin {
+                // These must remain attached to the launched shell, even when a
+                // terminal instance is already open in the desktop session.
+                "konsole" => &["--separate", "--nofork", "--hide-menubar", "-e"],
+                "xfce4-terminal" => &["--disable-server", "--hide-menubar", "-x"],
+                "foot" => &["-a", "churros-installer", "-W", "80x24", "-e"],
+                _ => &["-e"],
+            };
+            return (bin.into(), flags.iter().map(|s| (*s).into()).collect());
         }
     }
-    drivers
+    // Sin terminal disponible: devolver error explícito en vez de un
+    // binario que no existe (el usuario vería un error críptico de spawn).
+    ("".into(), Vec::new())
 }
 
-pub fn start_installation() {
-    let mut pkgs: Vec<String> = SELECTED_PACKAGES.with(|set| {
-        set.borrow().iter().cloned().collect()
-    });
-
-    let drivers = detect_drivers();
-    pkgs.extend(drivers);
-
-    if pkgs.is_empty() {
-        STATUS_LABEL.with(|l| {
-            if let Some(lbl) = l.borrow().as_ref() {
-                lbl.set_label("No seleccionaste paquetes. ¡Todo listo!");
-            }
-        });
-        PROGRESS_BAR.with(|p| {
-            if let Some(bar) = p.borrow().as_ref() {
-                bar.set_fraction(1.0);
-            }
-        });
-        return;
+impl InstallPage {
+    pub fn is_running(&self) -> bool {
+        self.state.get() == InstallState::Running
     }
 
-    STATUS_LABEL.with(|l| {
-        if let Some(lbl) = l.borrow().as_ref() {
-            lbl.set_label("Por favor, sigue las instrucciones en la terminal emergente...");
+    pub fn show_error(&self, message: &str) {
+        self.status.set_label(message);
+    }
+
+    pub fn finish(&self, open_at_login: bool) -> std::io::Result<()> {
+        if !self.state.get().can_finish() {
+            return Err(std::io::Error::other("La instalación sigue en curso."));
         }
-    });
+        if std::env::var_os("CHURROS_TOUR_PREVIEW").is_some() {
+            return Ok(());
+        }
+        // Failed / interrupted jobs must be retried; never remove their autostart.
+        handle_autostart(open_at_login || !self.state.get().can_disable_autostart())
+    }
 
-    // We start foot terminal running the yay installation.
-    // This allows the user to see the process, enter passwords and diagnose issues.
-    let pkgs_str = pkgs.join(" ");
-    let sh_cmd = format!(
-        "yay -Sy --needed --noconfirm {}; echo '\n[ChurrOS] Proceso terminado. Presiona Enter para cerrar.'; read", 
-        pkgs_str
-    );
-
-    let args = vec![
-        "foot".to_string(),
-        "-a".to_string(),
-        "churros-installer".to_string(), // App ID to set float rules if any
-        "-W".to_string(), "80x24".to_string(),
-        "-e".to_string(),
-        "sh".to_string(),
-        "-c".to_string(),
-        sh_cmd,
-    ];
-
-    let os_args: Vec<&std::ffi::OsStr> = args.iter().map(|s| std::ffi::OsStr::new(s)).collect();
-
-    let subprocess = match gio::Subprocess::newv(
-        &os_args,
-        gio::SubprocessFlags::NONE,
-    ) {
-        Ok(proc) => proc,
-        Err(e) => {
-            STATUS_LABEL.with(|l| {
-                if let Some(lbl) = l.borrow().as_ref() {
-                    lbl.set_label(&format!("Error al lanzar terminal: {}", e));
-                }
-            });
+    pub fn start(&self, packages: Vec<String>, done: impl Fn(bool) + 'static) {
+        if self.is_running() {
             return;
         }
-    };
-
-    // Start a pulsing animation
-    let tick_id = gtk::glib::timeout_add_local(std::time::Duration::from_millis(100), || {
-        PROGRESS_BAR.with(|p| {
-            if let Some(bar) = p.borrow().as_ref() {
-                bar.pulse();
-            }
-        });
-        gtk::glib::ControlFlow::Continue
-    });
-
-    subprocess.wait_async(
-        gio::Cancellable::NONE,
-        move |_res| {
-            tick_id.remove(); // Stop pulsing
-
-            PROGRESS_BAR.with(|p| {
-                if let Some(bar) = p.borrow().as_ref() {
-                    bar.set_fraction(1.0);
-                }
-            });
-            STATUS_LABEL.with(|l| {
-                if let Some(lbl) = l.borrow().as_ref() {
-                    lbl.set_label("¡Instalación completada!");
-                }
-            });
+        self.progress.set_fraction(0.0);
+        // Host previews can navigate the whole flow but cannot install or write autostart.
+        if std::env::var_os("CHURROS_TOUR_PREVIEW").is_some() {
+            self.state.set(InstallState::Complete);
+            self.status.set_label(&format!(
+                "Vista previa: {} aplicaciones seleccionadas. No se ejecutó ninguna instalación.",
+                packages.len()
+            ));
+            self.progress.set_fraction(1.0);
+            done(true);
+            return;
         }
-    );
+        if packages.is_empty() {
+            self.state.set(InstallState::Complete);
+            self.status
+                .set_label("No seleccionaste aplicaciones. Puedes finalizar el recorrido.");
+            self.progress.set_fraction(1.0);
+            done(true);
+            return;
+        }
+        // Preserve retry on the next login even if the window or terminal is interrupted.
+        if let Err(e) = handle_autostart(true) {
+            self.failed(&format!("No se pudo conservar el inicio del Tour: {e}. Corrige el error y vuelve a intentarlo."));
+            done(false);
+            return;
+        }
+        let report = match InstallReport::new() {
+            Ok(report) => report,
+            Err(e) => {
+                self.failed(&format!("No se pudo preparar la instalación: {e}"));
+                done(false);
+                return;
+            }
+        };
+        let (terminal, flags) = detect_terminal();
+        if terminal.is_empty() {
+            self.failed("No hay terminal disponible para el instalador");
+            done(false);
+            return;
+        }
+        let mut args = vec![terminal];
+        args.extend(flags);
+        args.extend([
+            "sh".into(),
+            "-c".into(),
+            INSTALL_SCRIPT.into(),
+            "churros-tour".into(),
+        ]);
+        args.push(report.path().to_string_lossy().into_owned());
+        args.extend(packages);
+        let os_args: Vec<_> = args.iter().map(std::ffi::OsStr::new).collect();
+        let process = match gio::Subprocess::newv(&os_args, gio::SubprocessFlags::NONE) {
+            Ok(process) => process,
+            Err(e) => {
+                self.failed(&format!(
+                    "Error al lanzar la terminal: {e}. Vuelve atrás para reintentar."
+                ));
+                done(false);
+                return;
+            }
+        };
+        self.state.set(InstallState::Running);
+        self.status.set_label(
+            "Actualizando e instalando. Revisa la terminal para confirmar la operación...",
+        );
+        let page = self.clone();
+        glib::timeout_add_local(Duration::from_millis(100), move || {
+            if !page.is_running() {
+                return ControlFlow::Break;
+            }
+            page.progress.pulse();
+            ControlFlow::Continue
+        });
+        let page = self.clone();
+        let waited = process.clone();
+        process.wait_async(gio::Cancellable::NONE, move |result| {
+            // A terminal exiting is not evidence that yay succeeded. Both the
+            // process and the private report from the shell must confirm success.
+            let success = result.is_ok() && waited.is_successful() && report.succeeded();
+            if success {
+                page.state.set(InstallState::Complete);
+                page.progress.set_fraction(1.0);
+                page.status.set_label("¡Instalación completada! Puedes finalizar el recorrido.");
+            } else {
+                page.failed("La instalación falló o fue interrumpida. Revisa la terminal y vuelve atrás para reintentar. El Tour seguirá disponible al iniciar.");
+            }
+            done(success);
+        });
+    }
+
+    fn failed(&self, message: &str) {
+        self.state.set(InstallState::Failed);
+        self.progress.set_fraction(0.0);
+        self.show_error(message);
+    }
 }
 
-pub fn handle_autostart(active: bool) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    let autostart_dir = PathBuf::from(home).join(".config/autostart");
-    let desktop_file = autostart_dir.join("churros-tour.desktop");
-
-    if active {
-        // Asegurarnos de que exista si debe iniciar
-        let _ = std::fs::create_dir_all(&autostart_dir);
-        let content = "[Desktop Entry]\nType=Application\nName=ChurrOS Tour\nExec=churros-tour\nTerminal=false\nCategories=System;\n";
-        let _ = std::fs::write(&desktop_file, content);
-    } else {
-        // Eliminarlo para que no inicie
-        let _ = std::fs::remove_file(desktop_file);
+fn handle_autostart(active: bool) -> std::io::Result<()> {
+    if std::env::var_os("CHURROS_TOUR_PREVIEW").is_some() {
+        return Ok(());
     }
+    let home =
+        std::env::var_os("HOME").ok_or_else(|| std::io::Error::other("HOME no está definido"))?;
+    write_autostart(&PathBuf::from(home).join(".config"), active)
 }

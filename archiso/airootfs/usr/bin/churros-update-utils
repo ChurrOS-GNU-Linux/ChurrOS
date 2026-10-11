@@ -2,7 +2,7 @@
 #
 # churros-update-utils — comprueba y actualiza las utilidades de ChurrOS
 # desde el servidor de releases. Se ejecuta como root vía churros-pkexec
-# (regla polkit 50-churros-store.rules).
+# (regla polkit 50-churros-store.rules: contraseña de administrador).
 #
 # Uso:
 #   churros-update-utils
@@ -16,17 +16,27 @@
 #
 # Controles aplicados:
 #   - origen fijo (https), sin overrides;
+#   - el manifiesto se descarga primero y, si hay clave pública de releases,
+#     se verifica su firma minisign antes de leerlo;
 #   - versión y nombre de fichero validados con expresiones regulares;
-#   - el sha256 announced en el manifiesto debe coincidir con el descargado;
-#   - la lista de miembros del tarball se valida antes de extraer (sin rutas
-#     absolutas, sin "..", solo prefijos permitidos, sin enlaces simbólicos);
-#   - la extracción se hace en un directorio de stage y solo después se
-#     copia sobre /.
+#   - el sha256 anunciado en el manifiesto debe coincidir con el descargado;
+#   - el tarball solo puede traer ficheros regulares y directorios, sin rutas
+#     absolutas ni "..", y solo en las rutas de ALLOWED_PREFIXES y
+#     ALLOWED_FILES;
+#   - se extrae en un stage y se instala fichero a fichero (modo 0755 o 0644,
+#     rename atómico). Nunca se copian atributos de directorio sobre /, /usr
+#     o /etc (#130).
 #
-# Si existe /usr/share/churros/churros-release.pubkey, el manifiesto además
-# debe venir firmado por minisign y se aborta si la firma no valida.
+# TODO(#139, #141): la firma tendría que ser obligatoria. Hoy no hay clave
+# publicada, minisign no está en los perfiles y build-churros-release.sh no
+# firma, así que sin clave solo se avisa.
+#
+# Las funciones se pueden cargar con `source` para probarlas
+# (scripts/test-privileged-helpers.py); main solo corre al ejecutar el script.
 
 set -euo pipefail
+export LC_ALL=C
+umask 022
 
 BASE="https://download.churroslinux.org/churros/"
 PUBKEY=/usr/share/churros/churros-release.pubkey
@@ -34,78 +44,105 @@ PUBKEY=/usr/share/churros/churros-release.pubkey
 VERSION_FILE=/etc/churros-version
 EDITION_FILE=/etc/churros-edition
 
-# Prefios dentro del tarball que el bundle de utilidades puede tocar. Cualquier
-# otra ruta (passwd, sudoers, unit de systemd...) se rechaza.
+# Rutas que el bundle puede tocar, relativas a /. Un prefijo que acaba en "/"
+# admite cualquier fichero por debajo; uno que acaba en "churros-" solo
+# admite ficheros directos de ese directorio cuyo nombre empiece así.
+# Cualquier otra ruta (passwd, sudoers, units de systemd, bibliotecas...) se
+# rechaza.
 ALLOWED_PREFIXES=(
-    usr/bin/
-    usr/lib/
-    usr/local/bin/
-    usr/local/lib/
+    usr/bin/churros-
+    usr/local/bin/churros-
     usr/share/churros/
+)
+
+# Ficheros sueltos, por ruta exacta.
+ALLOWED_FILES=(
     etc/churros-version
     etc/churros-edition
+    # Hook de rollback que lleva el bundle (build-churros-release.sh). Solo
+    # llama a /usr/local/bin/churros-snapshot, que el bundle ya puede
+    # actualizar.
+    etc/pacman.d/hooks/50-churros-snapshot.hook
 )
+
+TMP_MANIFEST=""
+DL=""
+STAGE=""
+INSTALL_TMP=""
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 cleanup() {
-    if [ -n "$TMPFILE" ]; then
-        rm -f "$TMPFILE" "$TMPFILE.sig"
+    if [ -n "$TMP_MANIFEST" ]; then
+        rm -f -- "$TMP_MANIFEST" "$TMP_MANIFEST.minisig"
     fi
     if [ -n "$DL" ]; then
-        rm -f "$DL"
+        rm -f -- "$DL"
     fi
     if [ -n "$STAGE" ]; then
-        rm -rf "$STAGE"
+        rm -rf -- "$STAGE"
+    fi
+    if [ -n "$INSTALL_TMP" ]; then
+        rm -f -- "$INSTALL_TMP"
     fi
     return 0
 }
-trap cleanup EXIT
 
-TMPFILE=""
-DL=""
-STAGE=""
-
-if [ "$#" -ne 0 ]; then
-    die "este comando no acepta argumentos (el origen está fijado en $BASE)"
-fi
+# download DESTINO URL — solo https y TLS 1.2 o superior.
+download() {
+    curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 -o "$1" "$2"
+}
 
 # --------------------------------------------------------------- edición
 
-EDITION="niri"
-if [ -f "$EDITION_FILE" ]; then
-    EDITION="$(tr -d '[:space:]' < "$EDITION_FILE" | tr '[:upper:]' '[:lower:]')"
-elif [ -f /etc/os-release ]; then
-    var_id="$(grep -E '^VARIANT_ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr -d '[:space:]' || true)"
-    [ -n "$var_id" ] && EDITION="$var_id"
-fi
-# Solo se usa como clave de lookup en el manifiesto: se restringe igual.
-case "$EDITION" in
-    *[!a-z0-9_-]*) die "edición inválida: $EDITION" ;;
-esac
+detect_edition() {
+    local edition="" var_id
+    if [ -f "$EDITION_FILE" ]; then
+        edition="$(tr -d '[:space:]' < "$EDITION_FILE" | tr '[:upper:]' '[:lower:]')"
+    elif [ -f /etc/os-release ]; then
+        var_id="$(grep -E '^VARIANT_ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr -d '[:space:]' || true)"
+        edition="$var_id"
+    fi
+    edition="${edition:-niri}"
+    # Solo se usa como clave de lookup en el manifiesto: se restringe igual.
+    case "$edition" in
+        *[!a-z0-9_-]*) die "edición inválida: $edition" ;;
+    esac
+    printf '%s\n' "$edition"
+}
 
-echo "Comprobando utilidades de ChurrOS ($BASE) [edición: $EDITION]..."
+# ------------------------------------------------------------ manifiesto
 
-# -------------------------------------------------------------- manifiesto
-
-TMPFILE="$(mktemp)"
-if command -v minisign >/dev/null 2>&1 && [ -f "$PUBKEY" ]; then
-    curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 \
-        -o "$TMPFILE.sig" "$BASE/updates.json.minisig" \
+# Firma minisign del manifiesto ya descargado. Antes se comprobaba antes de
+# descargarlo, contra un fichero vacío, así que con la clave publicada no
+# habría validado nunca (#139).
+verify_manifest() {
+    local manifest="$1"
+    if [ ! -f "$PUBKEY" ]; then
+        echo "AVISO: sin clave pública de releases ($PUBKEY): el manifiesto solo se"
+        echo "       comprueba por integridad (sha256), no por autenticidad."
+        return 0
+    fi
+    # Con clave publicada, la firma se exige: sin minisign no se sigue.
+    command -v minisign >/dev/null 2>&1 \
+        || die "hay clave pública de releases pero falta minisign para verificar la firma"
+    download "$manifest.minisig" "${BASE}updates.json.minisig" \
         || die "no se pudo obtener la firma minisign del manifiesto"
-    minisign -V -p "$PUBKEY" -x "$TMPFILE.sig" -m "$TMPFILE" >/dev/null 2>&1 \
-        || die "firma minisig inválida:Updates-JSON no se acepta"
+    minisign -V -p "$PUBKEY" -m "$manifest" -x "$manifest.minisig" >/dev/null 2>&1 \
+        || die "firma minisign inválida: no se acepta updates.json"
     echo "Firma del manifiesto verificada."
-else
-    echo "AVISO: sin clave pública de releases ($PUBKEY): el manifiesto solo se"
-    echo "       comprueba por integridad (sha256), no por autenticidad."
-fi
+}
 
-curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 \
-    -o "$TMPFILE" "$BASE/updates.json" || die "no se pudo obtener updates.json"
+# fetch_manifest DESTINO — descarga updates.json y verifica su firma.
+fetch_manifest() {
+    download "$1" "${BASE}updates.json" || die "no se pudo obtener updates.json"
+    verify_manifest "$1"
+}
 
+# parse_manifest MANIFIESTO EDICION — imprime "versión|fichero|sha256".
 # La edición se pasa por entorno, no interpolada en el source de python.
-PARSED="$(CHURROS_EDITION="$EDITION" python3 -c '
+parse_manifest() {
+    CHURROS_EDITION="$2" python3 -c '
 import json, os, re, sys
 
 edition = os.environ["CHURROS_EDITION"]
@@ -132,103 +169,176 @@ if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
     sys.exit("sha256 inválido en el manifiesto")
 
 print(f"{version}|{file}|{sha}")
-' < "$TMPFILE")" || die "updates.json mal formado o edición no encontrada"
+' < "$1"
+}
 
-IFS='|' read -r version file sha256 <<< "$PARSED"
+# ------------------------------------------------------- rutas del bundle
 
-installed="$(cat "$VERSION_FILE" 2>/dev/null || echo "")"
-
-if [ -n "$installed" ] && [ "$version" = "$installed" ]; then
-    echo "Utilidades de ChurrOS al día (v$installed)."
-    exit 0
-fi
-
-# --------------------------------------------------------------- descarga
-
-echo "Actualizando utilidades de ChurrOS: v${installed:-?} -> v$version"
-echo "Descargando $file..."
-
-DL="$(mktemp)"
-curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 \
-    -o "$DL" "$BASE/$file" || die "descarga fallida"
-
-echo "Verificando sha256..."
-got="$(sha256sum "$DL" | awk '{print $1}')"
-[ "$got" = "$sha256" ] || die "sha256 no coincide ($got != $sha256)"
-
-# ------------------------------------------------- validación del tarball
-
-echo "Validando contenido del paquete..."
-listing="$(tar --zstd -tf "$DL")" || die "el paquete no es un tarball válido"
-
-while IFS= read -r member; do
-    [ -n "$member" ] || continue
-    is_dir=no
-    case "$member" in
-        */) is_dir=yes ;;
+# member_allowed RUTA — ¿puede el bundle tocar esta ruta, relativa a /?
+member_allowed() {
+    local rel="$1" entry rest
+    # Nada absoluto ni componentes vacíos, "." o "..".
+    case "/$rel/" in
+        *//*|*/./*|*/../*) return 1 ;;
     esac
-    case "$member" in
-        /*) die "el paquete contiene una ruta absoluta: $member" ;;
-        *..*) die "el paquete contiene '..': $member" ;;
-        ./*) member="${member#./}" ;;
-    esac
-    # Entradas de directorio de primer nivel ("." o "./") tras normalizar.
-    [ -n "$member" ] || continue
-    case "$member" in
-        .|*/) member="${member%/}" ;;
-    esac
-    # Los directorios no se validan contra la lista: los ficheros que hayan
-    # dentro sí, y un directorio vacío fuera de ella es inofensivo.
-    [ "$member" = "." ] && continue
-    [ "$is_dir" = yes ] && continue
-    ok=no
-    for prefix in "${ALLOWED_PREFIXES[@]}"; do
-        case "$member" in
-            "$prefix"*) ok=yes; break ;;
-        esac
+    for entry in "${ALLOWED_FILES[@]}"; do
+        if [ "$rel" = "$entry" ]; then
+            return 0
+        fi
     done
-    [ "$ok" = yes ] || die "el paquete toca una ruta no permitida: $member"
-done <<< "$listing"
+    for entry in "${ALLOWED_PREFIXES[@]}"; do
+        case "$rel" in
+            "$entry"?*) ;;
+            *) continue ;;
+        esac
+        case "$entry" in
+            */) return 0 ;;
+        esac
+        # Prefijo de nombre: un fichero directo, sin subdirectorios.
+        rest="${rel#"$entry"}"
+        case "$rest" in
+            */*) return 1 ;;
+        esac
+        return 0
+    done
+    return 1
+}
 
-# Sin enlaces simbólicos ni duros: un bundle de utilidades no los necesita y
-# un enlace a /etc/shadow convertiría la extracción en escritura arbitraria.
-# El listado se materializa antes de filtrar para no depender de SIGPIPE.
-verbose_listing="$(tar --zstd -tvf "$DL")"
-case "$verbose_listing" in
-    [lh]* | *'
-'[lh]*)
-        die "el paquete contiene enlaces simbólicos o duros"
-        ;;
-esac
+# validate_tarball TARBALL — tipos y rutas de los miembros, antes de extraer.
+validate_tarball() {
+    local tarball="$1" listing types member type
+    listing="$(tar --zstd -tf "$tarball")" || die "el paquete no es un tarball válido"
+    types="$(tar --zstd -tvf "$tarball" | cut -c1)" || die "el paquete no es un tarball válido"
 
-# --------------------------------------------------------------- instalar
+    # Solo ficheros regulares y directorios. Un enlace a /etc/shadow
+    # convertiría la instalación en escritura arbitraria, y un dispositivo o
+    # una FIFO no pintan nada en un bundle de utilidades.
+    while IFS= read -r type; do
+        [ -n "$type" ] || continue
+        case "$type" in
+            -|d) ;;
+            *) die "el paquete contiene entradas que no son ficheros ni directorios (tipo '$type')" ;;
+        esac
+    done <<< "$types"
 
-STAGE="$(mktemp -d /run/churros-update.XXXXXX)"
-# Root restaura los permisos del archivo (no --no-same-permissions): los
-# binarios del bundle necesitan su bit +x intacto.
-tar --zstd -xf "$DL" -C "$STAGE" --no-same-owner \
-    || die "fallo al extraer el paquete"
+    while IFS= read -r member; do
+        [ -n "$member" ] || continue
+        case "$member" in
+            /*) die "el paquete contiene una ruta absoluta: $member" ;;
+        esac
+        member="${member#./}"
+        case "$member" in
+            ''|.|./) continue ;;
+        esac
+        case "/${member%/}/" in
+            *//*|*/./*|*/../*) die "el paquete contiene '..', '.' o '//': $member" ;;
+        esac
+        # Los directorios no se validan contra la lista: se crean al instalar,
+        # con 0755, solo si contienen algún fichero permitido.
+        case "$member" in
+            */) continue ;;
+        esac
+        member_allowed "$member" || die "el paquete toca una ruta no permitida: $member"
+    done <<< "$listing"
+}
 
-# Segunda barrera: el stage solo puede contener lo autorizado y nada que
-# escapes de él.
-while IFS= read -r path; do
-    rel="${path#"$STAGE"/}"
-    case "$rel" in
-        /*|*..*) die "extracción fuera del stage: $rel" ;;
-    esac
-done < <(find "$STAGE" -mindepth 1)
+# ---------------------------------------------------------------- instalar
 
-echo "Instalando..."
-cp -a "$STAGE"/. /
+# install_stage STAGE RAIZ — instala en RAIZ los ficheros del stage.
+#
+# Solo ficheros regulares, cada uno con modo 0755 (si el bundle lo trae
+# ejecutable) o 0644, copiados a un temporal en su directorio y renombrados
+# encima del destino: el cambio es atómico y un binario en uso conserva su
+# inodo. Los directorios que faltan se crean con 0755 y los existentes no se
+# tocan. Antes se hacía `cp -a "$STAGE"/. /`, que copiaba los atributos del
+# stage (0700 de mktemp -d) sobre / y dejaba el sistema inutilizable (#130).
+install_stage() {
+    local stage="$1" root="${2%/}" src rel dest dir perms mode
+    local -a files=()
 
-# Solo tras copiar se actualiza la versión instalada.
-if ! printf '%s\n' "$version" | cmp -s - "$VERSION_FILE"; then
-    printf '%s\n' "$version" > "$VERSION_FILE"
+    # Primero se valida todo, para no dejar una instalación a medias.
+    while IFS= read -r -d '' src; do
+        rel="${src#"$stage"/}"
+        if [ -L "$src" ] || [ ! -f "$src" ]; then
+            die "el paquete contiene algo que no es un fichero regular: $rel"
+        fi
+        member_allowed "$rel" || die "el paquete toca una ruta no permitida: $rel"
+        files+=("$rel")
+    done < <(find "$stage" -mindepth 1 ! -type d -print0)
+
+    for rel in "${files[@]}"; do
+        src="$stage/$rel"
+        dest="$root/$rel"
+        dir="${dest%/*}"
+        perms="$(stat -c %a -- "$src")"
+        if (( 8#$perms & 8#111 )); then
+            mode=0755
+        else
+            mode=0644
+        fi
+        mkdir -p -- "$dir"
+        INSTALL_TMP="$(mktemp -- "$dir/.churros-update.XXXXXX")"
+        cat -- "$src" > "$INSTALL_TMP"
+        chmod "$mode" -- "$INSTALL_TMP"
+        mv -fT -- "$INSTALL_TMP" "$dest"
+        INSTALL_TMP=""
+    done
+}
+
+# -------------------------------------------------------------------- main
+
+main() {
+    local edition parsed version file sha256 installed got
+
+    if [ "$#" -ne 0 ]; then
+        die "este comando no acepta argumentos (el origen está fijado en $BASE)"
+    fi
+    trap cleanup EXIT
+
+    edition="$(detect_edition)"
+    echo "Comprobando utilidades de ChurrOS ($BASE) [edición: $edition]..."
+
+    TMP_MANIFEST="$(mktemp)"
+    fetch_manifest "$TMP_MANIFEST"
+    parsed="$(parse_manifest "$TMP_MANIFEST" "$edition")" \
+        || die "updates.json mal formado o edición no encontrada"
+    IFS='|' read -r version file sha256 <<< "$parsed"
+
+    installed="$(cat "$VERSION_FILE" 2>/dev/null || echo "")"
+    if [ -n "$installed" ] && [ "$version" = "$installed" ]; then
+        echo "Utilidades de ChurrOS al día (v$installed)."
+        return 0
+    fi
+
+    echo "Actualizando utilidades de ChurrOS: v${installed:-?} -> v$version"
+    echo "Descargando $file..."
+    DL="$(mktemp)"
+    download "$DL" "${BASE}${file}" || die "descarga fallida"
+
+    echo "Verificando sha256..."
+    got="$(sha256sum "$DL" | awk '{print $1}')"
+    [ "$got" = "$sha256" ] || die "sha256 no coincide ($got != $sha256)"
+
+    echo "Validando contenido del paquete..."
+    validate_tarball "$DL"
+
+    STAGE="$(mktemp -d /run/churros-update.XXXXXX)"
+    # Root conserva los permisos del archivo (sin --no-same-permissions) para
+    # saber qué es ejecutable; install_stage los deja en 0755 o 0644.
+    tar --zstd -xf "$DL" -C "$STAGE" --no-same-owner \
+        || die "fallo al extraer el paquete"
+
+    echo "Instalando..."
+    install_stage "$STAGE" /
+
+    # Solo tras instalar se actualiza la versión instalada.
+    if ! printf '%s\n' "$version" | cmp -s - "$VERSION_FILE"; then
+        printf '%s\n' "$version" > "$VERSION_FILE"
+    fi
+
+    echo "Utilidades de ChurrOS actualizadas a v$version."
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
 fi
-
-cleanup
-TMPFILE=""
-DL=""
-STAGE=""
-
-echo "Utilidades de ChurrOS actualizadas a v$version."

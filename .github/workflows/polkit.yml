@@ -1,0 +1,32 @@
+name: Polkit
+
+# Sonda con polkitd y pkexec reales (scripts/test-polkit-pkexec.sh). La prueba
+# de ci.yml usa un polkit falso; esta fija las claves que publica pkexec y
+# comprueba que 50-churros-store.rules carga y decide en el motor de verdad
+# (duktape), con el polkit de Arch, que es el que lleva la ISO.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pkexec:
+    name: pkexec + polkitd (Arch)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install polkit
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm --needed polkit dbus util-linux
+
+      - name: Probe pkexec and the rule
+        run: bash scripts/test-polkit-pkexec.sh

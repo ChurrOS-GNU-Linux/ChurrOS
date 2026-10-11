@@ -13,14 +13,43 @@ use crate::widgets::slider_row::SliderRow;
 use crate::widgets::switch_row::SwitchRow;
 
 pub fn build(navigator: gtk::Stack) -> Page {
-    let is_xfce = churros_services::version::edition().contains("xfce");
+    let edition = churros_services::version::edition();
+    let is_xfce = edition.contains("xfce");
+    let is_kde = edition.contains("kde");
+
+    let subtitle = if is_kde {
+        "Gestionado por KDE Plasma"
+    } else if is_xfce {
+        "Gestionado por XFCE"
+    } else {
+        "Configura tus monitores"
+    };
 
     let page = Page::new(
         Some(navigator),
         "Pantalla",
-        Some(if is_xfce { "Gestionado por XFCE" } else { "Configura tus monitores" }),
+        Some(subtitle),
         None,
     );
+
+    if is_kde {
+        let mut group = Group::new("Herramientas de KDE");
+        let btn = crate::widgets::row::Row::new(
+            "Abrir Ajustes de Pantalla",
+            Some("Lanza preferencias de pantalla de KDE Plasma"),
+            Some("video-display-symbolic"),
+            None,
+            None,
+            Some(Box::new(|_| {
+                let _ = std::process::Command::new("systemsettings")
+                    .arg("kcm_kscreen")
+                    .spawn();
+            })),
+        );
+        group.add(&btn);
+        page.add(group.widget());
+        return page;
+    }
 
     if is_xfce {
         let mut group = Group::new("Herramientas externas");

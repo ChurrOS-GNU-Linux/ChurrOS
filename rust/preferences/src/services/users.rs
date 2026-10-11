@@ -3,7 +3,7 @@
 // ==========================================
 
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub struct UsersService;
 
@@ -12,13 +12,21 @@ const REGREET_CONFIG_PATH: &str = "/etc/greetd/regreet.toml";
 const LIGHTDM_AUTOLOGIN_PATH: &str = "/etc/lightdm/lightdm.conf.d/autologin.conf";
 const LIGHTDM_MAIN_PATH: &str = "/etc/lightdm/lightdm.conf";
 
+/// Helper root que aplica estos ajustes de /etc. Recibe operaciones acotadas
+/// (`greetd-autologin on|off`, `regreet-wallpaper <ruta>`...), nunca el
+/// contenido del fichero, y decide él el usuario (quien invoca pkexec) y la
+/// sesión (la de la edición instalada). La regla polkit lo autoriza por esta
+/// ruta y con estos argv: si cambian, cambia también
+/// 50-churros-store.rules y scripts/test-polkit-rules.js.
+const WRITE_ROOT_CONFIG: &str = "/usr/local/bin/churros-write-root-config";
+
 fn getuid() -> u32 {
     Command::new("id")
         .arg("-u")
         .output()
         .ok()
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-        .unwrap_or(0)
+        .unwrap_or(1000) // fallo → no-root, nunca intentar escritura privilegiada
 }
 
 /// Campos de /etc/passwd para el uid actual: (name, uid, gid, gecos, shell)
@@ -38,6 +46,36 @@ fn passwd_entry() -> Option<(String, String, String, String, String)> {
         }
     }
     None
+}
+
+/// Valor de una clave TOML de una línea: cadena básica ("..." con escapes
+/// \" y \\, que es como la escribe el helper), literal ('...') o desnudo.
+fn toml_value(raw: &str) -> String {
+    let raw = raw.trim();
+    if let Some(inner) = raw.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        let mut out = String::with_capacity(inner.len());
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('"') => out.push('"'),
+                    Some('\\') => out.push('\\'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => out.push('\\'),
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        return out;
+    }
+    if let Some(inner) = raw.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')) {
+        return inner.to_string();
+    }
+    raw.to_string()
 }
 
 /// ¿La línea inicia una sección `[nombre]`? Devuelve el nombre.
@@ -158,67 +196,23 @@ impl UsersService {
         }
     }
 
-    /// Activa/desactiva el autologin editando la configuración del Display Manager activo
+    /// Activa/desactiva el autologin del Display Manager activo.
+    ///
+    /// Usuario y sesión los decide el helper: el usuario es quien invoca
+    /// pkexec y la sesión, la de /etc/churros-edition con la misma tabla que
+    /// usa la instalación (`churros-niri-session` en Niri). Aquí solo se elige
+    /// el gestor y el estado.
     pub fn set_auto_login(value: bool) -> bool {
         let current = Self::auto_login();
         if value == current {
             return true;
         }
 
-        let user = Self::username();
-        let desktop = churros_services::version::edition();
-        let session_cmd = if desktop.contains("xfce") {
-            "startxfce4"
-        } else {
-            "niri"
-        };
-
-        // Si greetd está disponible o en uso:
+        let state = if value { "on" } else { "off" };
         if std::path::Path::new("/etc/greetd").exists() || std::path::Path::new(GREETD_CONFIG_PATH).exists() {
-            let new_content = if value {
-                format!(
-                    "[terminal]\nvt = 7\n\n[default_session]\ncommand = \"env WLR_NO_HARDWARE_CURSORS=1 XCURSOR_THEME=Adwaita XCURSOR_SIZE=24 cage -s -- regreet\"\nuser = \"greeter\"\n\n[initial_session]\ncommand = \"{session_cmd}\"\nuser = \"{user}\"\n"
-                )
-            } else {
-                format!(
-                    "[terminal]\nvt = 7\n\n[default_session]\ncommand = \"env WLR_NO_HARDWARE_CURSORS=1 XCURSOR_THEME=Adwaita XCURSOR_SIZE=24 cage -s -- regreet\"\nuser = \"greeter\"\n"
-                )
-            };
-
-            return Self::write_root_file(GREETD_CONFIG_PATH, &new_content);
-        }
-
-        // Fallback para LightDM:
-        if value {
-            let session_name = if desktop.contains("xfce") {
-                "xfce"
-            } else {
-                "niri"
-            };
-
-            let new_content = format!(
-                "[Seat:*]\nautologin-user={user}\nautologin-user-timeout=0\nautologin-session={session_name}\n"
-            );
-
-            Self::write_root_file(LIGHTDM_AUTOLOGIN_PATH, &new_content)
+            Self::write_root_config(&["greetd-autologin", state])
         } else {
-            if std::path::Path::new(LIGHTDM_AUTOLOGIN_PATH).exists() {
-                if getuid() == 0 {
-                    Command::new("rm")
-                        .args(["-f", LIGHTDM_AUTOLOGIN_PATH])
-                        .status()
-                        .map(|s| s.success())
-                        .unwrap_or(false)
-                } else {
-                    Command::new("churros-pkexec")
-                        .args(["rm", "-f", LIGHTDM_AUTOLOGIN_PATH])
-                        .status()
-                        .map(|s| s.success())
-                        .unwrap_or(false)
-                }
-            } else {
-                true
-            }
+            Self::write_root_config(&["lightdm-autologin", state])
         }
     }
 
@@ -231,9 +225,9 @@ impl UsersService {
             let trimmed = line.trim();
             if trimmed.starts_with("path") && trimmed.contains('=') {
                 if let Some((_, val)) = trimmed.split_once('=') {
-                    let p = val.trim().trim_matches('"').trim_matches('\'');
+                    let p = toml_value(val);
                     if !p.is_empty() {
-                        return p.to_string();
+                        return p;
                     }
                 }
             }
@@ -241,28 +235,13 @@ impl UsersService {
         "/usr/share/churros/wallpapers/default.png".to_string()
     }
 
-    /// Actualiza el fondo de pantalla en ReGreet
+    /// Pone `wallpaper_path` de fondo en ReGreet.
+    ///
+    /// El helper solo acepta fondos del sistema (/usr/share/churros/wallpapers,
+    /// /usr/share/backgrounds, /usr/share/wallpapers) que el greeter pueda
+    /// leer: uno del home no lo podría mostrar.
     pub fn set_regreet_wallpaper(wallpaper_path: &str) -> bool {
-        let content = fs::read_to_string(REGREET_CONFIG_PATH).unwrap_or_else(|_| {
-            format!("[background]\npath = \"{}\"\nfit = \"Cover\"\n", wallpaper_path)
-        });
-
-        let mut new_lines = Vec::new();
-        let mut replaced = false;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("path") && trimmed.contains('=') {
-                new_lines.push(format!("path = \"{}\"", wallpaper_path));
-                replaced = true;
-            } else {
-                new_lines.push(line.to_string());
-            }
-        }
-        if !replaced {
-            new_lines.push(format!("[background]\npath = \"{}\"\nfit = \"Cover\"", wallpaper_path));
-        }
-        let new_content = new_lines.join("\n") + "\n";
-        Self::write_root_file(REGREET_CONFIG_PATH, &new_content)
+        Self::write_root_config(&["regreet-wallpaper", wallpaper_path])
     }
 
     /// Obtiene el mensaje de bienvenida de ReGreet
@@ -274,9 +253,9 @@ impl UsersService {
             let trimmed = line.trim();
             if trimmed.starts_with("greeting_msg") && trimmed.contains('=') {
                 if let Some((_, val)) = trimmed.split_once('=') {
-                    let msg = val.trim().trim_matches('"').trim_matches('\'');
+                    let msg = toml_value(val);
                     if !msg.is_empty() {
-                        return msg.to_string();
+                        return msg;
                     }
                 }
             }
@@ -284,71 +263,45 @@ impl UsersService {
         "Bienvenido a ChurrOS".to_string()
     }
 
-    /// Actualiza el mensaje de bienvenida de ReGreet
+    /// Cambia el mensaje de bienvenida de ReGreet (máximo 80 caracteres, sin
+    /// saltos de línea; lo valida y escapa el helper).
     pub fn set_regreet_greeting(greeting: &str) -> bool {
-        let content = fs::read_to_string(REGREET_CONFIG_PATH).unwrap_or_else(|_| {
-            format!("[appearance]\ngreeting_msg = \"{}\"\n", greeting)
-        });
-
-        let mut new_lines = Vec::new();
-        let mut replaced = false;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("greeting_msg") && trimmed.contains('=') {
-                new_lines.push(format!("greeting_msg = \"{}\"", greeting));
-                replaced = true;
-            } else {
-                new_lines.push(line.to_string());
-            }
-        }
-        if !replaced {
-            new_lines.push(format!("[appearance]\ngreeting_msg = \"{}\"", greeting));
-        }
-        let new_content = new_lines.join("\n") + "\n";
-        Self::write_root_file(REGREET_CONFIG_PATH, &new_content)
+        Self::write_root_config(&["regreet-greeting", greeting])
     }
 
-    /// Escribe una configuración de sistema (/etc) como root.
+    /// Aplica un ajuste de /etc con churros-write-root-config como root.
     ///
-    /// El contenido viaja por stdin hasta `churros-write-root-config`, un
-    /// helper con lista cerrada de destinos que hace la escritura atómica en
-    /// el directorio de destino. Antes se escribía un temporal predecible en
-    /// /tmp (`churros-cfg-<pid>.tmp`) y se instalaba con `install`: cualquier
-    /// usuario local podía plantar un symlink y lograr que root escribiera
-    /// contenido arbitrario, ni dejar `install`/`mkdir` genéricos autorizados a root.
-    fn write_root_file(target_path: &str, content: &str) -> bool {
-        use std::io::Write;
-        use std::process::Stdio;
-
-        let mut cmd = if getuid() == 0 {
-            let mut c = Command::new("churros-write-root-config");
-            c.arg(target_path);
-            c
-        } else {
-            let mut c = Command::new("churros-pkexec");
-            c.args(["churros-write-root-config", target_path]);
-            c
-        };
-
-        let mut child = match cmd
-            .stdin(Stdio::piped())
+    /// Pasa por churros-pkexec, que pide la contraseña de administrador (la
+    /// regla polkit da auth_admin_keep a estas operaciones) o, si ya somos
+    /// root, lo ejecuta directamente.
+    fn write_root_config(args: &[&str]) -> bool {
+        Command::new("churros-pkexec")
+            .arg(WRITE_ROOT_CONFIG)
+            .args(args)
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+}
 
-        if let Some(stdin) = child.stdin.as_mut() {
-            if stdin.write_all(content.as_bytes()).is_err() {
-                let _ = child.wait();
-                return false;
-            }
-        }
-        // Cierra stdin para que el helper vea el EOF y pueda escribir.
-        drop(child.stdin.take());
+#[cfg(test)]
+mod tests {
+    use super::toml_value;
 
-        child.wait().map(|s| s.success()).unwrap_or(false)
+    #[test]
+    fn toml_value_reads_what_the_helper_writes() {
+        assert_eq!(
+            toml_value(r#" "Bienvenido a ChurrOS" "#),
+            "Bienvenido a ChurrOS"
+        );
+        assert_eq!(
+            toml_value(r#""¡Hola, \"ana\"! \\o/""#),
+            r#"¡Hola, "ana"! \o/"#
+        );
+        assert_eq!(toml_value("'literal'"), "literal");
+        assert_eq!(toml_value("desnudo"), "desnudo");
     }
 }

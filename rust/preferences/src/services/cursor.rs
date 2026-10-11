@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::services::settings;
 
 fn home() -> String {
-    std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())
+    churros_services::home_dir()
 }
 
 fn uid() -> u32 {
@@ -116,21 +116,21 @@ fn apply_live_cursor_theme(theme_name: &str, size: i64) {
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 
     let _ = Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", "cursor-theme", theme_name])
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 
     let _ = Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", "cursor-size", &size.to_string()])
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 /// Reescritura del interior del bloque "cursor { ... }" en config.kdl:
@@ -293,6 +293,17 @@ impl CursorService {
         let _ = Command::new("xfconf-query")
             .args(["-c", "xsettings", "-p", "/Gtk/CursorThemeName", "-s", theme])
             .output();
+
+        if churros_services::version::edition().contains("kde")
+            || churros_services::which("kwriteconfig6")
+        {
+            let _ = Command::new("kwriteconfig6")
+                .args(["--file", "kcminputrc", "--group", "Mouse", "--key", "cursorTheme", theme])
+                .output();
+            let _ = Command::new("plasma-apply-cursortheme")
+                .arg(theme)
+                .output();
+        }
     }
 
     /// Temas disponibles: carpetas con subdirectorio "cursors" en CURSOR_DIRS (sorted set)
@@ -338,6 +349,14 @@ impl CursorService {
         let _ = Command::new("xfconf-query")
             .args(["-c", "xsettings", "-p", "/Gtk/CursorThemeSize", "-s", &size_i.to_string()])
             .output();
+
+        if churros_services::version::edition().contains("kde")
+            || churros_services::which("kwriteconfig6")
+        {
+            let _ = Command::new("kwriteconfig6")
+                .args(["--file", "kcminputrc", "--group", "Mouse", "--key", "cursorSize", &size_i.to_string()])
+                .output();
+        }
 
         // Equivalente a: NiriConfig.set_cursor_size(size) dentro de try/except
         set_niri_cursor_size(size);

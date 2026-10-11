@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=ChurrOS Welcome
-Exec=churros-welcome
-Icon=org.churros.Welcome
+Exec=churros-welcome --live-only
+Icon=churros-welcome
 Terminal=false
 StartupNotify=false
-OnlyShowIn=XFCE;
+OnlyShowIn=XFCE;KDE;

@@ -12,13 +12,18 @@ window.background {
     background-color: transparent;
 }
 
+window.popup,
+window.background.churros-glass,
 .popup {
-    background-color: rgba(13, 16, 22, 0.65);
+    background-color: var(--bg-window, rgba(13, 16, 22, 0.78));
+    background-image: none;
     border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.12));
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.50),
                 0 1px 0 rgba(255, 255, 255, 0.18) inset,
                 0 0 20px rgba(255, 255, 255, 0.02) inset;
+    /* Asegurar que el widget raíz permite transparencia */
+    opacity: 1.0;
 }
 
 .popup-content {
@@ -103,3 +108,55 @@ separator {
     background: rgba(255, 255, 255, 0.10);
     min-height: 1px;
 }
+
+/* ── Light Mode Overrides ──────────────────────────────── */
+
+window.light,
+window.light.popup,
+window.light.background.churros-glass,
+window.light .popup {
+    background-color: var(--bg-window, rgba(245, 247, 250, 0.82));
+    color: #1a1e24;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12),
+                0 1px 0 rgba(255, 255, 255, 0.80) inset;
+}
+
+window.light label {
+    color: #111827;
+}
+
+window.light .popup-header {
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+window.light .popup-header-title {
+    color: #111827;
+}
+
+window.light .card {
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05),
+                0 1px 0 rgba(255, 255, 255, 0.90) inset;
+}
+
+window.light .empty-label {
+    color: #6b7280;
+}
+
+window.light button.flat {
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: #111827;
+}
+
+window.light button.flat:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+window.light separator {
+    background: rgba(0, 0, 0, 0.08);
+}
+

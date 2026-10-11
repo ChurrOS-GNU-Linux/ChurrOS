@@ -12,7 +12,7 @@ use std::process::Command;
 pub struct BackupService;
 
 fn home() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home)
 }
 
@@ -32,6 +32,11 @@ fn dotfiles() -> Vec<(&'static str, PathBuf)> {
         ("fuzzel", home().join(".config").join("fuzzel")),
         ("mako", home().join(".config").join("mako")),
         ("waybar", home().join(".config").join("waybar")),
+        ("noctalia", home().join(".config").join("noctalia")),
+        ("fastfetch", home().join(".config").join("fastfetch")),
+        // Estado real que Noctalia persiste en la UI (settings.toml) — sin
+        // esto el backup ignora lo que la persona cambió en Noctalia.
+        ("noctalia-state", home().join(".local").join("state").join("noctalia")),
     ]
 }
 
@@ -70,6 +75,25 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Noctalia vigila ~/.config/noctalia: si se borra la carpeta deja de ver
+/// cambios hasta reiniciarse. Se restauran los archivos en su sitio, se quitan
+/// los *.toml que no trae la configuración por defecto y se conserva
+/// live.toml, que solo existe en el Live (archiso/airootfs/root/scripts/desktop.sh).
+fn restore_noctalia_config(src: &Path, dst: &Path) {
+    let _ = fs::create_dir_all(dst);
+    if let Ok(entries) = fs::read_dir(dst) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let path = entry.path();
+            let is_toml = path.extension().is_some_and(|ext| ext == "toml");
+            if is_toml && name != "live.toml" && !src.join(&name).exists() {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+    let _ = copy_dir_all(src, dst);
 }
 
 impl BackupService {
@@ -213,7 +237,15 @@ impl BackupService {
                     continue;
                 }
 
-                let target_dir = home().join(".config").join(df_name);
+                // El directorio destino viene del propio dotfiles(): los de
+                // estado (noctalia-state) no viven en ~/.config.
+                let Some(target_dir) = dotfiles()
+                    .into_iter()
+                    .find(|(n, _)| *n == df_name)
+                    .map(|(_, p)| p)
+                else {
+                    continue;
+                };
 
                 if is_dir {
                     fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
@@ -246,13 +278,22 @@ impl BackupService {
 
         Self::restore_settings();
         Self::restore_dotfiles();
+        // El config restaurado ya dice oscuro, así que ThemeService::set
+        // no haría nada y GTK / `[theme].mode` se quedarían en claro.
+        // apply() recorre el mismo camino que el interruptor de Apariencia.
+        crate::services::theme::ThemeService::apply(true);
         Self::reload_services();
+        // settings.json vuelve a Orange, pero accent.css (y el acento de KDE)
+        // se quedan con el hex de pywal. El selector de color reescribe ambos.
+        crate::services::accent::AccentService::set(
+            &crate::services::accent::AccentService::current(),
+        );
         Ok(true)
     }
 
     fn restore_settings() {
         let defaults = serde_json::json!({
-            "theme": { "dark": false, "dynamic_colors": true },
+            "theme": { "dark": true, "dynamic_colors": false },
             "accent": { "color": "Orange" },
             "wallpaper": { "path": "" },
             "icons": { "theme": "Papirus" },
@@ -263,6 +304,19 @@ impl BackupService {
     }
 
     fn restore_dotfiles() {
+        // Lo que se cambia desde la UI de Noctalia (~/.local/state/noctalia/
+        // settings.toml) se aplica encima del config.toml restaurado. Se vacía
+        // en vez de borrarlo: Noctalia solo lo relee cuando se escribe y, si
+        // desaparece, vuelve a guardar los ajustes que tiene en memoria.
+        let noctalia_state = home()
+            .join(".local")
+            .join("state")
+            .join("noctalia")
+            .join("settings.toml");
+        if noctalia_state.exists() {
+            let _ = fs::write(&noctalia_state, "");
+        }
+
         let defaults_dir = PathBuf::from(DEFAULTS_DIR);
         let Ok(entries) = fs::read_dir(&defaults_dir) else {
             return;
@@ -273,6 +327,10 @@ impl BackupService {
                 continue;
             }
             let dst = home().join(".config").join(entry.file_name());
+            if entry.file_name() == "noctalia" {
+                restore_noctalia_config(&src, &dst);
+                continue;
+            }
             if dst.exists() {
                 let _ = fs::remove_dir_all(&dst);
             }
@@ -281,27 +339,61 @@ impl BackupService {
     }
 
     /// Recarga waybar/mako/fuzzel (equivalente a _reload_services).
+    /// Waybar y Mako solo si esa sesión los usa: si no, `reload(true)`
+    /// arranca Waybar y `makoctl` queda zombi.
     pub fn reload_services() {
-        crate::services::waybar::WaybarService::reload(true);
-        for cmd in [vec!["makoctl", "reload"], vec!["pkill", "-x", "fuzzel"]] {
-            let _ = Command::new(&cmd[0])
-                .args(&cmd[1..])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
+        if churros_services::noctalia::uses_waybar() {
+            crate::services::waybar::WaybarService::reload(true);
         }
+        if churros_services::noctalia::uses_mako() {
+            crate::services::mako_config::MakoConfig::reload();
+        }
+        let _ = Command::new("pkill")
+            .args(["-x", "fuzzel"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 
     /// Settings defaults (paridad con SettingsService.DEFAULTS de Python).
     #[allow(dead_code)]
     pub fn defaults() -> Value {
         serde_json::json!({
-            "theme": { "dark": false, "dynamic_colors": true },
+            "theme": { "dark": true, "dynamic_colors": false },
             "accent": { "color": "Orange" },
             "wallpaper": { "path": "" },
             "icons": { "theme": "Papirus" },
             "cursor": { "theme": "Adwaita" },
             "fonts": { "family": "Inter", "scale": 1.0 }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restore_noctalia_keeps_live_toml_and_drops_extra_toml() {
+        let tmp =
+            std::env::temp_dir().join(format!("churros-noctalia-test-{}", std::process::id()));
+        let src = tmp.join("defaults");
+        let dst = tmp.join("config");
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+        fs::write(src.join("config.toml"), "[bar.default]\n").unwrap();
+        fs::write(dst.join("config.toml"), "editado").unwrap();
+        fs::write(dst.join("live.toml"), "[lockscreen]\n").unwrap();
+        fs::write(dst.join("extra.toml"), "[dock]\n").unwrap();
+
+        restore_noctalia_config(&src, &dst);
+
+        assert_eq!(
+            fs::read_to_string(dst.join("config.toml")).unwrap(),
+            "[bar.default]\n"
+        );
+        assert!(dst.join("live.toml").exists());
+        assert!(!dst.join("extra.toml").exists());
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

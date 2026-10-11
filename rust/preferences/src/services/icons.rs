@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::services::settings;
 
 fn home() -> String {
-    std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())
+    churros_services::home_dir()
 }
 
 fn uid() -> u32 {
@@ -108,7 +108,7 @@ fn apply_live_icon_theme(theme: &str) {
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 pub struct IconsService;
@@ -156,6 +156,14 @@ impl IconsService {
         let _ = Command::new("xfconf-query")
             .args(["-c", "xsettings", "-p", "/Net/IconThemeName", "-s", theme])
             .output();
+
+        if churros_services::version::edition().contains("kde")
+            || churros_services::which("kwriteconfig6")
+        {
+            let _ = Command::new("kwriteconfig6")
+                .args(["--file", "kdeglobals", "--group", "Icons", "--key", "Theme", theme])
+                .output();
+        }
     }
 
     /// Temas disponibles: carpetas con index.theme en ICON_DIRS (sorted set)

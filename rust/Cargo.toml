@@ -4,11 +4,11 @@ members = ["churros-welcome", "churros-tour", "preferences", "services", "popups
 
 [workspace.package]
 version = "1.2.0"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-only"
 
 [profile.release]
-lto = "thin"
+lto = false  # LTO thin encarece mucho la build; la ganancia runtime es marginal para apps GTK
 codegen-units = 16
 panic = "abort"
 strip = true

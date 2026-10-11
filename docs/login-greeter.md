@@ -32,7 +32,7 @@ ChurrOS utiliza una arquitectura gráfica moderna y ultraligera para la pantalla
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │                     Sesión de Usuario                   │
-│          churros-niri-session / startxfce4              │
+│     churros-niri-session / churros-xfce-session         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -114,8 +114,8 @@ session    include      system-local-login
 ## 4. Integración con Preferencias (`churros-settings`)
 
 En el crate `preferences` (`churros-settings` -> *Usuarios y Login*):
-- **Inicio Automático (Autologin)**: Permite activar o desactivar el autologin en vivo editando de forma segura `/etc/greetd/config.toml` vía `churros-pkexec`.
-- **Sincronizar Fondo**: Copia la ruta del wallpaper actual del escritorio al archivo `/etc/greetd/regreet.toml`.
+- **Inicio Automático (Autologin)**: Permite activar o desactivar el autologin en vivo con `churros-write-root-config greetd-autologin on|off` vía `churros-pkexec` (pide la contraseña de administrador). El helper genera `/etc/greetd/config.toml`: el usuario es quien lo pide y la sesión, la de la edición instalada, con la misma tabla que usa el instalador (`/usr/share/churros/scripts/edition-session.sh`; en Niri, `/usr/bin/churros-niri-session`).
+- **Sincronizar Fondo**: Pone el wallpaper actual del escritorio como fondo en `/etc/greetd/regreet.toml` (`regreet-wallpaper`). Solo admite fondos del sistema (`/usr/share/churros/wallpapers`, `/usr/share/backgrounds`, `/usr/share/wallpapers`): uno del home no lo puede leer el greeter. Si no se puede, la fila lo indica.
 - **Mensaje de Bienvenida**: Muestra el saludo configurado en la pantalla de inicio.
 
 ---

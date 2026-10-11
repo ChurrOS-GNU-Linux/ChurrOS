@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 pub struct SettingsService;
 
 fn config_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home).join(".config").join("churros")
 }
 
@@ -20,8 +20,11 @@ fn config_file() -> PathBuf {
 }
 
 fn defaults() -> Value {
+    // El modo de fábrica es oscuro, igual que Noctalia `[theme].mode` y el
+    // prefer-dark del skel. dynamic_colors arranca apagado: pywal recolorea
+    // el acento GTK y pierde el naranja de ChurrOS.
     serde_json::json!({
-        "theme": { "dark": false, "dynamic_colors": true },
+        "theme": { "dark": true, "dynamic_colors": false },
         "accent": { "color": "Orange" },
         "wallpaper": { "path": "" },
         "icons": { "theme": "Papirus" },
@@ -99,6 +102,13 @@ pub fn set(key: &str, value: Value) {
         // load() garantiza una raíz objeto, pero nunca paniquear aquí.
         return;
     };
+
+    // Rechazar claves vacías o con segmentos vacíos ("a..b", ".a", ""):
+    // si no, se insertarían claves "" en settings.json.
+    if key.is_empty() || key.split('.').any(|s| s.is_empty()) {
+        eprintln!("settings::set: clave inválida {key:?}");
+        return;
+    }
 
     let mut parts: Vec<&str> = key.split('.').collect();
     let last = parts.pop().unwrap();

@@ -10,7 +10,7 @@ use std::process::Command;
 pub struct NiriConfig;
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home).join(".config").join("niri").join("config.kdl")
 }
 
@@ -265,7 +265,7 @@ impl NiriConfig {
             .args(["msg", "action", "load-config-file"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     // -------------------------------------------------------- Animations

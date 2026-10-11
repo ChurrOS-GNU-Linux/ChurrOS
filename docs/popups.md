@@ -1,6 +1,6 @@
 # Popups
 
-Este documento describe el sistema de popups de ChurrOS: ventanas pequeñas al interactuar con Waybar o con atajos de teclado.
+Este documento describe el sistema de popups de ChurrOS: ventanas pequeñas al interactuar con la barra (Noctalia o Waybar) o con atajos de teclado.
 
 Los seis popups viven en **un solo binario Rust** (`churros-popup`) con toggle nativo. Reemplazan al wrapper bash y a los procesos Python por popup.
 
@@ -39,7 +39,7 @@ Otro nombre → exit 64.
 
 ## Architecture
 
-1. Waybar o niri ejecuta `churros-popup <nombre>`.
+1. Noctalia, Waybar o niri ejecuta `churros-popup <nombre>`.
 2. El binario lee `/tmp/churros/popup.pid` y `/tmp/churros/popup.name`.
 3. Si no hay popup → abre el solicitado (misma ventana GTK, `org.churros.popup.<nombre>`).
 4. Si el activo es el mismo → lo mata (toggle off) y sale.
@@ -100,18 +100,7 @@ Acciones secundarias de Waybar (no pasan por el popup):
 - `pulseaudio` → click derecho silencia; scroll ajusta volumen
 - `backlight` → scroll ajusta brillo con `brightnessctl`
 
-Atajos en niri:
-
-```kdl
-Mod+Shift+N { spawn "churros-popup" "network"; }
-Mod+Shift+A { spawn "churros-popup" "audio"; }
-Mod+Shift+B { spawn "churros-popup" "bluetooth"; }
-Mod+Shift+L { spawn "churros-popup" "brightness"; }
-Mod+Shift+T { spawn "churros-popup" "battery"; }
-Mod+Shift+E { spawn "churros-popup" "power"; }
-```
-
-El control center lanza el mismo binario (`churros-popup <nombre>`), no un `python3` por archivo.
+En la sesión Niri esos atajos ya no están: el centro de control de Noctalia cubre red, audio, bluetooth, brillo y batería (`noctalia msg panel-toggle control-center`, con pestaña `audio`, `network`, `bluetooth`, `monitor` o `power`). `churros-popup` sigue instalado para Waybar y para abrirlo a mano. `Mod+Shift+E` abre `wlogout`, no el popup de energía.
 
 ---
 
@@ -120,7 +109,7 @@ El control center lanza el mismo binario (`churros-popup <nombre>`), no un `pyth
 1. Añade un módulo en `rust/popups/src/` que construya un `PopupWindow`.
 2. Regístralo en `build_window` y en el array `POPUPS` de `main.rs`.
 3. Añade CSS/iconos en `assets/` (build-rust.sh lo despliega a `archiso/airootfs/usr/share/churros/churros-popup/assets/`).
-4. Enlázalo desde Waybar o niri.
+4. Enlázalo desde Noctalia, Waybar o niri.
 
 ---
 

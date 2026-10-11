@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ChurrOS KDE Branding
+Exec=/usr/share/churros/scripts/configure-kde-panel
+Terminal=false
+NoDisplay=true
+OnlyShowIn=KDE;

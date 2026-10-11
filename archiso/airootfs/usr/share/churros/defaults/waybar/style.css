@@ -93,7 +93,7 @@ tooltip {
 }
 
 #custom-power {
-  margin-left: 8.75px;
+  margin: 0 8.75px;
   color: alpha(@foreground, 0.9);
 }
 
@@ -134,33 +134,3 @@ tooltip {
     padding: 0px 5px;
     margin: 3.5 3.5px;
 }
-
-/* ====================================
-   ADAPTACION PARA WAYBAR VERTICAL
-   ==================================== */
-
-window#waybar.left .modules-left,
-window#waybar.right .modules-left,
-window#waybar.left .modules-right,
-window#waybar.right .modules-right,
-window#waybar.left .modules-center,
-window#waybar.right .modules-center {
-  margin: 5px 0px;
-}
-
-window#waybar.left * > box,
-window#waybar.right * > box {
-  margin: 2px 0px;
-}
-
-window#waybar.left #workspaces button,
-window#waybar.right #workspaces button {
-  margin: 2px 0px;
-  padding: 4px 2px;
-}
-
-window#waybar.left label,
-window#waybar.right label {
-  padding: 2px 0px;
-}
-

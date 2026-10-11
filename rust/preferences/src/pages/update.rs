@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 
-use crate::services::update::{Snapshot, UpdateService};
+use crate::services::update::{CheckFailed, Snapshot, UpdateService};
 use crate::widgets::combo_row::ComboRow;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
@@ -203,6 +203,44 @@ pub fn build(navigator: gtk::Stack) -> Page {
     page
 }
 
+/// Recuento de una comprobación, o el aviso de que no se pudo hacer: un error
+/// no es "0 actualizaciones" (#137).
+fn count_label(count: Result<usize, CheckFailed>) -> String {
+    match count {
+        Ok(n) => format!("{n} actualizaciones"),
+        Err(CheckFailed) => "no se pudo comprobar".to_string(),
+    }
+}
+
+fn packages_summary(
+    pacman: Result<usize, CheckFailed>,
+    flatpak: Result<usize, CheckFailed>,
+) -> String {
+    format!(
+        "{} (pacman) · {} (flatpak)",
+        count_label(pacman),
+        count_label(flatpak)
+    )
+}
+
+fn churros_summary(check: Result<Option<String>, CheckFailed>, installed: &str) -> String {
+    match check {
+        Ok(Some(avail)) => format!("v{installed} instalada · v{avail} disponible"),
+        Ok(None) => format!("al día (v{installed})"),
+        Err(CheckFailed) => {
+            format!(
+                "v{installed} instalada · no se pudo comprobar (sin conexión o error del servidor)"
+            )
+        }
+    }
+}
+
+type CheckResults = (
+    Result<usize, CheckFailed>,
+    Result<usize, CheckFailed>,
+    Result<Option<String>, CheckFailed>,
+);
+
 fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<Option<Row>>>) {
     if let Some(row) = status.borrow().as_ref() {
         row.set_subtitle("Comprobando...");
@@ -211,11 +249,11 @@ fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<
         row.set_subtitle("Comprobando...");
     }
 
-    let (tx, rx) = std::sync::mpsc::channel::<(usize, usize, Option<String>)>();
+    let (tx, rx) = std::sync::mpsc::channel::<CheckResults>();
     std::thread::spawn(move || {
-        let p = UpdateService::check_pacman().map(|v| v.len()).unwrap_or(0);
-        let f = UpdateService::check_flatpak().map(|v| v.len()).unwrap_or(0);
-        let c = UpdateService::check_churros().map(|u| u.version);
+        let p = UpdateService::check_pacman().map(|v| v.len());
+        let f = UpdateService::check_flatpak().map(|v| v.len());
+        let c = UpdateService::check_churros().map(|u| u.map(|u| u.version));
         let _ = tx.send((p, f, c));
     });
 
@@ -225,15 +263,11 @@ fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<
         match rx.try_recv() {
             Ok((p, f, c)) => {
                 if let Some(row) = status_rc.borrow().as_ref() {
-                    row.set_subtitle(&format!("{p} actualizaciones (pacman) · {f} (flatpak)"));
+                    row.set_subtitle(&packages_summary(p, f));
                 }
                 let installed = UpdateService::installed_churros_version();
-                let text = match c {
-                    Some(avail) => format!("v{installed} instalada · v{avail} disponible"),
-                    None => format!("al día (v{installed})"),
-                };
                 if let Some(row) = churros_rc.borrow().as_ref() {
-                    row.set_subtitle(&text);
+                    row.set_subtitle(&churros_summary(c, &installed));
                 }
                 glib::ControlFlow::Break
             }
@@ -273,8 +307,8 @@ fn run_update(log_view: &Rc<RefCell<Option<gtk::TextView>>>) {
             "\n[COMPLETADO] Sistema actualizado correctamente.\n"
         } else {
             "\n[ERROR] La actualización no se completó. Si aparece \
-             \"no se pudo ejecutar con privilegios\", el sistema no pudo \
-             elevar a root (necesita pkexec con regla polkit o sudo).\n"
+             \"Request dismissed\" o \"Not authorized\", se canceló o no se \
+             aceptó la contraseña de administrador que pide pkexec.\n"
         };
         let _ = tx.send(summary.to_string());
     });
@@ -387,4 +421,31 @@ fn build_snapshot_row(snap: &Snapshot, snap_box: Rc<gtk::Box>) -> Row {
         Some(&delete.upcast_ref::<gtk::Widget>()),
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_check_is_not_zero_updates() {
+        assert_eq!(
+            packages_summary(Ok(3), Ok(0)),
+            "3 actualizaciones (pacman) · 0 actualizaciones (flatpak)"
+        );
+        assert_eq!(
+            packages_summary(Err(CheckFailed), Ok(2)),
+            "no se pudo comprobar (pacman) · 2 actualizaciones (flatpak)"
+        );
+    }
+
+    #[test]
+    fn a_failed_churros_check_is_not_up_to_date() {
+        assert_eq!(churros_summary(Ok(None), "1.2"), "al día (v1.2)");
+        assert_eq!(
+            churros_summary(Ok(Some("1.3".to_string())), "1.2"),
+            "v1.2 instalada · v1.3 disponible"
+        );
+        assert!(!churros_summary(Err(CheckFailed), "1.2").contains("al día"));
+    }
 }

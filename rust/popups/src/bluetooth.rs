@@ -111,16 +111,19 @@ fn device_list_widget() -> gtk::Box {
     vbox.append(&devices_box);
 
     let refresh = glib::clone!(#[strong] devices_box, #[strong] empty, move || {
-        clear_children(&devices_box);
-        let devices = bluetooth::list_devices();
-        if devices.is_empty() {
-            empty.set_visible(true);
-            return;
-        }
-        empty.set_visible(false);
-        for device in &devices {
-            devices_box.append(&device_row(device));
-        }
+        let db = devices_box.clone();
+        let em = empty.clone();
+        crate::popup::run_bg(bluetooth::list_devices, move |devices| {
+            clear_children(&db);
+            if devices.is_empty() {
+                em.set_visible(true);
+                return;
+            }
+            em.set_visible(false);
+            for device in &devices {
+                db.append(&device_row(device));
+            }
+        });
     });
 
     refresh();

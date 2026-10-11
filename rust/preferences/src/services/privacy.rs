@@ -16,7 +16,7 @@ fn getuid() -> u32 {
         .output()
         .ok()
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-        .unwrap_or(0)
+        .unwrap_or(1000) // fallo → no-root, nunca intentar escritura privilegiada
 }
 
 impl PrivacyService {

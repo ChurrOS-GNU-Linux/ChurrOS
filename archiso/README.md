@@ -8,9 +8,11 @@ Este directorio contiene la definición completa del perfil de **ArchISO** utili
 
 ```text
 archiso/
-├── profiledef.sh              # Metadatos de la ISO, modos de arranque y mapa de permisos
-├── packages.x86_64            # Lista oficial de paquetes incluidos en la ISO
-├── pacman.conf                # Configuración de repositorios pacman para el bootstrap
+├── profiledef.sh              # Metadatos de la ISO, arquitectura, modos de arranque y mapa de permisos
+├── packages.x86_64            # Paquetes de la ISO x86_64 (edición Niri; las demás ediciones tienen packages.<edición>.x86_64)
+├── packages.aarch64           # Paquetes de la ISO ARM64
+├── pacman.x86_64.conf         # Repositorios pacman del bootstrap x86_64 (Arch Linux)
+├── pacman.aarch64.conf        # Repositorios pacman del bootstrap ARM64 (Arch Linux ARM)
 ├── pacman-build.conf          # Configuración extendida para incluir repositorios locales
 ├── packages/                  # Repositorio pacman local [churros] con paquetes AUR precompilados
 ├── efiboot/                   # Configuración del cargador UEFI
@@ -29,10 +31,11 @@ archiso/
 ### `profiledef.sh`
 Define los metadatos de la distribución:
 - Nombre de la imagen (`iso_name="ChurrOS"`).
-- Modos de arranque soportados: `bios.syslinux` y `uefi.grub`.
+- Arquitectura (`CHURROS_ARCH`, que pasa `build.sh`; por defecto la del equipo), con su `pacman.<arch>.conf` y su compresión del squashfs.
+- Modos de arranque: `bios.syslinux` y `uefi.grub` en x86_64; solo `uefi.grub` en ARM64.
 - Mapa explícito de permisos y propietarios de archivos (`file_permissions`), asegurando que scripts y binarios en `/usr/bin/` y `/usr/local/bin/` tengan permisos de ejecución `0755`.
 
-### `packages.x86_64`
+### `packages.x86_64` y `packages.aarch64`
 Lista declarativa de todos los paquetes instalados en la imagen squashfs (un paquete por línea). Se valida automáticamente mediante `./churros check` para evitar duplicados.
 
 ### `packages/` (Repositorio local `[churros]`)

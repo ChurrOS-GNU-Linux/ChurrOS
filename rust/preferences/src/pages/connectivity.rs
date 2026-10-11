@@ -102,7 +102,8 @@ pub fn build(navigator: gtk::Stack) -> Page {
                         populate(&wg, &bg, data, &reload);
                         glib::ControlFlow::Break
                     }
-                    Err(_) => glib::ControlFlow::Continue,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
                 }
             });
         }
@@ -188,75 +189,25 @@ fn populate(
 
                 let ssid_owned = ssid.clone();
                 let security_owned = security.clone();
+                let saved = *saved;
+                let connected = *connected;
+                let row_reload = Rc::clone(reload);
                 wifi_group.borrow_mut().add(&Row::new(
                     ssid,
                     Some(&subtitle),
                     None,
                     None,
                     None,
-                    Some(Box::new(move |_btn| {
-                        if security_owned.is_empty() {
-                            // Red abierta: conectar directo en thread
-                            let ssid_for_thread = ssid_owned.clone();
-                            std::thread::spawn(move || {
-                                let (ok, err) =
-                                    ConnectivityService::wifi_connect(&ssid_for_thread, None);
-                                let _ = (ok, err);
-                            });
+                    Some(Box::new(move |btn| {
+                        if connected {
+                            return;
+                        }
+                        let needs_password =
+                            !security_owned.is_empty() && security_owned != "--" && !saved;
+                        if needs_password {
+                            show_password_dialog(btn, ssid_owned.clone(), Rc::clone(&row_reload));
                         } else {
-                            let root = _btn.root().and_downcast::<gtk::Window>().expect("no root window");
-                            let dialog = gtk::Window::builder()
-                                .title(&format!("Conectar a {}", ssid_owned))
-                                .modal(true)
-                                .transient_for(&root)
-                                .default_width(320)
-                                .resizable(false)
-                                .build();
-                            
-                            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 16);
-                            vbox.set_margin_top(16);
-                            vbox.set_margin_bottom(16);
-                            vbox.set_margin_start(16);
-                            vbox.set_margin_end(16);
-                            
-                            let label = gtk::Label::new(Some(&format!("Introduce la contraseña para la red Wi-Fi protegida '{}':", ssid_owned)));
-                            label.set_wrap(true);
-                            label.set_xalign(0.0);
-                            vbox.append(&label);
-                            
-                            let entry = gtk::PasswordEntry::new();
-                            entry.set_show_peek_icon(true);
-                            vbox.append(&entry);
-                            
-                            let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                            hbox.set_halign(gtk::Align::End);
-                            
-                            let cancel_btn = gtk::Button::with_label("Cancelar");
-                            let dialog_clone = dialog.clone();
-                            cancel_btn.connect_clicked(move |_| {
-                                dialog_clone.close();
-                            });
-                            
-                            let connect_btn = gtk::Button::with_label("Conectar");
-                            connect_btn.add_css_class("suggested-action");
-                            let dialog_clone2 = dialog.clone();
-                            let entry_clone = entry.clone();
-                            let ssid_for_connect = ssid_owned.clone();
-                            connect_btn.connect_clicked(move |_| {
-                                let password = entry_clone.text().to_string();
-                                let ssid = ssid_for_connect.clone();
-                                std::thread::spawn(move || {
-                                    let _ = ConnectivityService::wifi_connect(&ssid, Some(&password));
-                                });
-                                dialog_clone2.close();
-                            });
-                            
-                            hbox.append(&cancel_btn);
-                            hbox.append(&connect_btn);
-                            vbox.append(&hbox);
-                            
-                            dialog.set_child(Some(&vbox));
-                            dialog.show();
+                            connect_wifi(ssid_owned.clone(), None, Rc::clone(&row_reload), None);
                         }
                     })),
                 ));
@@ -313,10 +264,177 @@ fn populate(
             ));
         } else {
             for (name, mac) in &data.bluetooth.devices {
-                bluetooth_group
-                    .borrow_mut()
-                    .add(&Row::new(name, Some(mac), None, None, None, None));
+                bluetooth_group.borrow_mut().add(&Row::new(
+                    name,
+                    Some(mac),
+                    None,
+                    None,
+                    None,
+                    None,
+                ));
             }
         }
     }
+}
+
+fn parent_window(widget: &impl IsA<gtk::Widget>) -> Option<gtk::Window> {
+    widget.root().and_downcast::<gtk::Window>()
+}
+
+fn wifi_error_es(err: &str) -> String {
+    match err {
+        "Password required." => "Se requiere contraseña.".to_string(),
+        "Incorrect password." => "Contraseña incorrecta.".to_string(),
+        "Unable to connect." => "No se pudo conectar.".to_string(),
+        "Unknown error." | "execution error" => "Error desconocido.".to_string(),
+        other if other.is_empty() => "No se pudo conectar.".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Conecta en un hilo y llama `on_done` en el hilo de GTK.
+fn connect_wifi(
+    ssid: String,
+    password: Option<String>,
+    reload: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+    on_done: Option<Box<dyn Fn(bool, String)>>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = ConnectivityService::wifi_connect(&ssid, password.as_deref());
+        let _ = tx.send(result);
+    });
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        match rx.try_recv() {
+            Ok((ok, err)) => {
+                if let Some(cb) = &on_done {
+                    cb(ok, err);
+                } else {
+                    trigger_reload(&reload);
+                }
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        }
+    });
+}
+
+fn show_password_dialog(
+    parent_widget: &impl IsA<gtk::Widget>,
+    ssid: String,
+    reload: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+) {
+    let dialog = gtk::Window::builder()
+        .title("Contraseña de Wi-Fi")
+        .default_width(420)
+        .resizable(false)
+        .modal(true)
+        .decorated(true)
+        .build();
+    if let Some(parent) = parent_window(parent_widget) {
+        dialog.set_transient_for(Some(&parent));
+        if let Some(app) = parent.application() {
+            dialog.set_application(Some(&app));
+        }
+    }
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    vbox.set_margin_top(16);
+    vbox.set_margin_bottom(16);
+    vbox.set_margin_start(16);
+    vbox.set_margin_end(16);
+
+    let header = gtk::Label::new(None);
+    header.set_markup(&format!(
+        "Conectar a <b>{}</b>",
+        glib::markup_escape_text(&ssid)
+    ));
+    header.set_xalign(0.0);
+    header.set_wrap(true);
+    vbox.append(&header);
+
+    let entry = gtk::PasswordEntry::new();
+    entry.set_show_peek_icon(true);
+    entry.set_placeholder_text(Some("Contraseña"));
+    entry.set_hexpand(true);
+    vbox.append(&entry);
+
+    let error = gtk::Label::new(None);
+    error.add_css_class("error");
+    error.set_xalign(0.0);
+    error.set_wrap(true);
+    error.set_visible(false);
+    vbox.append(&error);
+
+    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    buttons.set_halign(gtk::Align::End);
+
+    let cancel_btn = gtk::Button::with_label("Cancelar");
+    let dialog_weak = dialog.downgrade();
+    cancel_btn.connect_clicked(move |_| {
+        if let Some(d) = dialog_weak.upgrade() {
+            d.close();
+        }
+    });
+    buttons.append(&cancel_btn);
+
+    let connect_btn = gtk::Button::with_label("Conectar");
+    connect_btn.add_css_class("suggested-action");
+    buttons.append(&connect_btn);
+    vbox.append(&buttons);
+
+    dialog.set_child(Some(&vbox));
+    dialog.set_default_widget(Some(&connect_btn));
+
+    let try_connect = {
+        let entry = entry.clone();
+        let error = error.clone();
+        let connect_btn = connect_btn.clone();
+        let dialog = dialog.clone();
+        let ssid = ssid.clone();
+        let reload = Rc::clone(&reload);
+        move || {
+            let password = entry.text().to_string();
+            if password.is_empty() {
+                error.set_label("Introduce la contraseña.");
+                error.set_visible(true);
+                return;
+            }
+
+            error.set_visible(false);
+            connect_btn.set_sensitive(false);
+            entry.set_sensitive(false);
+
+            let error = error.clone();
+            let connect_btn = connect_btn.clone();
+            let entry = entry.clone();
+            let dialog = dialog.clone();
+            let reload = Rc::clone(&reload);
+            connect_wifi(
+                ssid.clone(),
+                Some(password),
+                Rc::clone(&reload),
+                Some(Box::new(move |ok, err| {
+                    if ok {
+                        dialog.close();
+                        trigger_reload(&reload);
+                    } else {
+                        error.set_label(&wifi_error_es(&err));
+                        error.set_visible(true);
+                        connect_btn.set_sensitive(true);
+                        entry.set_sensitive(true);
+                        entry.grab_focus();
+                    }
+                })),
+            );
+        }
+    };
+
+    let try_connect_click = try_connect.clone();
+    connect_btn.connect_clicked(move |_| try_connect_click());
+    entry.connect_activate(move |_| try_connect());
+
+    dialog.present();
+    entry.grab_focus();
 }

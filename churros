@@ -11,6 +11,7 @@ PUBLIC_COMMANDS=(
     run
     clean
     check
+    rust
     doctor
     info
     version
@@ -62,6 +63,7 @@ show_help() {
     printf "  %-12s %s\n" "run"     "Build (if needed) and launch QEMU"
     printf "  %-12s %s\n" "clean"   "Remove build artifacts"
     printf "  %-12s %s\n" "check"   "Run static checks over the repository"
+    printf "  %-12s %s\n" "rust"    "Build and test the Rust apps (Arch container, like CI)"
     printf "  %-12s %s\n" "apps"    "Open distro apps on the host (no ISO)"
     printf "  %-12s %s\n" "doctor"  "Check development environment"
     printf "  %-12s %s\n" "info"    "Display project information"
@@ -74,11 +76,13 @@ show_help() {
     echo
 
     echo "  ./churros build"
+    echo "  ./churros build --container   # any distro: build inside the Arch container"
     echo "  ./churros run"
     echo "  ./churros run --nokvm"
     echo "  ./churros run --fresh"
     echo "  ./churros run --clean"
     echo "  ./churros check"
+    echo "  ./churros rust"
     echo "  ./churros doctor"
     echo "  ./churros apps calamares"
     echo

@@ -43,7 +43,12 @@ pub fn build() -> gtk::FlowBox {
 
     flow.append(&system_card::build());
 
+    let is_live = std::path::Path::new("/run/archiso").exists() || std::env::var("CHURROS_DEV").is_ok();
+
     for (icon, title, description, callback) in CARDS {
+        if icon == "install.svg" && !is_live {
+            continue;
+        }
         flow.append(&action_card::new(icon, title, description, callback));
     }
 

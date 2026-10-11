@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use serde_json::{json, Value};
 
 fn config_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home).join(".config").join("churros")
 }
 
@@ -63,7 +63,7 @@ fn stop() {
         .args(["-x", "wlsunset"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 /// Arranca/para wlsunset según el estado guardado (equivalente a _apply_state)

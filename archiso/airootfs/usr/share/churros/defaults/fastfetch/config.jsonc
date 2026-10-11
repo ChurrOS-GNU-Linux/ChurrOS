@@ -20,7 +20,7 @@
     },
     "modules": [
         { "type": "custom", "format": "┌──────────────────────────┐" },
-        { "type": "custom", "format": "│       ChurrOS 0.2.0      │" },
+        { "type": "custom", "format": "│       ChurrOS 1.0.0      │" },
         { "type": "custom", "format": "└──────────────────────────┘" },
         { "type": "separator" },
         { "type": "os",         "key": "OS",        "keyColor": "yellow" },
@@ -29,7 +29,28 @@
         { "type": "shell",      "key": "Shell",     "keyColor": "yellow" },
         { "type": "wm",         "key": "WM",        "keyColor": "yellow" },
         { "type": "terminal",   "key": "Terminal",  "keyColor": "yellow" },
-        { "type": "memory",     "key": "Memory",    "keyColor": "yellow" },
+        { "type": "cpu", "format": "{name} ({cores-physical}C/{cores-logical}T) @ {freq-max}" },
+        { "type": "gpu", "format": "{name} @ {frequency}" },
+        {
+        "type": "memory",
+        "key": "Memory",
+        "keyColor": "yellow",
+        "format": "{used} / {total} ({percentage})"
+        },
+        {
+        "type": "disk",
+        "key": "Disk (/)",
+        "keyColor": "yellow",
+        "folders": "/",
+        "format": "{size-used} / {size-total} ({size-percentage})"
+        },
+        {
+        "type": "disk",
+        "key": "Disk (/home)",
+        "keyColor": "yellow",
+        "folders": "/home",
+        "format": "{size-used} / {size-total} ({size-percentage})"
+        },
         { "type": "uptime",     "key": "Uptime",    "keyColor": "yellow" },
         { "type": "separator" }
     ]

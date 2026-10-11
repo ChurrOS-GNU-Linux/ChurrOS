@@ -91,8 +91,14 @@ impl DatetimeService {
     }
 
     /// Cambia la zona horaria (via churros-pkexec). True si ok.
+    ///
+    /// La regla polkit autoriza por ruta absoluta y argv exacto: sin
+    /// contraseña solo `set-timezone <Zona/Ciudad>` y `set-ntp true|false`.
     pub fn set_timezone(tz: &str) -> bool {
-        match run_output(&["churros-pkexec", "timedatectl", "set-timezone", tz], 10) {
+        match run_output(
+            &["churros-pkexec", "/usr/bin/timedatectl", "set-timezone", tz],
+            10,
+        ) {
             Some(out) => out.status.success(),
             None => false,
         }
@@ -101,7 +107,10 @@ impl DatetimeService {
     /// Activa/desactiva NTP (via churros-pkexec). True si ok.
     pub fn set_ntp(enabled: bool) -> bool {
         let flag = if enabled { "true" } else { "false" };
-        match run_output(&["churros-pkexec", "timedatectl", "set-ntp", flag], 10) {
+        match run_output(
+            &["churros-pkexec", "/usr/bin/timedatectl", "set-ntp", flag],
+            10,
+        ) {
             Some(out) => out.status.success(),
             None => false,
         }

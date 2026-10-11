@@ -37,6 +37,16 @@ Pantalla de bienvenida al iniciar la sesión Live.
 
 El footer muestra `Linux • <Entorno> • ChurrOS <Versión>` detectado dinámicamente con `churros_services::version::desktop_name()` y `churros_services::version::distro()`.
 
+## Traducciones
+
+La interfaz de las apps Rust va en castellano, escrita directamente en el código. El catálogo de gettext en `po/` sigue apuntando a la interfaz en Python anterior (`preferences/pages/*.py`, `popups/*/widgets/*.py`), que ya no está en el repositorio: es decir, **las traducciones no se aplican a nada de lo que el usuario ve hoy**.
+
+`./churros check` valida la sintaxis de los `.po`, no que sirvan para la interfaz actual, y lo dice en pantalla. Conectar gettext (o `i18n-embed`) a las apps Rust es trabajo pendiente, no una función que esté activa a medio hacer.
+
+## Valores por defecto
+
+`/usr/share/churros/defaults/` es una copia de `etc/skel/.config/` y "Restaurar valores por defecto" la copia sobre `~/.config/`. Las dos tienen que estar sincronizadas: si divergen, restaurar da una configuración distinta de la de una instalación nueva. `./churros check` lo verifica fichero a fichero.
+
 ## Stack
 
 - GTK 4 + Libadwaita (gtk4-rs / libadwaita-rs)
@@ -102,7 +112,7 @@ cargo test -p churros-welcome
 **Path:** `rust/control-center/`
 **Binario:** `/usr/bin/churros-control-center`
 **Desktop entry:** `archiso/airootfs/usr/share/applications/churros-control-center.desktop`
-**Atajo:** `Mod + C` (niri)
+**Atajo:** ninguno en Niri. `Mod+C` abre el centro de control de Noctalia. Este binario se abre desde el lanzador o desde Waybar.
 
 Centro de control con tarjetas que abren el popup correspondiente (`churros-popup <nombre>`).
 
@@ -155,7 +165,7 @@ Un solo binario con los seis popups y toggle nativo (pidfiles en `/tmp/churros/`
 # fuzzel (launcher)
 
 **Path:** paquete del sistema (`archiso/packages.x86_64`).
-**Atajo:** `Mod + Space`
+**Atajo:** `Mod + Shift + Space` (el lanzador de Noctalia ocupa `Mod + Space`)
 **Waybar:** `custom/launcher` → `fuzzel`
 
 No es una app ChurrOS. Config: `archiso/airootfs/etc/skel/.config/fuzzel/fuzzel.ini`.

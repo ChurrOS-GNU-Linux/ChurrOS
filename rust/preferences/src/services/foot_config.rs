@@ -10,7 +10,7 @@ use std::process::Command;
 pub struct FootConfig;
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home).join(".config").join("foot").join("foot.ini")
 }
 
@@ -187,11 +187,13 @@ impl FootConfig {
 
     /// pkill -SIGUSR1 foot (recarga la config en las terminales abiertas)
     pub fn reload() {
+        // status() recoge el proceso: spawn() sin wait deja un zombi por cada pywal.
+        // pkill sale distinto de 0 si no hay ninguna terminal; se ignora.
         let _ = Command::new("pkill")
             .args(["-SIGUSR1", "foot"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     pub fn apply_pywal(colors: &serde_json::Map<String, serde_json::Value>, special: &serde_json::Map<String, serde_json::Value>) {

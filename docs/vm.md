@@ -14,6 +14,30 @@ El comando principal es:
 ./churros run
 ```
 
+Sin `--arch`, `run` usa la arquitectura del equipo, igual que `./churros build`.
+Para validar la ISO ARM64 en un host x86_64:
+
+```bash
+./churros doctor --arch arm64          # qemu-user-static + binfmt
+./churros build --container --arch arm64
+./churros run --arch arm64 --fresh
+```
+
+El build corre entero dentro de un contenedor Arch Linux ARM (`Containerfile.aarch64`, `--platform linux/arm64`). En x86_64 eso necesita qemu-user-static con binfmt registrado y la bandera `C` (credentials). Sin `C`, el kernel calcula las credenciales del intérprete y no las del binario emulado: `sudo` dentro de makepkg se queda con el euid del usuario `builder` y falla con `effective uid is not 0`. La entrada que instala Debian (`flags: POF` en `/proc/sys/fs/binfmt_misc/qemu-aarch64`) no vale. `./churros doctor --arch arm64` lo comprueba. Para registrarla de nuevo, como root:
+
+```bash
+echo -1 | sudo tee /proc/sys/fs/binfmt_misc/qemu-aarch64
+echo ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:FPOC' | sudo tee /proc/sys/fs/binfmt_misc/register
+```
+
+`echo` deja las secuencias `\x` como texto: es el kernel quien las decodifica. `printf '%b'` las convierte antes y mete NUL en el magic; el registro queda truncado y pasa a casar con cualquier ELF de 64 bits.
+
+Si existe `/usr/share/binfmts/qemu-aarch64`, lo mismo se hace con `update-binfmts --unimport qemu-aarch64` y `--import` después de añadir `C` a las flags de la plantilla. Con systemd-binfmt, se copia `/usr/lib/binfmt.d/qemu-aarch64.conf` a `/etc/binfmt.d/qemu-aarch64.conf`, las flags pasan a `FPOC` (tienen que incluir `F` y `C`) y se reinicia `systemd-binfmt`. `./install-deps.sh --arch arm64` instala el paquete, pero no cambia unas flags que la distro haya dejado sin `C`. En un host aarch64 el mismo contenedor es nativo y no hace falta emulación.
+
+La imagen aarch64 escribe `PKGEXT='.pkg.tar.zst'` en `/etc/makepkg.conf.d/churros.conf`. ALARM trae `.pkg.tar.xz`; con esa extensión el build no encontraba el paquete de Calamares y lo recompilaba cada vez. Los scripts buscan `*.pkg.tar.*`, así que un paquete `.xz` que ya esté en `archiso/packages/aarch64/` también se reutiliza.
+
+QEMU del guest ARM usa TCG en un host x86_64 (no hay KVM para aarch64). La máquina es `virt`: no tiene IDE ni teclado PS/2, así que el CD va por virtio-scsi, el disco por virtio-blk y el teclado por USB. La consola serie es PL011 (`ttyAMA0` en el kernel; el log sigue en `vm_serial.log`). CODE y VARS del firmware pflash tienen que medir lo mismo. `run` usa el primer par en el que ambos ficheros existen y miden igual (`AAVMF_CODE.fd` con `AAVMF_VARS.fd`, `QEMU_CODE.fd` con `QEMU_VARS.fd`, y en x86 `OVMF_CODE.4m.fd` con `OVMF_VARS.4m.fd`). Si solo está el `QEMU_EFI.fd` crudo, rellena copias a 64 MiB. `run` elige la ISO cuyo nombre lleva la arquitectura, para no arrancar una ISO x86_64 que haya quedado en `out/`.
+
 Este script vive en `scripts/cli/run.sh` y se encarga de:
 
 1. Buscar la última ISO en `out/`.
@@ -28,6 +52,7 @@ Flags opcionales:
 | `--nokvm` | Desactiva KVM y emula por software (CPU de 2 hilos, q35 sin `accel`). |
 | `--fresh` | Borra `vm/OVMF_VARS.fd` antes de arrancar para que OVMF parta limpio y arranque desde el CD-ROM en vez del disco. Útil tras instalar ChurrOS en la VM y necesitar probar de nuevo la ISO live. |
 | `--clean` | Borra `vm/ChurrOS.qcow2` y `vm/OVMF_VARS.fd` antes de arrancar (disco + variables EFI). |
+| `--arch arm64` | Ejecuta la ISO `*aarch64*.iso` con `qemu-system-aarch64`, máquina `virt`, CPU `cortex-a72` (o KVM si el host ya es aarch64), CD virtio-scsi y teclado USB. Usa `vm/ChurrOS-arm64.qcow2` y `vm/OVMF_VARS_arm64.fd`. |
 
 > **Consejo:** Si acabas de instalar ChurrOS en la VM, OVMF guarda la entrada `Boot0009 "ChurrOS"` en `OVMF_VARS.fd`, así que el siguiente arranque dirá `BdsDxe: starting Boot0009 "ChurrOS"` y entrará al sistema instalado. Ejecuta `./churros run --fresh` para arrancar limpio del CD-ROM, o simplemente `rm vm/OVMF_VARS.fd`.
 
@@ -189,4 +214,17 @@ Para una alternativa con interfaz gráfica, puedes usar **virt-manager** con la 
 - Snapshot automático antes de cada cambio importante.
 - Red NAT para que la VM tenga acceso a internet en configuraciones aisladas.
 - Carpetas compartidas vía virtio-9p o virtiofs.
+
+# ARM64 QEMU Checklist
+
+Ejecuta la validación en este orden después de construir la ISO aarch64:
+
+- [ ] El menú GRUB aparece con el tema y la entrada Live.
+- [ ] El sistema Live termina el arranque sin errores críticos en `vm_serial.log`.
+- [ ] `niri` inicia; `llvmpipe` es aceptable si virgl no está disponible.
+- [ ] `waybar`, `fuzzel`, `foot`, Welcome y los popups abren correctamente.
+- [ ] `lscpu | grep Architecture` muestra `aarch64`.
+- [ ] Calamares completa una instalación GPT/btrfs.
+- [ ] El log de instalación contiene `grub-install --target=arm64-efi` y `grub-mkconfig`.
+- [ ] `./churros run --arch arm64 --fresh` arranca el sistema instalado desde el disco.
 - Script `./churros vm reset` para borrar solo la VM sin tocar `out/`.

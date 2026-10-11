@@ -8,6 +8,12 @@ set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
 
+# shellcheck source=scripts/lib/host.sh
+source scripts/lib/host.sh
+
+# Arquitectura objetivo del port (x86_64 por defecto solo si el perfil arm64 no existe)
+TARGET_ARCH="${TARGET_ARCH:-aarch64}"
+
 FAILURES=0
 NOTICES=0
 
@@ -77,7 +83,7 @@ section "ISO package list"
 
 # Una lista por edicion (packages.<edicion>.x86_64). Se recorren todas para
 # que anadir una edicion no obligue a tocar este script.
-for pkg_list in archiso/packages*.x86_64; do
+for pkg_list in archiso/packages*.x86_64 archiso/packages.aarch64; do
     [ -f "$pkg_list" ] || continue
 
     dups=$(grep -v '^#' "$pkg_list" | grep -v '^$' | sort | uniq -d)
@@ -90,9 +96,189 @@ for pkg_list in archiso/packages*.x86_64; do
     fi
 done
 
+# ------------------------------------------ archiso profile per architecture
+
+section "archiso profile per architecture"
+
+# profiledef.sh deriva arch, bootmodes, compresion y pacman.<arch>.conf de
+# CHURROS_ARCH (build.sh: sudo env CHURROS_ARCH=... mkarchiso). Se carga como
+# lo hace mkarchiso (cwd archiso/, file_permissions asociativo) para cada arch.
+profile_ok=1
+for target in x86_64 aarch64; do
+    # shellcheck disable=SC2016
+    if ! pv=$(CHURROS_ARCH="$target" bash -c '
+        set -eu
+        declare -A file_permissions=()
+        cd archiso
+        . ./profiledef.sh
+        printf "%s|%s|%s|%s\n" "$arch" "$pacman_conf" "${bootmodes[*]}" "${airootfs_image_tool_options[*]}"
+    ' 2>&1); then
+        fail "profiledef.sh does not load with CHURROS_ARCH=$target: $pv"
+        profile_ok=0
+        continue
+    fi
+    IFS='|' read -r p_arch p_conf p_boot p_sfs <<< "$pv"
+    conf_arch=$(awk -F= '/^[[:space:]]*Architecture[[:space:]]*=/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' \
+        "archiso/$p_conf" 2>/dev/null || true)
+    if [ "$p_arch" != "$target" ] || [ "$conf_arch" != "$target" ]; then
+        fail "$target: profiledef.sh gives arch=$p_arch and archiso/$p_conf declares Architecture=${conf_arch:-?}"
+        profile_ok=0
+    fi
+    if [ "$target" != x86_64 ] && [[ " $p_boot " == *" bios."* ]]; then
+        fail "$target: BIOS boot modes are x86-only"
+        profile_ok=0
+    fi
+    # uefi.systemd-boot y uefi-x64 también escriben EFI/BOOT/BOOTAA64.EFI.
+    # mkarchiso ya nombra ese binario vía uefi_arch[aarch64]=AA64.
+    if [ "$target" = aarch64 ] && [ "$p_boot" != "uefi.grub" ]; then
+        fail "$target: boot modes must be only uefi.grub (got: $p_boot)"
+        profile_ok=0
+    fi
+    if [ "$target" = x86_64 ] && [ "$p_boot" != "bios.syslinux uefi.grub" ]; then
+        fail "$target: boot modes must stay bios.syslinux and uefi.grub (got: $p_boot)"
+        profile_ok=0
+    fi
+    # -Xbcj solo existe para xz: mksquashfs sale con error si va con zstd.
+    if [[ " $p_sfs " == *" -Xbcj "* && " $p_sfs " != *" -comp xz "* ]]; then
+        fail "$target: -Xbcj requires -comp xz in airootfs_image_tool_options"
+        profile_ok=0
+    fi
+    # apply-calamares.sh copia modules/<arch>/*.conf encima de los comunes.
+    unpackfs=installer/calamares/modules/unpackfs.conf
+    [ -f "installer/calamares/modules/$target/unpackfs.conf" ] &&
+        unpackfs="installer/calamares/modules/$target/unpackfs.conf"
+    if ! grep -q "bootmnt/churros/$target/airootfs.sfs" "$unpackfs"; then
+        fail "$target: $unpackfs does not unpack churros/$target/airootfs.sfs"
+        profile_ok=0
+    fi
+    # pacstrap usa este conf. Bajo qemu-user, pacman 7 falla en seccomp si
+    # falta DisableSandboxSyscalls (EINVAL 22) aunque Landlock esté apagado.
+    if [ "$target" = aarch64 ]; then
+        for sandbox_opt in DisableSandbox DisableSandboxFilesystem DisableSandboxSyscalls; do
+            if ! grep -qx "$sandbox_opt" "archiso/$p_conf"; then
+                fail "$target: archiso/$p_conf is missing $sandbox_opt (pacman sandbox breaks under qemu-user)"
+                profile_ok=0
+            fi
+        done
+    fi
+done
+[ "$profile_ok" -eq 1 ] && pass "x86_64 and aarch64 get their own pacman.conf, boot modes, squashfs options and unpackfs source"
+
+# -------------------------------------------- Defaults vs skel (coherencia)
+
+# /usr/share/churros/defaults lo usa churros-settings para "restaurar valores
+# por defecto": copia esos ficheros sobre ~/.config. Si divergen de
+# /etc/skel/.config, que es lo que recibe una instalacion nueva, el usuario
+# recibe otra configuracion distinta cada vez que restaura. Pasa a ser fallo de
+# CI en vez de sorpresa.
+DEFAULTS_DIR="archiso/airootfs/usr/share/churros/defaults"
+SKEL_DIR="archiso/airootfs/etc/skel/.config"
+defaults_drift=0
+
+if [ -d "$DEFAULTS_DIR" ]; then
+    while IFS= read -r def_file; do
+        rel="${def_file#"$DEFAULTS_DIR"/}"
+        skel_file="$SKEL_DIR/$rel"
+        if [ ! -f "$skel_file" ]; then
+            fail "defaults/$rel no tiene equivalente en el skel"
+            defaults_drift=$((defaults_drift + 1))
+        elif ! cmp -s "$def_file" "$skel_file"; then
+            fail "defaults/$rel difiere del skel (restaurar valores por defecto daria otra config)"
+            defaults_drift=$((defaults_drift + 1))
+        fi
+    done < <(find "$DEFAULTS_DIR" -type f | sort)
+
+    if [ "$defaults_drift" -eq 0 ]; then
+        pass "defaults sincronizado con el skel ($(find "$DEFAULTS_DIR" -type f | wc -l) ficheros)"
+    fi
+fi
+
+# ------------------------------------------------------- Installer por edicion
+
+# Anadir una edicion a medias (lista de paquetes pero sin lanzador de sesion,
+# o al reves) deja instalaciones que no arrancan. Se comprueba que cada lista
+# de paquetes tenga su edicion cableada en los cuatro sitios que la necesitan:
+# build.sh, stamp-os-release.sh, edition-session.sh (sesion de greetd del
+# sistema instalado) y el dispatcher.
+
+EDITION_SESSION=archiso/airootfs/usr/share/churros/scripts/edition-session.sh
+
+# Brazo de un case. Se admiten los brazos combinados (xfce|server).
+arm_pattern() {
+    printf '^[[:space:]][^#]*\\b%s\\b[|)]' "$1"
+}
+
+list_editions() {
+    for list in archiso/packages*.x86_64; do
+        [ -f "$list" ] || continue
+        base="${list##*/}"
+        base="${base#packages.}"
+        # packages.${TARGET_ARCH} es el perfil por defecto y es la edicion niri.
+        if [ "$base" = "x86_64" ]; then
+            echo "niri"
+        else
+            echo "${base%.x86_64}"
+        fi
+    done
+}
+
+for ed in $(list_editions); do
+    problems=""
+
+    # En build.sh el brazo que importa es el que asigna el comando de sesion;
+    # el case del nombre que ve el slideshow tambien menciona la edicion y no
+    # cuenta.
+    if ! grep -qE "$(arm_pattern "$ed")[^#]*SESSION_CMD=" scripts/cli/build.sh; then
+        problems="$problems build.sh-sin-brazo-de-sesion"
+    fi
+
+    if [ "$ed" = "niri" ]; then
+        # niri es el valor por defecto: en estos dos scripts no aparece con su
+        # nombre, sino como el brazo * del case o como valor inicial.
+        if ! grep -qE '^[[:space:]]*\*\)' branding/stamp-os-release.sh; then
+            problems="$problems os-release-sin-variante"
+        fi
+        if ! grep -qE '\*\)|churros-niri-session' "$EDITION_SESSION"; then
+            problems="$problems greetd-sin-edicion"
+        fi
+    else
+        if ! grep -qE "$(arm_pattern "$ed")" branding/stamp-os-release.sh; then
+            problems="$problems os-release-sin-variante"
+        fi
+        if ! grep -qE "$(arm_pattern "$ed")" "$EDITION_SESSION"; then
+            problems="$problems greetd-sin-edicion"
+        fi
+    fi
+
+    if [ -z "$problems" ]; then
+        pass "edicion $ed cableada en el instalador"
+    else
+        fail "edicion $ed incompleta:$problems"
+    fi
+done
+
+# La tabla edicion -> sesion solo vive en edition-session.sh: la instalacion
+# (configure-greetd-session) y el autologin de Ajustes
+# (churros-write-root-config) la cargan en vez de llevar una copia propia.
+if grep -q 'edition-session.sh' archiso/airootfs/usr/share/churros/scripts/configure-greetd-session &&
+   grep -q 'edition-session.sh' archiso/airootfs/usr/local/bin/churros-write-root-config; then
+    pass "configure-greetd-session y churros-write-root-config comparten edition-session.sh"
+else
+    fail "configure-greetd-session o churros-write-root-config no cargan edition-session.sh"
+fi
+
+# El instalador no puede quedarse en una sola edicion: el ejecutable que
+# declara Calamares tiene que resolver la edicion en runtime.
+if grep -q 'executable: "churros-xsession"' installer/calamares/modules/displaymanager.conf &&
+   [ -x archiso/airootfs/usr/local/bin/churros-xsession ]; then
+    pass "el instalador resuelve la edicion en runtime (churros-xsession)"
+else
+    fail "displaymanager.conf sigue con un ejecutable de una sola edicion, o falta churros-xsession"
+fi
+
 # ------------------------------------------------------- Shared resolvers
 
-mapfile -t PACKAGES < <(grep -v '^#' archiso/packages.x86_64 | grep -v '^$')
+mapfile -t PACKAGES < <(grep -v '^#' archiso/packages.${TARGET_ARCH} | grep -v '^$')
 
 # AUR extras built into archiso/packages/ by scripts/build-aur.sh
 mapfile -t LOCAL_AUR < <(
@@ -147,11 +333,296 @@ mapfile -t COMMANDS < <(
 missing=0
 for command in "${COMMANDS[@]}"; do
     if ! command_exists "$command"; then
-        fail "'$command' is spawned by Niri but is neither in usr/bin nor in packages.x86_64"
+        fail "'$command' is spawned by Niri but is neither in usr/bin nor in packages.${TARGET_ARCH}"
         missing=$((missing + 1))
     fi
 done
 [ "$missing" -eq 0 ] && pass "${#COMMANDS[@]} commands resolve"
+
+# ------------------------------------------------------- Noctalia integration
+
+section "Noctalia shell integration"
+
+# The Niri session must not stack swaybg under Noctalia's wallpaper, and the
+# launcher / control center binds have to call the Noctalia 5.2.1 IPC
+# (`noctalia msg panel-toggle <id>`). spawn-sh keeps the whole command in one
+# string so churros-settings can round-trip it.
+if grep -Eq '^[[:space:]]*spawn-at-startup[[:space:]]+"swaybg"' "$NIRI_CONFIG"; then
+    fail "Niri autostart still launches swaybg (Noctalia owns the wallpaper)"
+else
+    pass "Niri autostart leaves the wallpaper to Noctalia"
+fi
+
+if grep -Fq 'spawn-sh "noctalia msg panel-toggle launcher"' "$NIRI_CONFIG" &&
+   grep -Fq 'hotkey-overlay-title="Abrir el lanzador"' "$NIRI_CONFIG"; then
+    pass "Mod+Space opens the Noctalia launcher and is listed in the hotkey overlay"
+else
+    fail "Mod+Space does not open the Noctalia launcher via panel-toggle"
+fi
+
+if grep -Fq 'spawn "fuzzel"' "$NIRI_CONFIG" &&
+   grep -Fq 'hotkey-overlay-title="Lanzador alternativo (Fuzzel)"' "$NIRI_CONFIG"; then
+    pass "Fuzzel stays available as the Mod+Shift+Space fallback"
+else
+    fail "Fuzzel fallback bind is missing"
+fi
+
+if grep -Fq 'spawn-sh "noctalia msg panel-toggle control-center"' "$NIRI_CONFIG" &&
+   grep -Fq 'hotkey-overlay-title="Abrir el centro de control"' "$NIRI_CONFIG"; then
+    pass "Mod+C opens the Noctalia control center and is listed in the hotkey overlay"
+else
+    fail "Mod+C does not open the Noctalia control center via panel-toggle"
+fi
+
+if grep -vE '^[[:space:]]*//' "$NIRI_CONFIG" | grep -Eq 'churros-popup|churros-control-center'; then
+    fail "Niri still binds churros-popup or churros-control-center (Noctalia panels cover them)"
+else
+    pass "churros-popup and churros-control-center are not bound in Niri"
+fi
+
+if grep -Eiq 'waybar' "$NIRI_CONFIG"; then
+    fail "Niri config mentions Waybar; this session does not run it"
+else
+    pass "Niri config does not mention Waybar"
+fi
+
+if grep -Eq '^[[:space:]]*hide-not-bound[[:space:]]+true[[:space:]]*$' "$NIRI_CONFIG"; then
+    pass "hotkey overlay hides actions that are not bound"
+else
+    fail "hotkey-overlay hide-not-bound is not set (unbound actions stay in English)"
+fi
+
+overlay_titles=(
+    "Cerrar la ventana"
+    "Salir de Niri"
+    "Maximizar la columna"
+    "Pantalla completa"
+    "Alternar el bloqueo de atajos"
+    "Mostrar los atajos"
+    "Abrir la vista general"
+    "Cambiar el ancho de columna"
+    "Alternar ventana flotante"
+    "Cambiar entre flotante y mosaico"
+    "Capturar la pantalla"
+    "Capturar toda la pantalla"
+    "Capturar la ventana"
+    "Enfocar la columna izquierda"
+    "Enfocar la columna derecha"
+    "Mover la columna a la izquierda"
+    "Mover la columna a la derecha"
+)
+missing_titles=0
+for title in "${overlay_titles[@]}"; do
+    if ! grep -Fq "hotkey-overlay-title=\"${title}\"" "$NIRI_CONFIG"; then
+        fail "hotkey overlay is missing the Spanish title: ${title}"
+        missing_titles=$((missing_titles + 1))
+    fi
+done
+if [ "$missing_titles" -eq 0 ]; then
+    pass "hotkey overlay entries that Niri shows have a Spanish title"
+fi
+
+if grep -Fq 'noctalia::uses_waybar()' rust/preferences/src/window.rs &&
+   grep -Fq 'noctalia::uses_mako()' rust/preferences/src/window.rs &&
+   grep -Fq 'noctalia::uses_waybar()' rust/preferences/src/pages/appearance.rs &&
+   grep -Fq 'noctalia::uses_mako()' rust/preferences/src/pages/appearance.rs; then
+    pass "Waybar and Mako settings pages follow the running shell"
+else
+    fail "Waybar or Mako settings are still shown for every Niri edition"
+fi
+
+if grep -Fq '"dynamic_colors": false' rust/preferences/src/services/settings.rs &&
+   grep -Fq 'get_bool("theme.dynamic_colors", false)' rust/preferences/src/services/pywal.rs &&
+   grep -Fq 'get_bool("theme.dynamic_colors", false)' rust/preferences/src/pages/appearance.rs &&
+   ! grep -Fq '"dynamic_colors": true' rust/preferences/src/services/settings.rs &&
+   ! grep -Fq '"dynamic_colors": true' rust/preferences/src/services/backup_service.rs; then
+    pass "dynamic colors default off so pywal does not replace the ChurrOS accent"
+else
+    fail "theme.dynamic_colors still defaults to true"
+fi
+
+if python3 - "$NIRI_CONFIG" <<'PY'
+import json
+import sys
+import tomllib
+from pathlib import Path
+
+errors = 0
+
+def fail(msg: str) -> None:
+    global errors
+    errors += 1
+    print(f"    {msg}")
+
+def contrast(a: str, b: str) -> float:
+    def channel(h: str, i: int) -> float:
+        c = int(h[i:i + 2], 16) / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def lum(h: str) -> float:
+        h = h.lstrip("#")
+        return 0.2126 * channel(h, 0) + 0.7152 * channel(h, 2) + 0.0722 * channel(h, 4)
+
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+skel = Path("archiso/airootfs/etc/skel/.config/noctalia")
+config = tomllib.loads((skel / "config.toml").read_text(encoding="utf-8"))
+theme = config["theme"]
+shell = config["shell"]
+if theme.get("source") != "custom" or theme.get("custom_palette") != "ChurrOS":
+    fail("Noctalia theme is not the ChurrOS custom palette")
+if theme.get("shell_mode") != "follow":
+    fail("shell_mode must follow mode so churros-settings switches the shell")
+if theme.get("mode") not in {"dark", "light"}:
+    fail("theme.mode must be dark or light")
+if shell.get("font_family") != "Inter":
+    fail("Noctalia font_family is not Inter")
+radius = shell.get("corner_radius_scale")
+if not isinstance(radius, (int, float)) or not 0 <= float(radius) <= 2:
+    fail("corner_radius_scale is outside the Noctalia 5.2.1 range 0..2")
+scale = config.get("accessibility", {}).get("ui_scale")
+if not isinstance(scale, (int, float)) or not 0.5 <= float(scale) <= 2.5:
+    fail("accessibility.ui_scale is outside the Noctalia 5.2.1 range 0.5..2.5")
+if config.get("shell", {}).get("launcher", {}).get("compact") is not False:
+    fail("launcher compact should stay off (comfortable density)")
+panel_mode = config.get("shell", {}).get("panel", {}).get("transparency_mode")
+if panel_mode != "soft":
+    fail(
+        f"panel transparency_mode is {panel_mode!r}; "
+        "glass drops the floating panel to 55% and dark mode turns muddy over a light wallpaper"
+    )
+wallpaper = config.get("wallpaper", {})
+default = wallpaper.get("default", {}).get("path")
+if default != "/usr/share/churros/wallpapers/default.png":
+    fail(f"wallpaper.default.path is {default!r}")
+elif not Path("archiso/airootfs" + default).is_file():
+    fail("default wallpaper file is missing from the ISO root")
+if wallpaper.get("fill_mode") != "crop":
+    fail("wallpaper fill_mode should be crop (same coverage as the old swaybg -m fill)")
+
+palette_path = skel / "palettes" / "ChurrOS.json"
+palette = json.loads(palette_path.read_text(encoding="utf-8"))
+required = [
+    "mPrimary", "mOnPrimary", "mSecondary", "mOnSecondary", "mTertiary", "mOnTertiary",
+    "mError", "mOnError", "mSurface", "mOnSurface", "mSurfaceVariant", "mOnSurfaceVariant",
+    "mOutline", "mShadow", "mHover", "mOnHover",
+]
+for mode in ("dark", "light"):
+    colors = palette.get(mode)
+    if not isinstance(colors, dict):
+        fail(f"palette is missing the {mode} variant")
+        continue
+    missing = [key for key in required if not isinstance(colors.get(key), str)]
+    if missing:
+        fail(f"{mode} palette is missing {', '.join(missing)}")
+        continue
+    pairs = (
+        ("mOnSurface", "mSurface", 4.5),
+        ("mOnSurfaceVariant", "mSurfaceVariant", 4.5),
+        ("mOnPrimary", "mPrimary", 4.5),
+        ("mOnSecondary", "mSecondary", 4.5),
+        ("mOnHover", "mHover", 4.5),
+        ("mOnError", "mError", 4.5),
+    )
+    for fg, bg, minimum in pairs:
+        ratio = contrast(colors[fg], colors[bg])
+        if ratio < minimum:
+            fail(f"{mode} {fg} on {bg} contrast {ratio:.2f} is below {minimum}")
+
+apply = Path("archiso/airootfs/usr/bin/churros-apply-wallpaper").read_text(encoding="utf-8")
+apply_fn = apply.split("apply() {", 1)[-1]
+noctalia_at = apply_fn.find("if noctalia_running")
+sway_at = apply_fn.find("apply_swaybg")
+if "for attempt in 1 2 3" not in apply or "noctalia msg wallpaper-set" not in apply:
+    fail("churros-apply-wallpaper must retry noctalia msg wallpaper-set three times")
+elif noctalia_at < 0 or sway_at < 0 or noctalia_at > sway_at:
+    fail("swaybg must stay behind the Noctalia guard in apply()")
+elif "return" not in apply_fn[noctalia_at:sway_at]:
+    fail("a running Noctalia must return before swaybg, even when wallpaper-set fails")
+
+wallpaper_rs = Path("rust/preferences/src/services/wallpaper.rs").read_text(encoding="utf-8")
+noctalia_rs = wallpaper_rs.find("running_shells().noctalia")
+sway_rs = wallpaper_rs.find('"-m", "fill"')
+if noctalia_rs < 0 or sway_rs < 0 or noctalia_rs > sway_rs:
+    fail("wallpaper.rs must notice a running Noctalia before starting swaybg")
+elif "return apply_with_noctalia" not in wallpaper_rs[noctalia_rs:sway_rs]:
+    fail("wallpaper.rs must return without swaybg when Noctalia is running")
+
+for pkg_list in ("archiso/packages.x86_64", "archiso/packages.aarch64"):
+    names = [
+        line.strip()
+        for line in Path(pkg_list).read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if "inter-font" not in names:
+        fail(f"{pkg_list} does not install inter-font (Noctalia font_family = Inter)")
+    if "noctalia" not in names:
+        fail(f"{pkg_list} does not install noctalia")
+
+sys.exit(1 if errors else 0)
+PY
+then
+    pass "Noctalia config, palette, wallpaper and Inter font check out"
+else
+    fail "Noctalia integration check failed"
+fi
+
+if wallpaper_out=$(bash scripts/test-apply-wallpaper.sh 2>&1); then
+    pass "Noctalia en marcha no arranca swaybg (scripts/test-apply-wallpaper.sh)"
+else
+    fail "scripts/test-apply-wallpaper.sh"
+    printf '%s\n' "$wallpaper_out" | sed 's/^/    /'
+fi
+
+# -------------------------------------------------- Niri Xwayland integration
+
+section "Niri Xwayland integration"
+
+# packages.${TARGET_ARCH} is the default Niri profile; build.sh substitutes an edition-
+# specific list for XFCE, KDE, and Server builds. Keep the satellite scoped to Niri.
+XWAYLAND_SATELLITE="xwayland-satellite"
+if grep -Fxq "$XWAYLAND_SATELLITE" archiso/packages.${TARGET_ARCH}; then
+    pass "xwayland-satellite is included in the Niri profile"
+else
+    fail "xwayland-satellite is missing from archiso/packages.${TARGET_ARCH} (Niri)"
+fi
+
+other_profile_satellite=0
+for pkg_list in archiso/packages.*.x86_64; do
+    [ -f "$pkg_list" ] || continue
+    if grep -Fxq "$XWAYLAND_SATELLITE" "$pkg_list"; then
+        fail "$XWAYLAND_SATELLITE must stay out of alternate profile $pkg_list"
+        other_profile_satellite=$((other_profile_satellite + 1))
+    fi
+done
+[ "$other_profile_satellite" -eq 0 ] && pass "xwayland-satellite is excluded from alternate profiles"
+
+# Niri owns DISPLAY when its automatic Xwayland integration is enabled. The
+# portal startup helper propagates that value to systemd and D-Bus activation.
+NIRI_SESSION_WRAPPER="archiso/airootfs/usr/bin/churros-niri-session"
+NIRI_PORTAL_HELPER="archiso/airootfs/usr/bin/churros-portal-start"
+if grep -Eq '^[[:space:]]*(DISPLAY[[:space:]]+|spawn(-at-startup)?[[:space:]].*xwayland-satellite)' "$NIRI_CONFIG"; then
+    fail "Niri config overrides DISPLAY or starts xwayland-satellite manually"
+else
+    pass "Niri config leaves DISPLAY and satellite startup to Niri"
+fi
+
+if grep -Eq '(^|[[:space:]])(unset[[:space:]]+DISPLAY|export[[:space:]]+DISPLAY=|DISPLAY=)' "$NIRI_SESSION_WRAPPER"; then
+    fail "Niri session wrapper overrides DISPLAY"
+else
+    pass "Niri session wrapper preserves Niri's DISPLAY"
+fi
+
+if grep -Eq '^[[:space:]]*spawn-at-startup[[:space:]]+"churros-portal-start"[[:space:]]*$' "$NIRI_CONFIG" &&
+   grep -A8 -F 'systemctl --user import-environment' "$NIRI_PORTAL_HELPER" |
+       grep -qE '^[[:space:]]+DISPLAY([[:space:]]|$)' &&
+   grep -A8 -F 'dbus-update-activation-environment --systemd' "$NIRI_PORTAL_HELPER" |
+       grep -qE '^[[:space:]]+DISPLAY([[:space:]]|$)'; then
+    pass "Niri startup imports DISPLAY into systemd and D-Bus environments"
+else
+    fail "Niri startup does not propagate DISPLAY to systemd and D-Bus"
+fi
 
 # ------------------------------------------------------- Desktop entries
 
@@ -188,7 +659,7 @@ for desktop in "$DESKTOP_DIR"/*.desktop; do
         continue
     fi
     if ! command_exists "$cmd"; then
-        fail "$base: '$cmd' does not resolve (usr/bin, deployable crate, packages.x86_64, or local build)"
+        fail "$base: '$cmd' does not resolve (usr/bin, deployable crate, packages.${TARGET_ARCH}, or local build)"
         desktop_missing=$((desktop_missing + 1))
     fi
 
@@ -463,6 +934,340 @@ else
     pass "GRUB btrfs /boot rewrite is wired (install + pacman hook)"
 fi
 
+# linux-aarch64 instala /boot/Image. mkarchiso y grub-mkconfig buscan vmlinuz-*.
+PUBLISH_KERNEL=archiso/airootfs/usr/share/churros/scripts/publish-aarch64-kernel
+publish_ok=1
+if [ ! -x "$PUBLISH_KERNEL" ]; then
+    fail "$PUBLISH_KERNEL missing or not executable"
+    publish_ok=0
+fi
+if ! grep -q 'publish-aarch64-kernel --require' branding/customize_airootfs.sh \
+    || ! grep -q 'publish-aarch64-kernel --require' installer/calamares/modules/aarch64/shellprocess-fixboot.conf \
+    || ! grep -q 'publish-aarch64-kernel' "$BOOT_GRUB_SCRIPT" \
+    || ! grep -q 'boot/Image' "$BOOT_GRUB_HOOK" \
+    || ! grep -q 'initramfs-linux-aarch64.img' installer/calamares/modules/aarch64/shellprocess-fixboot.conf \
+    || ! grep -q 'vmlinuz-linux-aarch64' archiso/grub/grub.cfg \
+    || ! grep -q 'vmlinuz-linux' archiso/grub/grub.cfg; then
+    fail "aarch64 kernel names are not wired (Image -> vmlinuz-linux-aarch64, x86 menu kept)"
+    publish_ok=0
+fi
+if [ -x "$PUBLISH_KERNEL" ]; then
+    publish_tmp=$(mktemp -d)
+    mkdir -p "$publish_tmp/boot"
+    printf 'kernel\n' > "$publish_tmp/boot/Image"
+    printf 'old-initrd\n' > "$publish_tmp/boot/initramfs-linux.img"
+    if ! CHURROS_ROOT="$publish_tmp" "$PUBLISH_KERNEL" --require \
+        || ! cmp -s "$publish_tmp/boot/Image" "$publish_tmp/boot/vmlinuz-linux-aarch64" \
+        || ! cmp -s "$publish_tmp/boot/initramfs-linux.img" "$publish_tmp/boot/initramfs-linux-aarch64.img"; then
+        fail "publish-aarch64-kernel did not copy Image and initramfs-linux.img"
+        publish_ok=0
+    fi
+    printf 'installed-initrd\n' > "$publish_tmp/boot/initramfs-linux-aarch64.img"
+    touch -d '2020-01-01' "$publish_tmp/boot/initramfs-linux.img"
+    if ! CHURROS_ROOT="$publish_tmp" "$PUBLISH_KERNEL" \
+        || ! grep -qx 'installed-initrd' "$publish_tmp/boot/initramfs-linux-aarch64.img"; then
+        fail "publish-aarch64-kernel overwrote a newer initramfs-linux-aarch64.img"
+        publish_ok=0
+    fi
+    rm -rf "$publish_tmp"
+fi
+[ "$publish_ok" -eq 1 ] && pass "aarch64 kernel is published as vmlinuz-linux-aarch64"
+
+# Preset aarch64: ALL_kver=/boot/Image, imagen initramfs-linux.img (la que
+# publica publish-aarch64-kernel). Los hooks memdisk y pxe se quedan en x86.
+A64_PRESET=archiso/mkinitcpio/aarch64/linux-aarch64.preset
+A64_HOOKS=archiso/mkinitcpio/aarch64/archiso.conf
+X64_PRESET=archiso/airootfs/etc/mkinitcpio.d/linux.preset
+X64_HOOKS=archiso/airootfs/etc/mkinitcpio.conf.d/archiso.conf
+preset_ok=1
+if [ ! -f "$A64_PRESET" ] \
+    || ! grep -q "ALL_kver='/boot/Image'" "$A64_PRESET" \
+    || ! grep -q 'archiso_image="/boot/initramfs-linux.img"' "$A64_PRESET" \
+    || ! grep -q "PRESETS=('archiso')" "$A64_PRESET"; then
+    fail "aarch64 preset must set ALL_kver=/boot/Image and archiso_image=initramfs-linux.img"
+    preset_ok=0
+fi
+a64_hooks_line=""
+[ -f "$A64_HOOKS" ] && a64_hooks_line=$(grep -E '^HOOKS=' "$A64_HOOKS" || true)
+x64_hooks_line=""
+[ -f "$X64_HOOKS" ] && x64_hooks_line=$(grep -E '^HOOKS=' "$X64_HOOKS" || true)
+if [ -z "$a64_hooks_line" ] \
+    || grep -Eq '(^|[[:space:]])memdisk([[:space:]]|$)' <<<"$a64_hooks_line" \
+    || grep -q 'archiso_pxe' <<<"$a64_hooks_line" \
+    || ! grep -q ' archiso ' <<<"$a64_hooks_line" \
+    || ! grep -q 'archiso_loop_mnt' <<<"$a64_hooks_line"; then
+    fail "aarch64 archiso hooks must keep archiso and archiso_loop_mnt and drop memdisk and archiso_pxe_*"
+    preset_ok=0
+fi
+if ! grep -q "ALL_kver='/boot/vmlinuz-linux'" "$X64_PRESET" \
+    || ! grep -Eq '(^|[[:space:]])memdisk([[:space:]]|$)' <<<"$x64_hooks_line" \
+    || ! grep -q 'archiso_pxe_common' <<<"$x64_hooks_line"; then
+    fail "x86_64 preset and hooks must keep vmlinuz-linux, memdisk and pxe"
+    preset_ok=0
+fi
+if [ -f "$A64_PRESET" ]; then
+    preset_sed=$(mktemp)
+    cp "$A64_PRESET" "$preset_sed"
+    sed -i "s/PRESETS=('archiso')/PRESETS=('default')/" "$preset_sed"
+    sed -i 's|archiso_config=.*|default_config="/etc/mkinitcpio.conf"|' "$preset_sed"
+    sed -i 's|archiso_image=|default_image=|' "$preset_sed"
+    sed -i 's|^default_image=.*|default_image="/boot/initramfs-linux-aarch64.img"|' "$preset_sed"
+    if ! grep -q "PRESETS=('default')" "$preset_sed" \
+        || ! grep -q "ALL_kver='/boot/Image'" "$preset_sed" \
+        || ! grep -q 'default_image="/boot/initramfs-linux-aarch64.img"' "$preset_sed"; then
+        fail "Calamares sed does not turn the aarch64 preset into initramfs-linux-aarch64.img"
+        preset_ok=0
+    fi
+    rm -f "$preset_sed"
+fi
+if ! grep -q 'mkinitcpio -p linux-aarch64' branding/customize_airootfs.sh \
+    || ! grep -q 'publish-aarch64-kernel --require' branding/customize_airootfs.sh; then
+    fail "customize_airootfs.sh must rebuild linux-aarch64 before publishing kernel names"
+    preset_ok=0
+else
+    mkinit_line=$(grep -n 'mkinitcpio -p linux-aarch64' branding/customize_airootfs.sh | head -1 | cut -d: -f1)
+    publish_line=$(grep -n 'publish-aarch64-kernel --require' branding/customize_airootfs.sh | head -1 | cut -d: -f1)
+    if [ -z "$mkinit_line" ] || [ -z "$publish_line" ] || [ "$mkinit_line" -ge "$publish_line" ]; then
+        fail "mkinitcpio -p linux-aarch64 must run before publish-aarch64-kernel"
+        preset_ok=0
+    fi
+fi
+if ! grep -q 'apply-aarch64-mkinitcpio.sh apply' scripts/cli/build.sh \
+    || ! grep -q 'apply-aarch64-mkinitcpio.sh restore' scripts/cli/build.sh; then
+    fail "build.sh must apply the aarch64 mkinitcpio files and restore them"
+    preset_ok=0
+fi
+if [ -x scripts/apply-aarch64-mkinitcpio.sh ]; then
+    # linux-aarch64 owns etc/mkinitcpio.d/linux-aarch64.preset. apply must
+    # not create it; customize_airootfs.sh copies it after pacstrap.
+    if ! bash scripts/apply-aarch64-mkinitcpio.sh apply \
+        || [ -e archiso/airootfs/etc/mkinitcpio.d/linux.preset ] \
+        || [ -e archiso/airootfs/etc/mkinitcpio.d/linux-aarch64.preset ] \
+        || grep -q 'archiso_pxe' <<<"$(grep -E '^HOOKS=' archiso/airootfs/etc/mkinitcpio.conf.d/archiso.conf)" \
+        || ! grep -q "ALL_kver='/boot/Image'" archiso/airootfs/usr/share/churros/mkinitcpio/aarch64/linux-aarch64.preset \
+        || ! grep -q 'archiso_loop_mnt' archiso/airootfs/usr/share/churros/mkinitcpio/aarch64/archiso.conf; then
+        fail "apply-aarch64-mkinitcpio.sh apply must stage the preset under /usr/share and not under /etc/mkinitcpio.d"
+        preset_ok=0
+    fi
+    if ! bash scripts/apply-aarch64-mkinitcpio.sh restore \
+        || [ -e archiso/airootfs/etc/mkinitcpio.d/linux-aarch64.preset ] \
+        || [ -e archiso/airootfs/usr/share/churros/mkinitcpio ] \
+        || ! grep -q "ALL_kver='/boot/vmlinuz-linux'" archiso/airootfs/etc/mkinitcpio.d/linux.preset \
+        || ! grep -q 'archiso_pxe_common' archiso/airootfs/etc/mkinitcpio.conf.d/archiso.conf; then
+        fail "apply-aarch64-mkinitcpio.sh restore did not put the x86 preset back"
+        preset_ok=0
+    fi
+else
+    fail "scripts/apply-aarch64-mkinitcpio.sh missing or not executable"
+    preset_ok=0
+fi
+[ "$preset_ok" -eq 1 ] && pass "aarch64 mkinitcpio preset uses /boot/Image; x86 preset unchanged"
+
+# archiso hardcodea grubmodules. En aarch64 el build filtra los .mod que
+# no existen. x86 no llama al parche. El menú no hace insmod de usbserial
+# cuando grub_cpu es arm64.
+section "aarch64 GRUB modules"
+
+grub_ok=1
+if ! grep -q 'patch-mkarchiso-grubmodules.sh /usr/bin/mkarchiso' scripts/cli/build.sh; then
+    fail "build.sh must patch mkarchiso's GRUB module list on aarch64"
+    grub_ok=0
+fi
+patch_line=$(grep -n 'patch-mkarchiso-grubmodules.sh' scripts/cli/build.sh | head -1 | cut -d: -f1)
+mkarchiso_line=$(grep -n 'mkarchiso -v' scripts/cli/build.sh | head -1 | cut -d: -f1)
+if [ -z "$patch_line" ] || [ -z "$mkarchiso_line" ] || [ "$patch_line" -ge "$mkarchiso_line" ]; then
+    fail "patch-mkarchiso-grubmodules.sh must run before mkarchiso"
+    grub_ok=0
+fi
+# El if que envuelve la llamada tiene que ser el de aarch64, y cerrarse
+# antes de mkarchiso. Hay más ifs de aarch64 arriba; no valen.
+if [ -z "${patch_line:-}" ]; then
+    :
+elif ! sed -n "$((patch_line - 3)),$((patch_line + 1))p" scripts/cli/build.sh | grep -q 'TARGET_ARCH.*= aarch64' \
+    || ! sed -n "$((patch_line + 1))p" scripts/cli/build.sh | grep -qx 'fi'; then
+    fail "the mkarchiso GRUB patch must run inside the aarch64 block, before mkarchiso"
+    grub_ok=0
+fi
+if [ "$(grep -c 'patch-mkarchiso-grubmodules.sh' scripts/cli/build.sh)" -ne 1 ]; then
+    fail "build.sh must call the GRUB module patch only from the aarch64 path"
+    grub_ok=0
+fi
+if ! awk '
+    /grub_cpu\}" != "arm64"/ { guard=1; next }
+    guard && /insmod usbserial_common/ { ok=1 }
+    guard && /^fi$/ { guard=0 }
+    END { exit ok ? 0 : 1 }
+' archiso/grub/grub.cfg; then
+    fail "archiso/grub/grub.cfg must skip usbserial_* when grub_cpu is arm64"
+    grub_ok=0
+fi
+if ! grep -q 'insmod serial' archiso/grub/grub.cfg \
+    || ! grep -q 'insmod usbserial_usbdebug' archiso/grub/grub.cfg; then
+    fail "archiso/grub/grub.cfg must keep serial and the x86 usbserial modules"
+    grub_ok=0
+fi
+if [ ! -x scripts/patch-mkarchiso-grubmodules.sh ]; then
+    fail "scripts/patch-mkarchiso-grubmodules.sh missing or not executable"
+    grub_ok=0
+else
+    grub_fix=$(mktemp -d)
+    cat > "$grub_fix/mkarchiso" <<'EOF'
+#!/usr/bin/env bash
+_msg_warning() { printf 'warn %s\n' "$1" >&2; }
+_msg_error() { printf 'err %s\n' "$1" >&2; exit "$2"; }
+grub_target="${arch}-efi"
+grubmodules=(all_video at_keyboard boot btrfs cat chain configfile echo efifwsetup efinet exfat ext2 f2fs fat font \
+                 gfxmenu gfxterm gzio halt hfsplus iso9660 jpeg keylayouts linux loadenv loopback lsefi lsefimmap \
+                 minicmd normal ntfs ntfscomp part_apple part_gpt part_msdos png read reboot regexp search \
+                 search_fs_file search_fs_uuid search_label serial sleep tpm udf usb usbserial_common usbserial_ftdi \
+                 usbserial_pl2303 usbserial_usbdebug video xfs zstd)
+EOF
+    chmod 755 "$grub_fix/mkarchiso"
+    if ! bash scripts/patch-mkarchiso-grubmodules.sh "$grub_fix/mkarchiso" \
+        || ! bash -n "$grub_fix/mkarchiso" \
+        || ! grep -q 'churros: keep only GRUB modules that exist' "$grub_fix/mkarchiso" \
+        || ! grep -q 'at_keyboard' "$grub_fix/mkarchiso"; then
+        fail "patch-mkarchiso-grubmodules.sh did not insert the runtime filter"
+        grub_ok=0
+    fi
+    inserted=$(sed -n '/churros: keep only GRUB modules/,/unset -v _churros_grub_keep/p' "$grub_fix/mkarchiso")
+    if ! grep -q '/usr/lib/grub}/${grub_target}/' <<<"$inserted" \
+        || grep -q 'at_keyboard' <<<"$inserted"; then
+        fail "GRUB filter must test /usr/lib/grub/\${grub_target}/<mod>.mod and must not hardcode removals"
+        grub_ok=0
+    fi
+    cp -a "$grub_fix/mkarchiso" "$grub_fix/mkarchiso.once"
+    if ! bash scripts/patch-mkarchiso-grubmodules.sh "$grub_fix/mkarchiso" \
+        || ! cmp -s "$grub_fix/mkarchiso" "$grub_fix/mkarchiso.once"; then
+        fail "patch-mkarchiso-grubmodules.sh is not idempotent"
+        grub_ok=0
+    fi
+    printf 'echo untouched\n' > "$grub_fix/no-pattern"
+    if bash scripts/patch-mkarchiso-grubmodules.sh "$grub_fix/no-pattern" >/dev/null 2>&1; then
+        fail "patch-mkarchiso-grubmodules.sh must fail when grubmodules=( is absent"
+        grub_ok=0
+    fi
+    mkdir -p "$grub_fix/lib/arm64-efi"
+    touch "$grub_fix/lib/arm64-efi/boot.mod" "$grub_fix/lib/arm64-efi/linux.mod"
+    {
+        printf '%s\n' 'set -euo pipefail' \
+            '_msg_warning() { printf "warn %s\n" "$1" >&2; }' \
+            '_msg_error() { printf "err %s\n" "$1" >&2; exit "$2"; }' \
+            'grub_target=arm64-efi' \
+            'grubmodules=(at_keyboard boot linux serial)'
+        printf '%s\n' "$inserted"
+        printf '%s\n' 'printf "%s\n" "${grubmodules[@]}"'
+    } > "$grub_fix/run-filter.sh"
+    if ! filtered=$(CHURROS_GRUB_LIB="$grub_fix/lib" bash "$grub_fix/run-filter.sh" 2>"$grub_fix/warn") \
+        || [ "$filtered" != $'boot\nlinux' ] \
+        || ! grep -q 'at_keyboard' "$grub_fix/warn"; then
+        fail "GRUB filter did not drop missing modules and keep the ones on disk"
+        grub_ok=0
+    fi
+    mkdir -p "$grub_fix/empty/arm64-efi"
+    {
+        printf '%s\n' 'set -euo pipefail' \
+            '_msg_warning() { printf "warn %s\n" "$1" >&2; }' \
+            '_msg_error() { printf "err %s\n" "$1" >&2; exit "$2"; }' \
+            'grub_target=arm64-efi' \
+            'grubmodules=(boot)'
+        printf '%s\n' "$inserted"
+        printf '%s\n' 'printf "%s\n" "${grubmodules[@]}"'
+    } > "$grub_fix/run-empty.sh"
+    if CHURROS_GRUB_LIB="$grub_fix/empty" bash "$grub_fix/run-empty.sh" >/dev/null 2>&1; then
+        fail "GRUB filter must abort when no module file exists"
+        grub_ok=0
+    fi
+    rm -rf "$grub_fix"
+fi
+[ "$grub_ok" -eq 1 ] && pass "aarch64 drops missing GRUB modules; x86 boot modes and module list stay"
+
+# ------------------------------------------- QEMU pflash and live login
+
+section "QEMU pflash and live login"
+
+# shellcheck source=scripts/lib/ovmf.sh
+source scripts/lib/ovmf.sh
+
+pflash_ok=1
+if ! grep -q 'churros_resolve_pflash' scripts/cli/run.sh \
+    || grep -q 'OVMF_CODE_CANDIDATES' scripts/cli/run.sh; then
+    fail "run.sh must select CODE/VARS as matched pairs"
+    pflash_ok=0
+fi
+if grep -q 'x86_64' branding/files/issue || ! grep -q '\\m' branding/files/issue; then
+    fail "branding/files/issue must use the agetty \\\\m escape, not a hardcoded arch"
+    pflash_ok=0
+fi
+if ! grep -q '/dev/tty1' archiso/airootfs/root/.zlogin \
+    || ! grep -q 'is-active --quiet greetd.service' archiso/airootfs/root/.zlogin \
+    || ! grep -q -- '-x ~/.automated_script.sh' archiso/airootfs/root/.zlogin; then
+    fail "root .zlogin must start greetd only on tty1 and only run an executable automated_script"
+    pflash_ok=0
+fi
+if ! grep -q '\["/root/.automated_script.sh"\]="0:0:755"' archiso/profiledef.sh; then
+    fail "profiledef.sh must mark /root/.automated_script.sh executable"
+    pflash_ok=0
+fi
+
+fw_root=$(mktemp -d)
+fw_out=$(mktemp -d)
+mk_fw() {
+    mkdir -p "$(dirname "$1")"
+    truncate -s "$2" "$1"
+    printf '%s' "$3" | dd of="$1" conv=notrunc status=none
+}
+# Debian: QEMU_EFI.fd de 3 MiB junto a AAVMF de 64 MiB. El par de 64 gana.
+mk_fw "$fw_root/usr/share/qemu-efi-aarch64/QEMU_EFI.fd" 3145728 RAW
+mk_fw "$fw_root/usr/share/AAVMF/AAVMF_CODE.fd" 67108864 AAVM
+mk_fw "$fw_root/usr/share/AAVMF/AAVMF_VARS.fd" 67108864 VARS
+if ! fw_pair=$(CHURROS_FIRMWARE_ROOT="$fw_root" churros_resolve_pflash aarch64 "$fw_out") \
+    || [ "$(printf '%s\n' "$fw_pair" | sed -n '1p')" != "$fw_root/usr/share/AAVMF/AAVMF_CODE.fd" ] \
+    || [ "$(printf '%s\n' "$fw_pair" | sed -n '2p')" != "$fw_root/usr/share/AAVMF/AAVMF_VARS.fd" ]; then
+    fail "aarch64 firmware must prefer the 64 MiB AAVMF pair over the raw QEMU_EFI.fd"
+    pflash_ok=0
+fi
+rm -f "$fw_root/usr/share/AAVMF/AAVMF_CODE.fd"
+fw_pad=$(mktemp -d)
+if ! fw_pair=$(CHURROS_FIRMWARE_ROOT="$fw_root" churros_resolve_pflash aarch64 "$fw_pad") \
+    || [ "$(stat -c %s "$(printf '%s\n' "$fw_pair" | sed -n '1p')")" -ne 67108864 ] \
+    || [ "$(stat -c %s "$(printf '%s\n' "$fw_pair" | sed -n '2p')")" -ne 67108864 ] \
+    || [ "$(head -c 3 "$(printf '%s\n' "$fw_pair" | sed -n '1p')")" != RAW ] \
+    || [ "$(head -c 4 "$(printf '%s\n' "$fw_pair" | sed -n '2p')")" != VARS ]; then
+    fail "a raw QEMU_EFI.fd must be padded to 64 MiB with the VARS template"
+    pflash_ok=0
+fi
+rm -rf "$fw_root/usr/share/AAVMF" "$fw_root/usr/share/qemu-efi-aarch64"
+mk_fw "$fw_root/usr/share/qemu-efi-aarch64/QEMU_EFI.fd" 3145728 RAW
+fw_pad2=$(mktemp -d)
+if ! fw_pair=$(CHURROS_FIRMWARE_ROOT="$fw_root" churros_resolve_pflash aarch64 "$fw_pad2") \
+    || [ "$(stat -c %s "$(printf '%s\n' "$fw_pair" | sed -n '2p')")" -ne 67108864 ] \
+    || [ -n "$(head -c 4 "$(printf '%s\n' "$fw_pair" | sed -n '2p')" | tr -d '\0')" ]; then
+    fail "a raw QEMU_EFI.fd without VARS must get a zeroed 64 MiB vars image"
+    pflash_ok=0
+fi
+# x86: CODE.4m con VARS.4m, no el CODE de 2 MiB con el VARS de 4 MiB.
+rm -rf "$fw_root"
+fw_root=$(mktemp -d)
+mk_fw "$fw_root/usr/share/OVMF/OVMF_CODE.fd" 2097152 CODE2
+mk_fw "$fw_root/usr/share/OVMF/OVMF_VARS.fd" 2097152 VARS2
+mk_fw "$fw_root/usr/share/OVMF/OVMF_CODE_4M.fd" 4194304 CODE4
+mk_fw "$fw_root/usr/share/OVMF/OVMF_VARS_4M.fd" 4194304 VARS4
+if ! fw_pair=$(CHURROS_FIRMWARE_ROOT="$fw_root" churros_resolve_pflash x86_64 "$fw_out") \
+    || [ "$(printf '%s\n' "$fw_pair" | sed -n '1p')" != "$fw_root/usr/share/OVMF/OVMF_CODE_4M.fd" ] \
+    || [ "$(printf '%s\n' "$fw_pair" | sed -n '2p')" != "$fw_root/usr/share/OVMF/OVMF_VARS_4M.fd" ]; then
+    fail "x86 firmware must pair OVMF_CODE_4M with OVMF_VARS_4M"
+    pflash_ok=0
+fi
+rm -f "$fw_root/usr/share/OVMF/OVMF_CODE_4M.fd" "$fw_root/usr/share/OVMF/OVMF_VARS.fd"
+if CHURROS_FIRMWARE_ROOT="$fw_root" churros_resolve_pflash x86_64 "$fw_out" >/dev/null 2>&1; then
+    fail "x86 must not pair a 4 MiB VARS image with a different-sized CODE"
+    pflash_ok=0
+fi
+rm -rf "$fw_root" "$fw_out" "$fw_pad" "$fw_pad2"
+unset CHURROS_FIRMWARE_ROOT
+[ "$pflash_ok" -eq 1 ] && pass "pflash pairs match in size; live login stays on tty1"
+
 # ------------------------------------------- Rollback (churros-snapshot)
 
 section "Rollback snapshots btrfs"
@@ -532,6 +1337,132 @@ elif ! grep -q 'bg.lightness()' "$LABELS_PATCH"; then
 else
     pass "partition labels secondary-text patch present"
 fi
+
+# ------------------------------------------------ XFCE X11-only session
+
+section "XFCE X11 session"
+
+XFCE_FIX=archiso/airootfs/usr/share/churros/scripts/fix-xfce-sessions
+XFCE_HOOK=archiso/airootfs/etc/pacman.d/hooks/92-churros-xfce-x11-session.hook
+XFCE_WRAPPER=archiso/airootfs/usr/bin/churros-xfce-session
+
+xfce_ok=1
+if [ ! -f "$XFCE_FIX" ]; then
+    fail "$XFCE_FIX missing (xfce-wayland.desktop would need labwc and bounce the login)"
+    xfce_ok=0
+elif ! grep -q 'fix-xfce-sessions' archiso/profiledef.sh; then
+    fail "archiso/profiledef.sh must declare the file_permissions entry for $XFCE_FIX"
+    xfce_ok=0
+else
+    # Run the script against a fixture shaped like xfce4-session 4.20.
+    xfce_tmp=$(mktemp -d)
+    mkdir -p "$xfce_tmp/usr/share/wayland-sessions" "$xfce_tmp/usr/share/xsessions"
+    printf '[Desktop Entry]\nName=Xfce Session (Wayland)\nExec=startxfce4 --wayland\n' \
+        > "$xfce_tmp/usr/share/wayland-sessions/xfce-wayland.desktop"
+    printf '[Desktop Entry]\nName=Xfce Session\nExec=startxfce4\nType=Application\n' \
+        > "$xfce_tmp/usr/share/xsessions/xfce.desktop"
+    if ! CHURROS_SESSION_ROOT="$xfce_tmp" bash "$XFCE_FIX" \
+        || ! CHURROS_SESSION_ROOT="$xfce_tmp" bash "$XFCE_FIX"; then
+        fail "$XFCE_FIX failed (it must be idempotent: the pacman hook reruns it)"
+        xfce_ok=0
+    elif [ -e "$xfce_tmp/usr/share/wayland-sessions/xfce-wayland.desktop" ]; then
+        fail "$XFCE_FIX does not remove xfce-wayland.desktop"
+        xfce_ok=0
+    elif ! grep -qx 'Exec=/usr/bin/churros-xfce-session' "$xfce_tmp/usr/share/xsessions/xfce.desktop"; then
+        fail "$XFCE_FIX does not point xfce.desktop at churros-xfce-session"
+        xfce_ok=0
+    fi
+    rm -rf "$xfce_tmp"
+fi
+
+if [ ! -f "$XFCE_HOOK" ]; then
+    fail "$XFCE_HOOK missing (pacman -Syu would bring back xfce-wayland.desktop)"
+    xfce_ok=0
+elif grep -q 'remove from airootfs' "$XFCE_HOOK"; then
+    fail "$XFCE_HOOK would be deleted by the ISO-only hook cleaner"
+    xfce_ok=0
+elif ! grep -qE 'Type[[:space:]]*=[[:space:]]*Path' "$XFCE_HOOK" \
+    || ! grep -q 'usr/share/wayland-sessions/xfce-wayland.desktop' "$XFCE_HOOK" \
+    || ! grep -q 'usr/share/xsessions/xfce.desktop' "$XFCE_HOOK" \
+    || ! grep -q 'When[[:space:]]*=[[:space:]]*PostTransaction' "$XFCE_HOOK" \
+    || ! grep -q 'Exec[[:space:]]*=[[:space:]]*/usr/share/churros/scripts/fix-xfce-sessions' "$XFCE_HOOK"; then
+    fail "$XFCE_HOOK must be a PostTransaction Path hook on both XFCE session files running fix-xfce-sessions"
+    xfce_ok=0
+fi
+
+for f in archiso/airootfs/root/scripts/desktop.sh \
+    archiso/airootfs/usr/share/churros/scripts/configure-greetd-session; do
+    if ! grep -q 'fix-xfce-sessions' "$f"; then
+        fail "$f must run fix-xfce-sessions (live boot / install)"
+        xfce_ok=0
+    fi
+done
+
+# ReGreet runs X11 sessions as 'startx /usr/bin/env <Exec>': the wrapper must
+# notice the running X server instead of nesting a second startx.
+if ! grep -q 'DISPLAY' "$XFCE_WRAPPER" || ! grep -q 'xset q' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must detect an already running X server (ReGreet x11_prefix = startx)"
+    xfce_ok=0
+fi
+# Arch's /etc/X11/xinit/xinitrc ends in 'exec xterm' (not installed): sourcing
+# it kills the session with 127 before XFCE starts.
+if grep -qE '^[^#]*(\.|source)[[:space:]]+/etc/X11/xinit/xinitrc' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER sources /etc/X11/xinit/xinitrc (ends in 'exec xterm', exit 127)"
+    xfce_ok=0
+fi
+# startxfce4 runs /etc/xdg/xfce4/xinitrc (XDG_MENU_PREFIX, xrdb, dbus/systemd
+# env); a bare xfce4-session skips all of it.
+if grep -qE '^[^#]*exec[[:space:]]+(/usr/bin/)?xfce4-session' "$XFCE_WRAPPER" \
+    || ! grep -qE '^[^#]*exec[[:space:]]+/usr/bin/startxfce4' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must exec startxfce4, not a bare xfce4-session"
+    xfce_ok=0
+fi
+# A hardcoded display defeats startx's free-display search (stale .X0-lock).
+if grep -qE '^[^#]*startx[^#]*--[[:space:]]+:[0-9]' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER hardcodes the X display in startx (let startx pick a free one)"
+    xfce_ok=0
+fi
+# startx only accepts its client as the session program when the path starts
+# with '/' or './' (startx.c: case "$1" in /''*|\./''*)). Given a bare name it
+# silently falls back to its default client, xterm, which is not installed in
+# any ChurrOS package list: xinit exits 127 and greetd bounces to the greeter.
+# So the wrapper must resolve itself to an absolute path before calling startx.
+if grep -qE '^[^#]*exec[[:space:]]+startx[[:space:]]+"\$0"' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER passes \"\$0\" to startx: a relative \$0 makes startx run xterm (not installed) and greetd bounce to the greeter"
+    xfce_ok=0
+fi
+if ! grep -qE '^[^#]*exec[[:space:]]+startx[[:space:]]+"\$self"' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must exec startx with an absolute, pre-resolved path (got \$self, not \$0)"
+    xfce_ok=0
+fi
+# Xorg finds the VT to take by inspecting its own fds 0-2 (lnx_init.c,
+# parse_vt_settings) and greetd watches the session on that same tty, so the
+# wrapper must not redirect stdout/stderr before exec'ing startx. Diagnostics
+# belong in a log() helper, not in an 'exec >' at the top of the session.
+if grep -qE '^[^#]*\{[[:space:]]*exec[[:space:]]*>{1,2}' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER redirects its own stdout/stderr before starting Xorg (Xorg reads fds 0-2 to find the VT; greetd watches that tty)"
+    xfce_ok=0
+fi
+# 'xsetroot -cursor_name' goes through XLoadFont on the core X11 "cursor" font
+# and XDefineCursor on the root window; libXcursor is only reached via -cursor
+# and -xcf. So it overrides the theme xsettings.xml asks for (Adwaita, 24) with
+# a 1-bit 16x16 glyph that does not scale and vanishes against the wallpaper.
+# It was inert until d9f285a added xorg-fonts-misc, which ships the cursor.pcf
+# that XLoadFont needs; xsetroot exits 0 either way, so '|| true' never hid it.
+if grep -qE '^[^#]*xsetroot[[:space:]]+-cursor_name' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER calls 'xsetroot -cursor_name': it bypasses the Xcursor theme (Adwaita) with a 1-bit core-font glyph and hides the pointer. Set CursorThemeName in xsettings.xml instead"
+    xfce_ok=0
+fi
+
+# A "Device" section forcing Driver "modesetting" breaks the NVIDIA driver
+# that netinstall offers; VM-only tweaks go in an OutputClass.
+if grep -lE '^[[:space:]]*Driver[[:space:]]+"modesetting"' archiso/airootfs/etc/X11/xorg.conf.d/*.conf 2>/dev/null \
+    | xargs -r grep -lE '^[[:space:]]*Section[[:space:]]+"Device"' | grep -q .; then
+    fail "archiso/airootfs/etc/X11/xorg.conf.d forces Driver \"modesetting\" in a Device section (breaks NVIDIA)"
+    xfce_ok=0
+fi
+
+[ "$xfce_ok" -eq 1 ] && pass "XFCE stays X11-only (wrapper + session fix + pacman hook)"
 
 # ----------------------------------------------- Calamares branding files
 
@@ -716,18 +1647,84 @@ fi
 
 # ------------------------------------------- Calamares Python ABI
 
+# ----------------------------------------- Package extension and binfmt C
+
+# shellcheck source=scripts/lib/local-repo.sh
+source scripts/lib/local-repo.sh
+
+section "Package archives and aarch64 binfmt"
+
+if grep -q "PKGEXT='.pkg.tar.zst'" Containerfile.aarch64; then
+    pass "aarch64 image forces PKGEXT=.pkg.tar.zst"
+else
+    fail "Containerfile.aarch64 does not set PKGEXT=.pkg.tar.zst (ALARM defaults to .xz)"
+fi
+
+pkg_tmp="$(mktemp -d)"
+: > "$pkg_tmp/calamares-3.3.14-1-aarch64.pkg.tar.xz"
+: > "$pkg_tmp/calamares-debug-3.3.14-1-aarch64.pkg.tar.xz"
+: > "$pkg_tmp/calamares-3.3.14-1-aarch64.pkg.tar.xz.sig"
+: > "$pkg_tmp/yay-12.1.3-1-x86_64.pkg.tar.zst"
+found="$(churros_first_pkg "$pkg_tmp" 'calamares-[0-9]*' || true)"
+if [ "$found" = "$pkg_tmp/calamares-3.3.14-1-aarch64.pkg.tar.xz" ]; then
+    pass "cache detection accepts .pkg.tar.xz and skips debug packages and signatures"
+else
+    fail "churros_first_pkg returned '${found:-empty}' for a .pkg.tar.xz cache"
+fi
+mapfile -t pkg_all < <(churros_pkg_archives "$pkg_tmp")
+if [ "${#pkg_all[@]}" -eq 2 ]; then
+    pass "package listing keeps real .xz and .zst archives"
+else
+    fail "expected 2 package archives, got ${#pkg_all[@]}"
+fi
+rm -rf "$pkg_tmp"
+
+binfmt_tmp="$(mktemp -d)"
+printf '%s\n' enabled 'interpreter /bin/true' 'flags: POF' > "$binfmt_tmp/qemu-aarch64"
+CHURROS_BINFMT_DIR="$binfmt_tmp"
+if churros_aarch64_emulation_ready; then
+    fail "binfmt flags POF (no C) were treated as ready"
+else
+    pass "binfmt without flag C is not ready for sudo inside makepkg"
+fi
+printf '%s\n' enabled 'interpreter /bin/true' 'flags: FPOC' > "$binfmt_tmp/qemu-aarch64"
+if churros_aarch64_emulation_ready; then
+    pass "binfmt flags FPOC count as ready"
+else
+    fail "binfmt flags FPOC were rejected"
+fi
+unset CHURROS_BINFMT_DIR
+rm -rf "$binfmt_tmp"
+
 section "Calamares libpython"
 
-CALAMARES_LOCAL=$(ls archiso/packages/calamares-[0-9]*.pkg.tar.zst 2>/dev/null | head -1 || true)
+# El python del host solo representa al de la ISO en Arch. En otra distro
+# (paquete construido con ./churros build --container) la comparación daría un
+# fallo falso: build-calamares.sh ya recompila dentro del contenedor si la
+# versión de python de Arch cambia.
+CALAMARES_LOCAL="$(churros_first_pkg archiso/packages 'calamares-[0-9]*' || true)"
 if [ -z "$CALAMARES_LOCAL" ]; then
     notice "no local calamares package (ISO build will compile it)"
+elif ! churros_host_is_arch; then
+    notice "host is not Arch: libpython of $(basename "$CALAMARES_LOCAL") is checked by ./churros build --container"
 elif ! command -v readelf >/dev/null 2>&1; then
     notice "readelf not available; skip libpython check"
 else
     host_python=$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     abi_tmp=$(mktemp -d)
-    bsdtar -xf "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so.3.4.2 2>/dev/null || \
-        bsdtar -xf "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so 2>/dev/null || true
+    if command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so.3.4.2 2>/dev/null || \
+            bsdtar -xf "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so 2>/dev/null || true
+    else
+        case "$CALAMARES_LOCAL" in
+            *.zst) tar_cmd=(tar --zstd -xf) ;;
+            *.xz) tar_cmd=(tar -Jxf) ;;
+            *.gz) tar_cmd=(tar -zxf) ;;
+            *) tar_cmd=(tar -xf) ;;
+        esac
+        "${tar_cmd[@]}" "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so.3.4.2 2>/dev/null || \
+            "${tar_cmd[@]}" "$CALAMARES_LOCAL" -C "$abi_tmp" usr/lib/libcalamares.so 2>/dev/null || true
+    fi
     abi_so=$(find "$abi_tmp" -name 'libcalamares.so*' -type f | head -1 || true)
     pkg_python=""
     if [ -n "$abi_so" ]; then
@@ -754,6 +1751,15 @@ else
     else
         pass "local calamares package matches installer/patches stamp"
     fi
+fi
+
+# El config de greetd versionado debe arrancar la sesión niri en el Live;
+# build.sh lo reescribe por edición y lo restaura en el trap.
+section "greetd initial_session"
+if grep -A3 '\[initial_session\]' archiso/airootfs/etc/greetd/config.toml | grep -q 'niri'; then
+    pass "greetd initial_session es niri"
+else
+    fail "greetd initial_session no es niri"
 fi
 
 # ------------------------------------------------------- Live overlay size
@@ -786,6 +1792,13 @@ done
 # ------------------------------------------------------------ Translations
 
 section "Translations"
+
+# Aviso honesto: el catalogo sigue apuntando a la interfaz en Python
+# (preferences/pages/*.py, popups/*/widgets/*.py), que ya no existe; las apps
+# Rust no usan gettext y escriben los textos en castellano directamente. El
+# chequeo de abajo es de sintaxis del .po, no de que las traducciones se
+# apliquen a la interfaz actual.
+notice "po/*.po cubren la UI en Python antigua; las apps Rust no usan gettext"
 
 if command -v msgfmt >/dev/null 2>&1; then
     for po in po/*.po; do
@@ -847,6 +1860,50 @@ if grep -q 'stamp-os-release.sh' branding/customize_airootfs.sh \
     pass "ISO build stamps os-release from VERSION"
 else
     fail "build.sh and customize_airootfs.sh must stamp os-release from VERSION"
+fi
+
+# --------------------------------------------- Ejecución privilegiada (polkit)
+
+section "Privileged execution"
+
+POLKIT_RULE=archiso/airootfs/etc/polkit-1/rules.d/50-churros-store.rules
+
+# pkexec publica `program` y `command_line`. `command` no existe y una regla que
+# lo lea no autoriza nunca nada: así pasó en #152 sin que nadie lo notara. Se
+# mira solo el código (las líneas `//` lo explican y lo nombran).
+rule_code=$(grep -nvE '^[[:space:]]*//' "$POLKIT_RULE" || true)
+if printf '%s\n' "$rule_code" |
+    grep -E "lookup\([[:space:]]*[\"']command[\"'][[:space:]]*\)|getDetails"; then
+    fail "$POLKIT_RULE lee lookup(\"command\") o getDetails(): pkexec solo publica program y command_line"
+else
+    pass "la regla polkit lee las claves que publica pkexec (program, command_line)"
+fi
+
+if command -v node >/dev/null 2>&1; then
+    if polkit_out=$(node scripts/test-polkit-rules.js 2>&1); then
+        pass "decisiones de la regla polkit ($polkit_out)"
+    else
+        printf '%s\n' "$polkit_out"
+        fail "scripts/test-polkit-rules.js"
+    fi
+else
+    notice "node no está instalado: no se prueban las decisiones de la regla polkit"
+fi
+
+# churros-update-utils sobre un root falso, churros-write-root-config y la
+# tabla edición -> sesión. Sin root y sin tocar /.
+if helpers_out=$(python3 scripts/test-privileged-helpers.py 2>&1); then
+    pass "helpers privilegiados en un root falso (scripts/test-privileged-helpers.py)"
+else
+    printf '%s\n' "$helpers_out" | tail -n 40
+    fail "scripts/test-privileged-helpers.py"
+fi
+
+if network_out=$(python3 scripts/test-network-services.py 2>&1); then
+    pass "network service ownership (scripts/test-network-services.py)"
+else
+    printf '%s\n' "$network_out" | tail -n 40
+    fail "scripts/test-network-services.py"
 fi
 
 # --------------------------------------------------------------- Hygiene

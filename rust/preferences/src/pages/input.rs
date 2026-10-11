@@ -16,30 +16,56 @@ use crate::widgets::switch_row::SwitchRow;
 const LAYOUTS: [&str; 6] = ["es", "us", "latam", "fr", "de", "it"];
 
 fn run_gsettings(args: &[&str]) -> String {
-    let output = Command::new("gsettings")
-        .args(args)
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    let mut cmd: Vec<&str> = vec!["gsettings"];
+    cmd.extend_from_slice(args);
+    let output = churros_services::run(&cmd, 1000)
+        .map(|(_, stdout, _)| stdout.trim().to_string())
         .unwrap_or_default();
     output.trim_matches(|c| c == '\'' || c == '"').to_string()
 }
 
 fn set_gsettings(schema: &str, key: &str, value: &str) {
-    let _ = Command::new("gsettings")
-        .args(["set", schema, key, value])
-        .output();
+    let _ = churros_services::run(&["gsettings", "set", schema, key, value], 1000);
 }
 
 pub fn build(navigator: gtk::Stack) -> Page {
-    let is_xfce = churros_services::version::edition().contains("xfce");
+    let edition = churros_services::version::edition();
+    let is_xfce = edition.contains("xfce");
+    let is_kde = edition.contains("kde");
+
+    let subtitle = if is_kde {
+        "Gestionado por KDE Plasma"
+    } else if is_xfce {
+        "Gestionado por XFCE"
+    } else {
+        "Teclado, raton y panel tactil"
+    };
 
     let page = Page::new(
         Some(navigator),
         "Entrada",
-        Some(if is_xfce { "Gestionado por XFCE" } else { "Teclado, raton y panel tactil" }),
+        Some(subtitle),
         None,
     );
+
+    if is_kde {
+        let mut group = Group::new("Herramientas de KDE");
+        let btn = crate::widgets::row::Row::new(
+            "Abrir Ajustes de Ratón y Panel Táctil",
+            Some("Lanza preferencias de puntero y touchpad de KDE Plasma"),
+            Some("input-mouse-symbolic"),
+            None,
+            None,
+            Some(Box::new(|_| {
+                let _ = std::process::Command::new("systemsettings")
+                    .arg("kcm_mouse")
+                    .spawn();
+            })),
+        );
+        group.add(&btn);
+        page.add(group.widget());
+        return page;
+    }
 
     if is_xfce {
         let mut group = Group::new("Herramientas externas");

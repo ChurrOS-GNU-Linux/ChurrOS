@@ -27,7 +27,6 @@
     "custom/settings",
     "custom/sep",
     "clock",
-    "custom/sep",
     "custom/power"
   ],
 
@@ -69,7 +68,7 @@
 
   "custom/power": {
     "format": "󰐥",
-    "on-click": "churros-popup power",
+    "on-click": "wlogout",
     "tooltip-format": "Power"
   },
 

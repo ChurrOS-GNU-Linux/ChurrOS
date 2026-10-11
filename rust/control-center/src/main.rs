@@ -31,8 +31,13 @@ fn main() -> glib::ExitCode {
 
 fn load_css() {
     logging::log("cargando css");
-    let display = gtk::gdk::Display::default().unwrap();
+    let Some(display) = gtk::gdk::Display::default() else {
+        eprintln!("churros-control-center: no hay display Wayland/X11 disponible");
+        std::process::exit(1);
+    };
     logging::log("display ok");
+
+    // CSS compartido (misma prioridad que Preferences)
     let shared = "/usr/share/churros/styles/churros.css";
     let dev_shared = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -54,6 +59,8 @@ fn load_css() {
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
     }
+
+    // CSS local (misma prioridad que Preferences)
     let css = assets::css_path();
     logging::log(&format!("css local: {} existe={}", css.display(), css.is_file()));
     let provider = gtk::CssProvider::new();
@@ -65,10 +72,11 @@ fn load_css() {
     gtk::style_context_add_provider_for_display(
         &display,
         &provider,
-        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1, // Cambiado de USER+1 a APPLICATION+1
     );
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    // Accent CSS (misma prioridad que Preferences)
+    let home = churros_services::home_dir();
     let accent_path = std::path::PathBuf::from(home).join(".config/churros/accent.css");
     if let Ok(css) = std::fs::read_to_string(&accent_path) {
         let provider = gtk::CssProvider::new();
@@ -76,7 +84,7 @@ fn load_css() {
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_USER,
+            gtk::STYLE_PROVIDER_PRIORITY_USER, // Más alta, igual que Preferences
         );
     }
 }
@@ -87,8 +95,6 @@ mod assets {
     const RUNTIME_ROOTS: &[&str] = &[
         "/usr/share/churros/churros-control-center/assets",
         "/usr/share/churros/churros-control-center",
-        "/usr/share/churros/control-center/assets",
-        "/usr/share/churros/control-center",
     ];
     const DEV_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 

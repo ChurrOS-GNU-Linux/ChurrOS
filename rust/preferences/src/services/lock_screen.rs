@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 pub struct LockScreenService;
 
 fn config_file() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = churros_services::home_dir();
     PathBuf::from(home)
         .join(".config")
         .join("churros")
@@ -232,7 +232,7 @@ impl LockScreenService {
             .args(["-x", "swayidle"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn();
+            .status();
     }
 
     /// Aplica el estado: si enabled, relanza swayidle con el timeout y swaylock.

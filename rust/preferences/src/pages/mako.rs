@@ -55,12 +55,9 @@ struct Scheduler {
 
 /// makoctl mode — salida cruda (equivalente al subprocess del Python).
 fn makoctl_mode() -> String {
-    std::process::Command::new("makoctl")
-        .arg("mode")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+    // Con timeout vía churros_services::run: nunca quedarse bloqueado en UI.
+    churros_services::run(&["makoctl", "mode"], 1000)
+        .map(|(_, stdout, _)| stdout)
         .unwrap_or_default()
 }
 
@@ -517,13 +514,13 @@ fn cb_dnd(holder: &Rc<RefCell<Option<MakoStateRef>>>) -> Box<dyn Fn(bool)> {
                 .args(["mode", "-a", "do-not-disturb"])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
-                .spawn();
+                .status();
         } else if !active && is_active {
             let _ = std::process::Command::new("makoctl")
                 .args(["mode", "-r", "do-not-disturb"])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
-                .spawn();
+                .status();
         }
 
         // GLib.timeout_add(300, ...) del Python: refresca el subtitulo

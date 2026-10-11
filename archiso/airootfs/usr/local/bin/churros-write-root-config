@@ -1,50 +1,282 @@
 #!/usr/bin/env bash
 #
-# churros-write-root-config — escribe un fichero de configuración de sistema
-# desde la sesión de usuario sin exponer un `install` genérico a root.
-#
-# El contenido llega por stdin (nunca por una ruta temporal compartida), el
-# destino está en una lista cerrada y la escritura es atómica dentro del
-# directorio de destino. Así no hay carreras de symlink en /tmp ni posibilidad
-# de escribir en rutas arbitrarias.
+# churros-write-root-config — aplica un ajuste concreto de /etc pedido desde
+# la sesión del usuario (Ajustes → Usuarios y login).
 #
 # Uso:
-#   churros-write-root-config /etc/greetd/config.toml < contenido
+#   churros-write-root-config greetd-autologin on|off
+#   churros-write-root-config lightdm-autologin on|off
+#   churros-write-root-config regreet-wallpaper /ruta/al/fondo
+#   churros-write-root-config regreet-greeting "texto"
 #
-# Se ejecuta como root vía churros-pkexec (regla polkit 50-churros-store.rules).
+# No acepta contenido libre: cada operación genera su fichero. Antes leía el
+# fichero entero de stdin y escribía /etc/greetd/config.toml tal cual, y ese
+# fichero decide qué usuario y qué comando arranca greetd ([initial_session]).
+#
+#   - El usuario del inicio automático es siempre quien invocó pkexec
+#     (PKEXEC_UID), nunca un argumento.
+#   - El comando de sesión sale de /etc/churros-edition con la tabla de
+#     edition-session.sh, la misma que usa la instalación
+#     (configure-greetd-session).
+#   - El fondo tiene que ser un fichero regular de los directorios de fondos
+#     del sistema y legible por el greeter; el saludo, un texto corto sin
+#     caracteres de control. Los dos se escapan para TOML.
+#   - Cada escritura es atómica: temporal en el directorio de destino y
+#     rename.
+#
+# Se ejecuta como root vía churros-pkexec; la regla polkit
+# 50-churros-store.rules pide la contraseña de administrador (auth_admin_keep).
 
 set -euo pipefail
+export LC_ALL=C
 
 PROG="${0##*/}"
 
+GREETD_CONF=/etc/greetd/config.toml
+REGREET_CONF=/etc/greetd/regreet.toml
+LIGHTDM_AUTOLOGIN=/etc/lightdm/lightdm.conf.d/autologin.conf
+EDITION_LIB=/usr/share/churros/scripts/edition-session.sh
+
+# Fondos que puede usar la pantalla de login: los del sistema. Los del home no
+# los puede leer el greeter, y su contenido lo controla el usuario.
+WALLPAPER_DIRS=(
+    /usr/share/churros/wallpapers
+    /usr/share/backgrounds
+    /usr/share/wallpapers
+)
+
+GREETING_MAX_CHARS=80
+
 die() { printf '%s: ERROR: %s\n' "$PROG" "$*" >&2; exit 1; }
 
-[ "$#" -eq 1 ] || die "se espera exactamente un camino de destino"
+usage() {
+    cat >&2 <<EOF
+Uso: $PROG greetd-autologin on|off
+     $PROG lightdm-autologin on|off
+     $PROG regreet-wallpaper /ruta/al/fondo
+     $PROG regreet-greeting "texto"
+EOF
+    exit 2
+}
 
-target="$1"
+# shellcheck source=../../share/churros/scripts/edition-session.sh
+. "$EDITION_LIB"
 
-# Lista cerrada de destinos. Cualquier otra ruta se rechaza.
-case "$target" in
-    /etc/greetd/config.toml) mode=644 ;;
-    /etc/greetd/regreet.toml) mode=644 ;;
-    /etc/lightdm/lightdm.conf.d/autologin.conf) mode=644 ;;
-    *) die "destino no permitido: $target" ;;
+# ------------------------------------------------------------------ helpers
+
+# Escribe CONTENIDO en DESTINO de forma atómica: temporal en el mismo
+# directorio (mktemp lo crea con 0600) y rename. Así no hay carreras con
+# symlinks en /tmp y quien lee el fichero nunca lo ve a medias.
+write_file() {
+    local target="$1" content="$2" dir tmp
+    dir="${target%/*}"
+    install -d -m 0755 "$dir"
+    tmp="$(mktemp "$dir/.churros-cfg.XXXXXX")"
+    # shellcheck disable=SC2064  # $tmp se expande ahora a propósito
+    trap "rm -f -- '$tmp'" EXIT
+    printf '%s\n' "$content" > "$tmp"
+    chmod 0644 "$tmp"
+    mv -f -- "$tmp" "$target"
+    trap - EXIT
+}
+
+on_off() {
+    case "$1" in
+        on|off) ;;
+        *) usage ;;
+    esac
+}
+
+# Usuario que pidió el cambio: el que invocó pkexec. sudo deja SUDO_UID.
+autologin_user() {
+    local uid="${PKEXEC_UID:-${SUDO_UID:-}}" entry name
+    [ -n "$uid" ] || die "no se sabe qué usuario lo pide: ejecútalo con churros-pkexec"
+    case "$uid" in
+        ''|*[!0-9]*) die "uid inválido: $uid" ;;
+    esac
+    [ "$uid" -ne 0 ] || die "no se configura el inicio automático de root"
+    entry="$(getent passwd "$uid")" || die "no existe ningún usuario con uid $uid"
+    name="${entry%%:*}"
+    # Solo caracteres de nombre de usuario: nada que haya que escapar en TOML
+    # ni en INI.
+    [[ "$name" =~ ^[A-Za-z0-9_.][A-Za-z0-9_.-]*[$]?$ ]] \
+        || die "nombre de usuario no admitido: $name"
+    printf '%s\n' "$name"
+}
+
+# Cadena básica de TOML: se escapan \ y ". Los caracteres de control ya se
+# han rechazado antes.
+toml_string() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '"%s"\n' "$s"
+}
+
+# Escribe por stdout el TOML de stdin con CLAVE = VALOR en la tabla [SECCION]:
+# reemplaza la clave si existe y, si no, la añade al final de la tabla (o
+# crea la tabla). El resto del fichero queda igual. VALOR va ya en sintaxis
+# TOML (toml_string).
+toml_set() {
+    SECTION="$1" KEY="$2" VALUE="$3" awk '
+        function table(line,   name) {
+            if (line !~ /^[ \t]*\[[^][]*\][ \t]*(#.*)?$/) {
+                return ""
+            }
+            name = line
+            sub(/^[ \t]*\[[ \t]*/, "", name)
+            sub(/[ \t]*\].*$/, "", name)
+            return name
+        }
+        BEGIN {
+            section = ENVIRON["SECTION"]
+            key = ENVIRON["KEY"]
+            value = ENVIRON["VALUE"]
+            current = ""
+            done = 0
+        }
+        {
+            name = table($0)
+            if (name != "") {
+                if (current == section && !done) {
+                    print key " = " value
+                    done = 1
+                }
+                current = name
+                print
+                next
+            }
+            if (current == section && !done && $0 ~ ("^[ \t]*" key "[ \t]*=")) {
+                print key " = " value
+                done = 1
+                next
+            }
+            print
+        }
+        END {
+            if (!done) {
+                if (current != section) {
+                    if (NR > 0) {
+                        print ""
+                    }
+                    print "[" section "]"
+                }
+                print key " = " value
+            }
+        }
+    '
+}
+
+# Contenido actual de un fichero, o vacío si no existe.
+current_content() {
+    if [ -f "$1" ]; then
+        cat -- "$1"
+    fi
+}
+
+# ¿Lo puede leer cualquier usuario, el greeter incluido? Fichero con o+r y
+# todos los directorios de la ruta con o+x.
+world_readable() {
+    local path="$1" perms
+    perms="$(stat -c %a -- "$path")" || return 1
+    (( 8#$perms & 4 )) || return 1
+    path="${path%/*}"
+    while [ -n "$path" ]; do
+        perms="$(stat -c %a -- "$path")" || return 1
+        (( 8#$perms & 1 )) || return 1
+        path="${path%/*}"
+    done
+}
+
+# --------------------------------------------------------------- operaciones
+
+set_greetd_autologin() {
+    local state="$1" edition session user=""
+    on_off "$state"
+    edition="$(churros_edition)"
+    session="$(churros_session_command "$edition")" || session=""
+    if [ "$state" = on ]; then
+        [ -n "$session" ] || die "la edición $edition no tiene sesión gráfica"
+        user="$(autologin_user)"
+    fi
+    write_file "$GREETD_CONF" "$(churros_greetd_config "$session" "$user")"
+}
+
+set_lightdm_autologin() {
+    local state="$1" edition session user
+    on_off "$state"
+    if [ "$state" = off ]; then
+        rm -f -- "$LIGHTDM_AUTOLOGIN"
+        return
+    fi
+    edition="$(churros_edition)"
+    session="$(churros_lightdm_session "$edition")" \
+        || die "la edición $edition no tiene sesión gráfica"
+    user="$(autologin_user)"
+    write_file "$LIGHTDM_AUTOLOGIN" "[Seat:*]
+autologin-user=$user
+autologin-user-timeout=0
+autologin-session=$session"
+}
+
+set_regreet_wallpaper() {
+    local wanted="$1" real dir allowed="" content
+    case "$wanted" in
+        /*) ;;
+        *) die "la ruta del fondo tiene que ser absoluta: $wanted" ;;
+    esac
+    case "$wanted" in
+        *[[:cntrl:]]*) die "la ruta del fondo contiene caracteres de control" ;;
+    esac
+    real="$(realpath -e -- "$wanted" 2>/dev/null)" || die "no existe: $wanted"
+    case "$real" in
+        *[[:cntrl:]]*) die "la ruta del fondo contiene caracteres de control" ;;
+    esac
+    [ -f "$real" ] || die "no es un fichero regular: $wanted"
+    for dir in "${WALLPAPER_DIRS[@]}"; do
+        dir="$(realpath -e -- "$dir" 2>/dev/null)" || continue
+        case "$real" in
+            "$dir"/*) allowed=yes; break ;;
+        esac
+    done
+    [ -n "$allowed" ] \
+        || die "la pantalla de login solo usa fondos de ${WALLPAPER_DIRS[*]}: $wanted"
+    world_readable "$real" || die "el greeter no puede leer el fondo: $real"
+
+    content="$(current_content "$REGREET_CONF")"
+    if [ -z "$content" ]; then
+        content='[background]
+fit = "Cover"'
+    fi
+    content="$(printf '%s\n' "$content" | toml_set background path "$(toml_string "$real")")"
+    write_file "$REGREET_CONF" "$content"
+}
+
+set_regreet_greeting() {
+    local text="$1" chars content
+    [ -n "$text" ] || die "el saludo no puede estar vacío"
+    case "$text" in
+        # Sin saltos de línea ni otros controles: en TOML abrirían otra clave.
+        *[[:cntrl:]]*) die "el saludo no puede contener caracteres de control" ;;
+    esac
+    printf '%s' "$text" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 \
+        || die "el saludo no es UTF-8 válido"
+    chars="$(printf '%s' "$text" | LC_ALL=C.UTF-8 wc -m)"
+    [ "$chars" -le "$GREETING_MAX_CHARS" ] \
+        || die "el saludo admite como máximo $GREETING_MAX_CHARS caracteres"
+
+    content="$(current_content "$REGREET_CONF" | toml_set appearance greeting_msg "$(toml_string "$text")")"
+    write_file "$REGREET_CONF" "$content"
+}
+
+# --------------------------------------------------------------------- main
+
+[ "$#" -eq 2 ] || usage
+
+case "$1" in
+    greetd-autologin)  set_greetd_autologin "$2" ;;
+    lightdm-autologin) set_lightdm_autologin "$2" ;;
+    regreet-wallpaper) set_regreet_wallpaper "$2" ;;
+    regreet-greeting)  set_regreet_greeting "$2" ;;
+    *) usage ;;
 esac
-
-dir="${target%/*}"
-[ "$dir" = "$target" ] && dir="/"
-
-# Directorio de destino: 0755 y propiedad root, para que el temporal con el
-# contenido no pueda ser leído ni sustituido por otro usuario.
-install -d -m 0755 -o root -g root "$dir"
-
-# Temporal en el MISMO directorio que el destino: mktemp lo crea con 0600 de
-# forma atómica y el `mv` dentro del mismo sistema de ficheros también lo es.
-tmp="$(mktemp "$dir/.churros-cfg.XXXXXX")"
-trap 'rm -f "$tmp"' EXIT
-
-cat > "$tmp"
-chmod "$mode" "$tmp"
-chown root:root "$tmp"
-mv -f "$tmp" "$target"
-trap - EXIT

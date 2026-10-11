@@ -43,9 +43,14 @@ case "$edition" in
         set_or_insert VARIANT_ID "\"kde\"" VARIANT
         set_or_insert PRETTY_NAME "\"ChurrOS KDE ${ver}\"" NAME
         ;;
+    server)
+        set_or_insert VARIANT "\"Server Edition\"" VERSION
+        set_or_insert VARIANT_ID "\"server\"" VARIANT
+        set_or_insert PRETTY_NAME "\"ChurrOS Server ${ver}\"" NAME
+        ;;
     *)
-        set_or_insert VARIANT "\"Niri Edition\"" VERSION
-        set_or_insert VARIANT_ID "\"niri\"" VARIANT
-        set_or_insert PRETTY_NAME "\"ChurrOS ${ver}\"" NAME
+        set_or_insert VARIANT "\"Raspberry Pi Edition\"" VERSION
+        set_or_insert VARIANT_ID "\"pi\"" VARIANT
+        set_or_insert PRETTY_NAME "\"ChurrOS Raspberry Pi ${ver}\"" NAME
         ;;
 esac

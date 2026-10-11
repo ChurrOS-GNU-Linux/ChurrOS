@@ -20,6 +20,7 @@ SingleClick=true
 [Icons]
 Theme=Papirus-Dark
 [General]
+AccentColor=249,115,22
 ColorScheme=ChurroOSDark
 Name=Churros Dark
 fixed=JetBrains Mono

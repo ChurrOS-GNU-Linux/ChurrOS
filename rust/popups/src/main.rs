@@ -42,9 +42,22 @@ fn process_alive(pid: i32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
 
+/// Verifica que el pid del pidfile es realmente un churros-popup antes de
+/// matarlo: un pid reutilizado por otro proceso no debe ser objetivo de
+/// SIGTERM/SIGKILL.
+fn process_is_popup(pid: i32) -> bool {
+    if !process_alive(pid) {
+        return false;
+    }
+    match fs::read_to_string(format!("/proc/{pid}/cmdline")) {
+        Ok(cmdline) => cmdline.contains("churros-popup"),
+        Err(_) => false,
+    }
+}
+
 fn running_pid() -> Option<i32> {
     let pid = read_file(&pid_file())?.parse::<i32>().ok()?;
-    if process_alive(pid) {
+    if process_is_popup(pid) {
         Some(pid)
     } else {
         let _ = fs::remove_file(pid_file());
@@ -68,7 +81,7 @@ fn running_name() -> Option<String> {
 }
 
 fn kill_process(pid: i32) {
-    if !process_alive(pid) {
+    if !process_is_popup(pid) {
         return;
     }
     unsafe { libc::kill(pid, libc::SIGTERM) };

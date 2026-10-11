@@ -16,13 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install shellcheck and gettext
+      - name: Install shellcheck, gettext and zstd
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck gettext
+          sudo apt-get install -y shellcheck gettext zstd
 
       - name: Run checks
         run: ./churros check
+
+      # ./churros check ya los lanza, pero sin node solo avisa: aquí tienen que
+      # ejecutarse sí o sí.
+      - name: Polkit rule tests
+        run: node scripts/test-polkit-rules.js
+
+      - name: Privileged helper tests
+        run: |
+          python3 scripts/test-privileged-helpers.py
+          python3 scripts/test-kde-integration.py
 
   test:
     name: Tests Rust

@@ -12,16 +12,23 @@ window.background {
     background-color: transparent;
 }
 
+window.control-center,
+window.background.churros-glass,
 .control-center {
-    background-color: rgba(13, 16, 22, 0.35);
+    background-color: var(--bg-window, rgba(13, 16, 22, 0.78));
+    background-image: none;
     border-radius: 22px;
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.14));
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.50),
                 0 1px 0 rgba(255, 255, 255, 0.18) inset,
                 0 0 20px rgba(255, 255, 255, 0.02) inset;
 }
 
+/* Ensure intermediate containers have transparent backgrounds without resetting the window */
+.control-center-root,
+.control-center-grid,
+.control-center-scroller,
 scrolledwindow,
 scrolledwindow viewport {
     background-color: transparent;
@@ -146,5 +153,68 @@ scale slider {
 
 label {
     color: white;
+}
+
+/* ── Light Mode Overrides ──────────────────────────────── */
+
+window.light,
+window.light.control-center,
+window.light.background.churros-glass,
+window.light .control-center {
+    background-color: var(--bg-window, rgba(245, 247, 250, 0.78));
+    color: #1a1e24;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12),
+                0 1px 0 rgba(255, 255, 255, 0.80) inset;
+}
+
+window.light label {
+    color: #111827;
+}
+
+window.light .title {
+    color: #111827;
+    text-shadow: none;
+}
+
+window.light .subtitle {
+    color: #4b5563;
+}
+
+window.light .card,
+window.light button.card {
+    background-color: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06),
+                0 1px 0 rgba(255, 255, 255, 0.90) inset;
+}
+
+window.light .card:hover,
+window.light button.card:hover {
+    background-color: rgba(255, 255, 255, 0.92);
+    border-color: var(--accent, #F97316);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.10),
+                var(--accent-glow, 0 0 20px rgba(249, 115, 22, 0.15)),
+                0 1px 0 rgba(255, 255, 255, 1.0) inset;
+}
+
+window.light .card-title {
+    color: #111827;
+}
+
+window.light .card-subtitle {
+    color: #4b5563;
+}
+
+window.light scale trough {
+    background: rgba(0, 0, 0, 0.10);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+window.light .power-button:hover,
+window.light .close-button:hover,
+window.light .settings-button:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.08);
 }
 

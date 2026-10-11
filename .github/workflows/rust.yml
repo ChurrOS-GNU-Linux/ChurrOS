@@ -4,11 +4,28 @@ name: Rust
 # único crate sin dependencias de GTK. Aquí se compila y se prueba el
 # workspace completo: hasta ahora un error en welcome, settings, control
 # center, popups o tour solo aparecía al construir la ISO.
+#
+# gtk4-rs 0.11 pide GTK >= 4.22 y libadwaita-rs 0.9 pide libadwaita >= 1.9.
+# Ubuntu no llega a esas versiones, así que el job usa la imagen del
+# Containerfile (Arch) y el mismo comando que en local: ./churros rust.
+#
+# La imagen se construye en cada ejecución, sin caché de capas, y además una
+# vez por semana: Arch es rolling, y si un cambio de paquetes rompe el
+# Containerfile tiene que fallar aquí y no en la máquina de quien construye.
+#
+# El workspace se compila también en ARM64, en un runner arm64 con la misma
+# imagen sobre Arch Linux ARM: un cargo check cruzado desde x86_64 no sirve,
+# porque glib-sys y gtk4-sys buscan con pkg-config las bibliotecas de aarch64.
+# La base es docker.io/menci/archlinuxarm (pacstrap diario desde los
+# repositorios de Arch Linux ARM); no hay imagen oficial para aarch64.
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,43 +36,67 @@ concurrency:
 
 jobs:
   apps:
-    name: Build and test apps
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
 
-    # gtk4-rs 0.11 pide GTK >= 4.22 y libadwaita-rs 0.9 pide libadwaita >= 1.9.
-    # Ubuntu no llega a esas versiones, así que el job corre dentro de una
-    # imagen Arch, que es además el entorno de build de la ISO.
-    container: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build and test apps (Containerfile)
+            runner: ubuntu-latest
+            base: ''
+            cache: rust-container-
+            iso-tools: true
+          - name: Build and test apps (Containerfile, ARM64)
+            runner: ubuntu-24.04-arm
+            base: docker.io/menci/archlinuxarm:latest
+            # Prefijo propio: restore-keys de x86_64 (rust-container-) no
+            # debe recuperar un target de aarch64.
+            cache: rust-arm64-container-
+            # Arch Linux ARM no empaqueta archiso (ver Containerfile).
+            iso-tools: false
+
+    env:
+      # El runner trae podman y docker; docker corre sin sudo para el usuario
+      # del runner.
+      CHURROS_CONTAINER_ENGINE: docker
+      # Vacía = la imagen oficial de Arch (x86_64).
+      CHURROS_CONTAINER_BASE: ${{ matrix.base }}
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Initialize pacman keyring
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinux
-
-      - name: Install build dependencies
-        run: |
-          pacman -Syu --noconfirm --needed \
-            base-devel \
-            git \
-            gtk4 \
-            libadwaita \
-            rust
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+      # ./churros rust compila en rust/target/container (lo monta en el
+      # contenedor con el UID del runner).
+      - name: Cache cargo target
+        uses: actions/cache@v4
         with:
-          workspaces: rust
+          path: rust/target/container
+          key: ${{ matrix.cache }}${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
+          restore-keys: ${{ matrix.cache }}
 
-      - name: Build workspace
-        run: cargo build --workspace --all-targets --locked --manifest-path rust/Cargo.toml
+      - name: Build container image
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_ensure_image
 
-      - name: Test workspace
-        run: cargo test --workspace --locked --manifest-path rust/Cargo.toml
+      # Las mismas herramientas que comprueba el pre-flight de build.sh, más
+      # makepkg y node: ./churros build --container falla si falta alguna.
+      - name: ISO build tools present in the image
+        if: matrix.iso-tools
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -- bash -c '
+            for tool in mkarchiso mksquashfs xorriso grub-mkstandalone mkfs.fat mcopy mmd \
+                        makepkg repo-add cargo node python3; do
+              command -v "$tool" >/dev/null || { echo "falta $tool en la imagen"; exit 1; }
+            done
+            echo "herramientas de build presentes"'
 
-      # clippy no falla el job: el workspace arrastra avisos previos. Cuando
-      # estén limpios, añadir -- -D warnings para que sí bloquee.
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked --manifest-path rust/Cargo.toml
+      # build + test + clippy del workspace. clippy no falla el job por avisos:
+      # el workspace arrastra avisos previos.
+      - name: ./churros rust
+        run: ./churros rust

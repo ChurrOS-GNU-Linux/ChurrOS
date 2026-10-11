@@ -13,7 +13,8 @@ window.background {
 }
 
 .control-center {
-    background-color: rgba(13, 16, 22, 0.82);
+    background-color: rgba(13, 16, 22, 0.65);
+    background-image: none;
     border-radius: 22px;
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -128,4 +129,3 @@ scale slider {
 label {
     color: white;
 }
-

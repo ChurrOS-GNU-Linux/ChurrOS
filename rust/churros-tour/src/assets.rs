@@ -18,6 +18,7 @@ pub fn css_path() -> PathBuf {
     assets_root().join("style.css")
 }
 
+#[allow(dead_code)]
 pub fn icons_path(name: &str) -> PathBuf {
     assets_root().join("icons").join(name)
 }

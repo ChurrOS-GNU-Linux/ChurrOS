@@ -1,4 +1,12 @@
 groups:
+  - name: "Herramientas ChurrOS"
+    description: "Herramientas adicionales mantenidas en el repositorio local de ChurrOS"
+    selected: false
+    expanded: true
+    packages:
+      - name: python-pywal
+        description: "Generador de paletas de color para los temas de ChurrOS"
+        selected: false
   - name: "NVIDIA"
     description: "Controladores NVIDIA (requiere internet)"
     critical: true

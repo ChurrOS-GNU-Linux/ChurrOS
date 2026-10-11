@@ -8,7 +8,7 @@
     <img alt="Base" src="https://img.shields.io/badge/base-Arch%20Linux-1793D1.svg">
     <img alt="Build" src="https://img.shields.io/badge/build-archiso-1793D1.svg">
     <img alt="Apps" src="https://img.shields.io/badge/apps-Rust-orange.svg">
-    <img alt="Escritorios" src="https://img.shields.io/badge/escritorios-Niri%20%2F%20XFCE%20%2F%20Plasma-FFBC00.svg">
+    <img alt="Escritorios" src="https://img.shields.io/badge/escritorios-Niri%20%2F%20XFCE%20%2F%20Plasma%20%2F%20Server-FFBC00.svg">
   </p>
 </div>
 
@@ -45,6 +45,7 @@ ChurrOS utiliza Arch Linux como base actualmente, mientras desarrolla progresiva
 | Edición Niri | ✅ |
 | Edición XFCE | ✅ |
 | Edición KDE Plasma | ✅ |
+| Edición Servidor (sin escritorio, por SSH) | ✅ |
 | Aplicaciones oficiales en Rust | ✅ |
 | Calamares con branding propio | ✅ |
 | Tema GRUB | ✅ |
@@ -64,10 +65,9 @@ ChurrOS utiliza Arch Linux como base actualmente, mientras desarrolla progresiva
 La edición predeterminada. Utiliza:
 
 - Niri (Wayland con tiling dinámico)
-- Waybar
+- Noctalia (paquete `noctalia` de [extra])
+- Waybar / Fuzzel / Mako (alternativa, mantenidos)
 - foot
-- Fuzzel
-- Mako
 - Aplicaciones oficiales de ChurrOS
 
 ```bash
@@ -88,9 +88,20 @@ Edición basada en KDE Plasma 6, completa y orientada a un escritorio tradiciona
 
 ```bash
 ./churros build --edition kde
+./churros build --edition server
 ```
 
-Es la edición más pesada de las tres: el cierre de dependencias ronda los **3340 MiB instalados**, frente a unos 3140 (niri) y 3100 (xfce).
+Es la edición más pesada: el cierre de dependencias ronda los **3340 MiB instalados**, frente a unos 3140 (niri) y 3100 (xfce).
+
+### Servidor
+
+Edición sin escritorio gráfico en el sistema instalado, accesible por SSH. La ISO lleva un XFCE mínimo porque el instalador (Calamares) es gráfico; `configure-server` lo quita al terminar la instalación y deja el arranque en `multi-user`.
+
+```bash
+./churros build --edition server
+```
+
+Es la más ligera: **1843 MiB instalados**, un 41 % menos que la edición Niri. Incluye `sshd`, `chronyd` y `fail2ban` habilitados. Los detalles y las limitaciones están en [`docs/server.md`](docs/server.md).
 
 ---
 
@@ -168,7 +179,10 @@ Se recomienda trabajar mediante ramas y pull requests en lugar de realizar cambi
 ./churros build --edition xfce
 ./churros build --edition kde
 ```
-
+./churros build --arch x86_64     # por defecto / anfitriona
+./churros build --arch arm64      # ARM de 64 bits (edición pi / Raspberry Pi)
+./churros build --arch i686       # i686 / Arch Linux 32
+```
 ### Probar en QEMU
 
 ```bash
@@ -201,7 +215,7 @@ Elimina los artefactos generados (`work/` y `out/`). No toca el código fuente.
 
 | Comando | Qué hace |
 |---|---|
-| `build` | Construye la ISO (`--edition niri\|xfce\|kde`) |
+| `build` | Construye la ISO (`--edition niri\|xfce\|kde\|server`) |
 | `run` | Construye si hace falta y lanza QEMU (`--nokvm`, `--fresh`, `--clean`) |
 | `clean` | Elimina los artefactos de construcción |
 | `check` | Ejecuta las comprobaciones estáticas del repositorio |
@@ -227,6 +241,7 @@ Las aplicaciones oficiales de ChurrOS están desarrolladas en Rust, utilizando G
 | Settings | `churros-settings` | Configuración del sistema |
 | Control Center | `churros-control-center` | Centro de control |
 | Popups | `churros-popup` | Controles rápidos |
+| Tour | `churros-tour` | Recorrido guiado del escritorio |
 | Services | `churros_services` | Biblioteca de servicios compartidos |
 
 Los crates con `deploy = true` se compilan durante la construcción y se despliegan en `/usr/bin`. `churros_services` es una biblioteca: la usan las demás apps y no se despliega por separado.
@@ -251,6 +266,10 @@ Controles rápidos para red, audio, volumen, Bluetooth, batería, brillo y energ
 churros-popup audio
 ```
 
+### churros-tour
+
+Recorrido guiado que se abre en el primer arranque para enseñar las esquinas del escritorio. Se limpia al terminar la instalación, así que no aparece en el sistema instalado.
+
 ---
 
 ## Paquetes y ecosistema
@@ -264,6 +283,8 @@ ChurrOS utiliza un repositorio local de paquetes durante la construcción (`arch
 - bazaar (parcheado para resolver un conflicto de `libdex`)
 
 El objetivo a largo plazo es disponer de un repositorio oficial de paquetes de ChurrOS.
+
+Cada edición de escritorio tiene además su propio perfil en `archiso/`: `packages.x86_64` (206 entradas), `packages.xfce.x86_64` (214), `packages.kde.x86_64` (209) y `packages.server.x86_64` (185).
 
 ---
 
@@ -410,6 +431,8 @@ ChurrOS/
 | [Popups](docs/popups.md) | `churros-popup` |
 | [Services](docs/services.md) | Capa de servicios compartida |
 | [Rollback](docs/rollback.md) | Snapshots de Btrfs |
+| [Server](docs/server.md) | Edición para servidores, sin escritorio |
+| [Installer](docs/installer.md) | Cómo instala ChurrOS, edition por edition |
 | [Privileged Execution](docs/privileged-execution.md) | Cómo se obtiene privilegio y con qué reglas |
 | [Branding](docs/branding.md) | Identidad visual |
 | [Boot](docs/boot.md) | Arranque de la ISO |
@@ -417,7 +440,7 @@ ChurrOS/
 | [Release](docs/release.md) | Proceso de publicación |
 | [Contributing](docs/contributing.md) | Cómo contribuir |
 | [Roadmap](docs/roadmap.md) | Hoja de ruta por fases |
-| [Vision](docs/vision.md) | Objectives de largo plazo |
+| [Vision](docs/vision.md) | Objetivos de largo plazo |
 | [Devlog](docs/devlog.md) | Registro de cambios |
 
 ---
@@ -441,7 +464,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md).
 
 Versión del proyecto: **1.2** ( [`VERSION`](VERSION) ).
 
-ChurrOS cuenta con ISO personalizada, dos ediciones de escritorio, construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
+ChurrOS cuenta con ISO personalizada, tres ediciones de escritorio (Niri, XFCE y KDE Plasma), construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
 
 El proyecto está en desarrollo activo y en etapa temprana: no hay soporte fuera de GitHub, el instalador es Calamares con parches propios y los paquetes que no están en Arch se compilan en el host durante cada build.
 

@@ -49,13 +49,13 @@ fn run_checked(args: &[&str]) -> String {
     buf
 }
 
-/// Comandos de cambio sin espera (niri msg / hyprctl).
+/// Comandos de cambio (niri msg / hyprctl). status() evita zombis.
 fn run_no_output(args: &[&str]) {
     let _ = Command::new(args[0])
         .args(&args[1..])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 // ---------------------------------------------------------------- modelos

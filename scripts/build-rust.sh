@@ -13,6 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUST_DIR="$PROJECT_DIR/rust"
 BIN_DIR="$PROJECT_DIR/archiso/airootfs/usr/bin"
+# El contenedor de build compila en otro directorio (CARGO_TARGET_DIR).
+TARGET_DIR="${CARGO_TARGET_DIR:-$RUST_DIR/target}"
 
 if [ ! -f "$RUST_DIR/Cargo.toml" ]; then
     echo "  [rust] no hay workspace en $RUST_DIR — saltando"
@@ -38,7 +40,12 @@ fi
 echo "[rust] Compilando apps Rust (release)..."
 
 # Evitar stack overflow (SIGSEGV en ModuleInlinerWrapperPass de LLVM) al optimizar gtk4
-export RUST_MIN_STACK="${RUST_MIN_STACK:-67108864}"
+export RUST_MIN_STACK="${RUST_MIN_STACK:-268435456}"
+
+# Linker rápido si está disponible (lld); reduce drásticamente el tiempo de enlace
+if command -v ld.lld >/dev/null 2>&1; then
+    export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=lld"
+fi
 
 # Usar todos los núcleos disponibles para compilar en paralelo
 cargo build --release --manifest-path "$RUST_DIR/Cargo.toml" --jobs "$(nproc)"
@@ -53,7 +60,7 @@ for crate_dir in "$RUST_DIR"/*/; do
     # preferences/ produce churros-settings), no el del directorio.
     crate_name=$(sed -n 's/^name = "\(.*\)"/\1/p' "$crate_dir/Cargo.toml" | head -1)
     [ -n "$crate_name" ] || continue
-    binary="$RUST_DIR/target/release/$crate_name"
+    binary="$TARGET_DIR/release/$crate_name"
     if [ -x "$binary" ]; then
         echo "  [rust] $crate_name -> $BIN_DIR/$crate_name"
         cp "$binary" "$BIN_DIR/$crate_name"

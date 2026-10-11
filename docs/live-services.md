@@ -2,7 +2,7 @@
 
 Este documento describe los servicios systemd y los hooks de pacman que configuran el entorno Live de ChurrOS durante el arranque.
 
-Estos servicios se incluyen en la ISO mediante `archiso/airootfs/etc/systemd/system/` y `archiso/airootfs/etc/pacman.d/hooks/`. No se copian al sistema instalado: viven solo en el Live.
+Las unidades y hooks se incluyen mediante `archiso/airootfs/etc/systemd/system/` y `archiso/airootfs/etc/pacman.d/hooks/`. Calamares instala el airootfs en el sistema destino, así que las unidades pueden heredarse; `services-systemd.conf` y `shellprocess-cleanup.conf` deshabilitan los servicios exclusivos del Live y corrigen las máscaras que no deben quedar en la instalación.
 
 ---
 
@@ -10,17 +10,15 @@ Estos servicios se incluyen en la ISO mediante `archiso/airootfs/etc/systemd/sys
 
 ```text
 archiso/airootfs/etc/
+├── NetworkManager/
+│   └── conf.d/
+│       └── 20-churros-dns.conf
+├── resolv.conf -> /run/systemd/resolve/stub-resolv.conf
 ├── systemd/
 │   ├── journald.conf.d/
 │   │   └── volatile-storage.conf
 │   ├── logind.conf.d/
 │   │   └── do-not-suspend.conf
-│   ├── network/
-│   │   ├── 20-ethernet.network
-│   │   ├── 20-wlan.network
-│   │   ├── 20-wwan.network
-│   │   └── networkd.conf.d/
-│   │       └── ipv6-privacy-extensions.conf
 │   ├── resolved.conf.d/
 │   │   └── archiso.conf
 │   └── system/
@@ -28,11 +26,7 @@ archiso/airootfs/etc/
 │       ├── etc-pacman.d-gnupg.mount
 │       ├── choose-mirror.service
 │       ├── livecd-alsa-unmuter.service
-│       ├── livecd-talk.service
-│       ├── getty@tty1.service.d/
-│       │   └── autologin.conf
-│       └── systemd-networkd-wait-online.service.d/
-│           └── wait-for-only-one-interface.conf
+│       └── livecd-talk.service
 └── pacman.d/
     └── hooks/
         ├── uncomment-mirrors.hook
@@ -244,17 +238,15 @@ Impide que el sistema se suspenda automáticamente en el Live. El usuario debe a
 
 Configura journald para almacenar logs en RAM (tmpfs). Como el sistema es Live, no tiene sentido escribir logs al disco.
 
-## 20-*.network
+## Propietario de red y DNS
 
-**Path:** `archiso/airootfs/etc/systemd/network/`
+NetworkManager es el único gestor de interfaces en el Live y en la instalación. El perfil usa `wpa_supplicant` para Wi-Fi; no habilita `iwd` ni `systemd-networkd`, y no incluye perfiles DHCP `20-*.network` que compitan por las mismas interfaces.
 
-Configuración DHCP automática para Ethernet, Wi-Fi y WWAN. Estos archivos usan systemd-networkd, no NetworkManager. NetworkManager toma el relevo cuando arranca (ver `services.sh`).
+`systemd-resolved` se mantiene habilitado como resolvedor DNS: `/etc/resolv.conf` apunta a `/run/systemd/resolve/stub-resolv.conf` y `NetworkManager/conf.d/20-churros-dns.conf` configura `dns=systemd-resolved` para que NetworkManager publique ahí los DNS recibidos.
 
-## wait-for-only-one-interface.conf
+Durante la instalación, `services-systemd.conf` deshabilita `iwd`, `systemd-networkd`, su socket de activación, su unidad wait-online y los servicios específicos de hipervisores. El perfil Live tampoco conserva el alias D-Bus `dbus-org.freedesktop.network1.service`. El paso post-install elimina perfiles y alias heredados de networkd, deshace las máscaras de Live para los servicios wait-online y de sincronización de hora, y habilita `NetworkManager-wait-online.service`. Así, `network-online.target` espera a NetworkManager en el sistema instalado, sin arrancar un segundo gestor de interfaces.
 
-**Path:** `archiso/airootfs/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf`
-
-Reduce el timeout de "esperar a que la red esté online" a la primera interfaz que se levante. Evita esperas largas si hay varios adaptadores.
+Los servicios de integración de Hyper-V, VirtualBox y VMware también quedan deshabilitados en la instalación para no arrastrar una activación específica del Live a todas las máquinas. En una VM, funciones como portapapeles, carpetas compartidas o ajustes de pantalla pueden requerir habilitar manualmente el servicio del hipervisor correspondiente; los paquetes disponibles no se eliminan.
 
 ---
 
@@ -351,7 +343,7 @@ ChurrOS incluye un conjunto de utilidades auxiliares en `/usr/bin/` y `/usr/loca
 Aplica el fondo de pantalla en compositores Wayland (Niri / Hyprland / Sway).
 
 - Detecta automáticamente sockets `WAYLAND_DISPLAY` y `XDG_RUNTIME_DIR` incluso en entornos live sin sesión explícita.
-- Soporta backends `swaybg` (modo estático predeterminado) y `awww` (animaciones/transiciones).
+- Si Noctalia está en marcha, el fondo se lo pasa a `noctalia msg wallpaper-set` (reintenta y no arranca `swaybg`). Sin Noctalia usa `swaybg` y, si falla, `awww`.
 - Si no recibe argumentos, lee la ruta guardada en `~/.config/churros/settings.json` o recurre a `/usr/share/churros/wallpapers/default.png`.
 
 ## churros-pick-image
@@ -365,6 +357,8 @@ Diálogo gráfico nativo en GTK para seleccionar imágenes (fondos de pantalla, 
 **Path:** `/usr/bin/churros-pkexec`
 
 Wrapper para ejecutar comandos con permisos de administrador utilizando Polkit sin requerir terminal interactiva. Permite a las aplicaciones de usuario ejecutar utilidades privilegiadas (como `timedatectl`, `churros-update-utils` o `churros-snapshot`) respetando las políticas de `/etc/polkit-1/rules.d/`.
+
+Hace `exec pkexec`: así el sujeto de polkit es la app que llama y la contraseña que piden las acciones `auth_admin_keep` se recuerda unos minutos entre llamadas. Los llamadores pasan la ruta absoluta del programa, porque la regla autoriza por ruta y argv exactos. Tabla de decisiones en [privileged-execution.md](privileged-execution.md#tabla-de-decisiones).
 
 ## churros-portal-start
 
@@ -382,9 +376,11 @@ El origen está **fijado en el binario** y el comando no acepta argumentos: una 
 
 - la versión y el nombre del fichero del manifiesto, contra expresiones regulares;
 - el SHA-256 del paquete frente al anunciado en el manifiesto;
-- la lista de miembros del tarball: sin rutas absolutas, sin `..`, sin enlaces simbólicos o duros, y solo sobre los prefijos autorizados (`usr/bin`, `usr/lib`, `usr/local/*`, `usr/share/churros`, `etc/churros-version`, `etc/churros-edition`).
+- la lista de miembros del tarball: solo ficheros regulares y directorios (sin enlaces simbólicos o duros, dispositivos ni FIFOs), sin rutas absolutas ni `..`, y solo en las rutas autorizadas: `usr/bin/churros-*`, `usr/local/bin/churros-*`, `usr/share/churros/`, `etc/churros-version`, `etc/churros-edition` y el hook `etc/pacman.d/hooks/50-churros-snapshot.hook`.
 
-La extracción se hace en un directorio de stage y solo después se copia sobre `/`. Si existe `/usr/share/churros/churros-release.pubkey`, el manifiesto además debe venir firmado por minisign y la actualización se aborta si la firma no valida.
+La extracción se hace en un directorio de stage y después se instala fichero a fichero: modo 0755 o 0644, temporal en el directorio de destino y `rename` atómico. Los directorios existentes no se tocan; antes, `cp -a` copiaba el modo 0700 del stage sobre `/` (#130).
+
+El manifiesto se descarga antes de verificar su firma (#139). Si existe `/usr/share/churros/churros-release.pubkey`, el manifiesto debe venir firmado por minisign y la actualización se aborta si la firma no valida o si falta `minisign`. Sin clave publicada solo se avisa; que la firma sea obligatoria está pendiente (#139, #141).
 
 ## churros-theme
 
@@ -416,11 +412,11 @@ Resumen del orden de arranque del Live:
 4. NetworkManager arranca.
 5. `livecd-alsa-unmuter.service` (si `accessibility=on`) desilencia audio.
 6. `livecd-talk.service` (si `accessibility=on`) activa espeakup.
-7. `getty@tty1` hace autologin como root.
+7. `getty@tty1` está enmascarado en el Live; el autologin lo hace greetd como `churros`.
 8. `.zlogin` ejecuta `.automated_script.sh`.
 9. greetd arranca.
 10. Autologin como `churros`, sesión Niri.
-11. Niri carga autostart (waybar, swaybg, churros-welcome).
+11. Niri carga autostart (noctalia, churros-welcome). El fondo lo pinta Noctalia, no swaybg.
 
 ---
 

@@ -1,0 +1,27 @@
+/* Minimal waybar style for ChurrOS Raspberry Pi Edition */
+#waybar {
+  background: rgba(0, 0, 0, 0.3);
+  color: #eeeeee;
+  border-radius: 4px;
+}
+
+#clock {
+  margin: 0 4px;
+}
+
+#backlight {
+  margin: 0 4px;
+}
+
+#pulseaudio {
+  margin: 0 4px;
+}
+
+#network {
+  margin: 0 4px;
+}
+
+#custom/sep {
+  margin: 0 2px;
+  color: #666666;
+}

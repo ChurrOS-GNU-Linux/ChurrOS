@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- System-wide labWC configuration for ChurrOS Raspberry Pi Edition -->
+<labwc_config>
+  <keybind key="W-Return">
+    <action name="Execute">
+      <command>foot</command>
+    </action>
+  </keybind>
+  <keybind key="W-d">
+    <action name="Execute">
+      <command>fuzzel -s</command>
+    </action>
+  </keybind>
+  <keybind key="Escape">
+    <action name="Execute">
+      <command>labwc --exit</command>
+    </action>
+  </keybind>
+  <menu id="root-menu">
+    <menu id="apps">
+      <item>
+        <label>Terminal</label>
+        <action name="Execute">
+          <command>foot</command>
+        </action>
+      </item>
+      <item>
+        <label>File Manager</label>
+        <action name="Execute">
+          <command>pcmanfm</command>
+        </action>
+      </item>
+      <separator/>
+      <item>
+        <label>Logout</label>
+        <action name="Execute">
+          <command>labwc --exit</command>
+        </action>
+      </item>
+    </menu>
+  </menu>
+</labwc_config>

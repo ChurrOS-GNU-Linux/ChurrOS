@@ -26,9 +26,11 @@ fn assets_root() -> PathBuf {
 /// propio del popup (equivalente a popup.py + load_*_css de cada ventana).
 pub fn load_css(own: &str) {
     let Some(display) = gtk::gdk::Display::default() else {
-        return;
+        eprintln!("churros-popup: no hay display Wayland/X11 disponible");
+        std::process::exit(1);
     };
 
+    // CSS compartido (misma prioridad que Preferences)
     let shared = "/usr/share/churros/styles/churros.css";
     let dev_shared = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -51,6 +53,7 @@ pub fn load_css(own: &str) {
         );
     }
 
+    // CSS local (misma prioridad que Preferences)
     for css in ["common.css", own] {
         let path = assets_root().join(css);
         if path.is_file() {
@@ -59,12 +62,13 @@ pub fn load_css(own: &str) {
             gtk::style_context_add_provider_for_display(
                 &display,
                 &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1, // Cambiado de USER+1 a APPLICATION+1
             );
         }
     }
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    // Accent CSS (misma prioridad que Preferences)
+    let home = churros_services::home_dir();
     let accent_path = PathBuf::from(home).join(".config/churros/accent.css");
     if let Ok(css) = std::fs::read_to_string(&accent_path) {
         let provider = gtk::CssProvider::new();
@@ -103,10 +107,85 @@ impl Header {
     }
 }
 
+/// Ejecuta `work` en un hilo aparte y entrega el resultado al hilo GTK vía
+/// timeout (repliega cada 25 ms hasta que llegue). Evita bloquear la UI con
+/// comandos síncronos como wpctl/nmcli/gsettings.
+pub fn run_bg<T, F, C>(work: F, cb: C)
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+    C: FnOnce(T) + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel::<T>();
+    std::thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    let mut cb = Some(cb);
+    glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
+        match rx.try_recv() {
+            Ok(v) => {
+                if let Some(cb) = cb.take() {
+                    cb(v);
+                }
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        }
+    });
+}
+
+fn apply_theme(window: &gtk::ApplicationWindow) {
+    let w = window.clone();
+    run_bg(churros_services::theme::is_dark, move |is_dark| {
+        apply_theme_now(&w, is_dark);
+    });
+}
+
+fn apply_theme_now(window: &gtk::ApplicationWindow, is_dark: bool) {
+    if is_dark {
+        window.remove_css_class("light");
+    } else {
+        window.add_css_class("light");
+    }
+    #[allow(deprecated)]
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(is_dark);
+    }
+    window.queue_draw();
+}
+
+fn setup_theme(window: &gtk::ApplicationWindow) -> Option<gio::Settings> {
+    apply_theme(window);
+
+    let w = window.clone();
+    let settings = gio::SettingsSchemaSource::default().and_then(|schema_source| {
+        let schema = schema_source.lookup("org.gnome.desktop.interface", false)?;
+        let settings =
+            gio::Settings::new_full(&schema, None::<&gio::SettingsBackend>, None::<&str>);
+        settings.connect_changed(Some("color-scheme"), move |_, _| {
+            let w = w.clone();
+            glib::idle_add_local_once(move || apply_theme(&w));
+        });
+        Some(settings)
+    });
+
+    let w_active = window.clone();
+    window.connect_is_active_notify(move |win| {
+        if win.is_active() {
+            apply_theme(&w_active);
+        }
+    });
+
+    settings
+}
+
 /// Ventana base del popup (port de common/popup.py).
 pub struct PopupWindow {
     pub window: gtk::ApplicationWindow,
     pub content: gtk::Box,
+    #[allow(dead_code)]
+    theme_settings: Option<gio::Settings>,
 }
 
 impl PopupWindow {
@@ -120,8 +199,10 @@ impl PopupWindow {
             .default_height(400)
             .resizable(false)
             .decorated(false)
-            .css_classes(["popup"])
+            .css_classes(["popup", "churros-glass"])
             .build();
+
+        let theme_settings = setup_theme(&window);
 
         let main_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         main_box.add_css_class("popup-content");
@@ -148,7 +229,11 @@ impl PopupWindow {
         ));
         window.add_controller(controller);
 
-        Self { window, content }
+        Self {
+            window,
+            content,
+            theme_settings,
+        }
     }
 
     pub fn add(&self, widget: &impl IsA<gtk::Widget>) {

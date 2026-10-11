@@ -73,6 +73,9 @@ smartmontools
 sof-firmware
 squashfs-tools
 sudo
+# checkupdates (Ajustes > Actualizaciones) comprueba sin root; fakeroot lo necesita
+pacman-contrib
+fakeroot
 pacman-mirrorlist
 archlinux-keyring
 syslinux

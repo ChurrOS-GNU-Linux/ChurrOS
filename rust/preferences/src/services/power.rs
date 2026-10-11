@@ -47,14 +47,14 @@ fn run(args: &[&str]) -> String {
     buf.trim().to_string()
 }
 
-/// Comandos "set": equivalente a subprocess.run(capture_output=False, timeout=2).
-/// Se lanzan sin esperar (mismo efecto, no bloquea la UI).
+/// Comandos "set": equivalente a subprocess.run(capture_output=False).
+/// status() recoge el proceso para no dejar zombis.
 fn run_no_output(args: &[&str]) {
     let _ = Command::new(args[0])
         .args(&args[1..])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 pub struct PowerService;

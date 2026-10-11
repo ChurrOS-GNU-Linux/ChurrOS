@@ -61,16 +61,31 @@ bash /root/scripts/services.sh
 # shellprocess@pacman-init de Calamares. Y un `pacman -Sy` en pleno build solo
 # descarga bases de datos que nadie consulta durante la construcción.
 
+# Ensure multilib is enabled in live environment pacman.conf
+if [ -f /etc/pacman.conf ] && grep -q '^#\[multilib\]' /etc/pacman.conf; then
+    sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
+fi
+
 echo "Configuring desktop..."
 bash /root/scripts/desktop.sh
 
 echo "Installing Calamares..."
-if ls /root/packages/calamares-[0-9]*.pkg.tar.zst 1>/dev/null 2>&1; then
+calamares_pkg=""
+shopt -s nullglob
+for calamares_candidate in /root/packages/calamares-[0-9]*.pkg.tar.*; do
+    case "$calamares_candidate" in
+        *.sig) continue ;;
+    esac
+    calamares_pkg="$calamares_candidate"
+    break
+done
+shopt -u nullglob
+if [ -n "$calamares_pkg" ]; then
     pacman -Scc --noconfirm 2>/dev/null || true
 
-    bsdtar -xf /root/packages/calamares-*.pkg.tar.zst -C /
+    bsdtar -xf "$calamares_pkg" -C /
 
-    rm -f /root/packages/calamares-*.pkg.tar.zst
+    rm -f /root/packages/calamares-[0-9]*.pkg.tar.* /root/packages/calamares-debug-*.pkg.tar.*
 
     cat > /usr/share/applications/calamares.desktop << 'DESKTOP'
 [Desktop Entry]
@@ -100,11 +115,36 @@ else
 fi
 
 echo "Installing Bazaar..."
-# Bazaar se instala desde packages.x86_64 via pacstrap (repo local [churros],
-# patcheado para fix de libdex). Ya no se usa bsdtar.
+# Bazaar se instala vía pacstrap desde el repo local [churros] y depende de
+# libdex>=1.2. Ya no se usa bsdtar.
 
-if ls /root/packages/*.pkg.tar.zst 1>/dev/null 2>&1; then
+if compgen -G '/root/packages/*.pkg.tar.*' >/dev/null; then
     echo "  (paquetes del repo local quedan en /root/packages para Calamares/netinstall)"
+fi
+
+# linux-aarch64 instala /boot/Image. mkarchiso, justo después de este
+# script, copia /boot/vmlinuz-* al arranque de la ISO. Sin esta copia el
+# glob falla y la ISO no arranca. Se mira el fichero y no uname: dentro de
+# qemu-user, uname a veces sigue diciendo la arquitectura del host.
+#
+# linux-aarch64 posee /etc/mkinitcpio.d/linux-aarch64.preset y no es un
+# backup: si el fichero ya está, pacstrap aborta. Se copia después, desde
+# /usr/share/churros, se regenera el initramfs (ALL_kver=/boot/Image,
+# initramfs-linux.img) y se publica como initramfs-linux-aarch64.img.
+if [ -f /boot/Image ]; then
+    echo "Installing aarch64 mkinitcpio preset..."
+    a64_preset=/usr/share/churros/mkinitcpio/aarch64/linux-aarch64.preset
+    a64_hooks=/usr/share/churros/mkinitcpio/aarch64/archiso.conf
+    if [ ! -f "$a64_preset" ] || [ ! -f "$a64_hooks" ]; then
+        printf 'customize_airootfs: missing aarch64 mkinitcpio files\n' >&2
+        exit 1
+    fi
+    install -D -m 644 "$a64_hooks" /etc/mkinitcpio.conf.d/archiso.conf
+    install -D -m 644 "$a64_preset" /etc/mkinitcpio.d/linux-aarch64.preset
+    rm -f /etc/mkinitcpio.d/linux.preset
+    mkinitcpio -p linux-aarch64
+    echo "Publishing aarch64 kernel names..."
+    /usr/share/churros/scripts/publish-aarch64-kernel --require
 fi
 
 echo "Cleaning..."
