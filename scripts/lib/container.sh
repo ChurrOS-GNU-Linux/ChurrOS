@@ -226,7 +226,13 @@ container_run() {
 Usa podman (se ejecuta con sudo) o el demonio de docker normal:
   CHURROS_CONTAINER_ENGINE=podman ./churros build --container"
                 fi
-                run_args+=(--privileged)
+                # Sin límite de procesos. pacstrap corre pacman como PID 1 de un
+                # namespace (unshare --pid) y cada verificación de firma deja
+                # procesos zombi que nadie recoge (medido: ~2 por paquete). Con
+                # los ~860 paquetes de la ISO, el límite por defecto de podman
+                # (2048) coincidió con un build que fallaba al verificar firmas
+                # ("GPGME error: System error w/o errno", paquetes "corrupted").
+                run_args+=(--privileged --pids-limit=-1)
                 shift
                 ;;
             --upgrade)
