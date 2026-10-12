@@ -110,15 +110,6 @@ BUNDLE_XFCE="churros-utils-xfce-${VERSION}-${ARCH}.tar.zst"
 cp "$ARCH_OUT/$BUNDLE" "$ARCH_OUT/$BUNDLE_XFCE"
 SHA_XFCE="$SHA_MAIN"
 
-# Bundle KDE
-BUNDLE_KDE="churros-utils-kde-${VERSION}-${ARCH}.tar.zst"
-cp "$ARCH_OUT/$BUNDLE" "$ARCH_OUT/$BUNDLE_KDE"
-SHA_KDE="$SHA_MAIN"
-
-# Bundle Server
-BUNDLE_SERVER="churros-utils-server-${VERSION}-${ARCH}.tar.zst"
-cp "$ARCH_OUT/$BUNDLE" "$ARCH_OUT/$BUNDLE_SERVER"
-SHA_SERVER="$SHA_MAIN"
 
 # 7. updates.json (manifiesto con versión + arquitectura + ediciones)
 DATE=$(date +%Y-%m-%d)
@@ -137,14 +128,6 @@ cat > "$ARCH_OUT/updates.json" <<EOF
     "xfce": {
       "file": "$BUNDLE_XFCE",
       "sha256": "$SHA_XFCE"
-    },
-    "kde": {
-      "file": "$BUNDLE_KDE",
-      "sha256": "$SHA_KDE"
-    },
-    "server": {
-      "file": "$BUNDLE_SERVER",
-      "sha256": "$SHA_SERVER"
     }
   }
 }
@@ -161,8 +144,6 @@ echo "  [4/4] listo:"
 echo "    $ARCH_OUT/$BUNDLE"
 echo "    $ARCH_OUT/$BUNDLE_NIRI"
 echo "    $ARCH_OUT/$BUNDLE_XFCE"
-echo "    $ARCH_OUT/$BUNDLE_KDE"
-echo "    $ARCH_OUT/$BUNDLE_SERVER"
 echo "    $ARCH_OUT/updates.json"
 echo
 echo "  Sube los archivos a: https://download.churroslinux.org/churros/"

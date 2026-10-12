@@ -100,6 +100,14 @@ Trabajo integrado en `main`, todavía sin número de versión.
 - `procps-ng` y `pciutils` en la ISO de niri y XFCE: los invocaba el código que faltaba.
 - El tour se limpia al terminar la instalación y no aparece en el sistema instalado.
 
+## 2026-10-12 — ChurrOS 1.3
+
+Release pública **v1.3**. Estabilidad del sistema, resolución de dependencias para gaming/AUR y actualización integral de la suite oficial:
+
+- **ChurrOS Tour mejorado**: Inclusión de `base-devel` para compilación de paquetes AUR (`google-chrome`, `brave-bin`, etc.) y soporte gráfico multilib (`lib32-mesa`, `vulkan-icd-loader`, `lib32-vulkan-icd-loader`) para compatibilidad completa con Steam.
+- **Alineación de versión 1.3**: Sincronización de `VERSION`, crates de Rust a `1.3.0`, `/etc/churros-version`, Fastfetch branding, Calamares installer (`branding.desc`) y manifiestos de actualización OTA.
+- **Kernel estable de Arch Linux**: Se mantiene el kernel oficial (`linux`) garantizando máxima fiabilidad y compatibilidad de hardware.
+
 ---
 
 ## 2026-09-23 — ChurrOS 1.2

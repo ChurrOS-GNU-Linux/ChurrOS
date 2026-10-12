@@ -10,7 +10,7 @@ La hoja de ruta puede cambiar conforme evolucione la distribución.
 
 # Estado actual
 
-La versión publicada es **v1.2**. ChurrOS sigue en etapa temprana: hay ISO, tres ediciones de escritorio (Niri, XFCE y KDE Plasma), instalador, apps oficiales, actualizador y rollback.
+La versión publicada es **v1.3**. ChurrOS sigue en etapa temprana: hay ISO, tres ediciones de escritorio (Niri, XFCE y KDE Plasma), instalador, apps oficiales, actualizador y rollback.
 
 El objetivo principal es consolidar esa base (identidad de arranque y repositorio propio) antes de ampliar el alcance.
 
@@ -112,9 +112,9 @@ Publicar la primera versión estable.
 
 ## Objetivos
 
-- [x] Versión 1.2.
+- [x] Versión 1.3.
 - [ ] Sitio web.
-- [x] GitHub Releases (v0.6). La ISO actual (**v1.2**) se publica en download.churroslinux.org.
+- [x] GitHub Releases (v0.6). La ISO actual (**v1.3**) se publica en download.churroslinux.org.
 - [ ] Wiki oficial.
 - [ ] Manual de usuario.
 - [ ] Comunidad.
@@ -123,7 +123,7 @@ Publicar la primera versión estable.
 
 # Objetivos a largo plazo
 
-Después de la versión 1.2, ChurrOS buscará convertirse en una distribución Linux completa con identidad propia.
+Después de la versión 1.3, ChurrOS buscará convertirse en una distribución Linux completa con identidad propia.
 
 Algunos objetivos futuros incluyen:
 

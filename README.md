@@ -461,7 +461,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Estado actual
 
-Versión del proyecto: **1.2** ( [`VERSION`](VERSION) ).
+Versión del proyecto: **1.3** ( [`VERSION`](VERSION) ).
 
 ChurrOS cuenta con ISO personalizada, tres ediciones de escritorio (Niri, XFCE y KDE Plasma), construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
 
