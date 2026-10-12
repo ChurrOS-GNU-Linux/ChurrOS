@@ -264,7 +264,8 @@ if [ -n "$OVMF_CODE" ] && [ -n "$OVMF_VARS" ]; then
     QEMU_CMD+=(
         -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
         -drive "if=pflash,format=raw,file=$VARS"
-    )i
+    )
+fi
 if [ "$TARGET_ARCH" = aarch64 ]; then
     QEMU_CMD+=(
         -device "virtio-scsi-pci,id=scsi0"
