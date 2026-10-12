@@ -91,6 +91,7 @@ lines = open(path, encoding="utf-8").read().splitlines()
 out = []
 inserted_prepare = False
 inserted_python = False
+has_options = any(line.strip().startswith("options=(") for line in lines)
 extra_src = " ".join(f"'{name}'" for name, _ in pairs)
 extra_sha = " ".join(f"'{sha}'" for _, sha in pairs)
 
@@ -99,13 +100,27 @@ for line in lines:
         line = line.rstrip(")") + f" {extra_src})"
     elif line.startswith("sha256sums=("):
         line = line.rstrip(")") + f" {extra_sha})"
-    elif line.startswith("build() {") and not inserted_prepare:
-        out.append("prepare() {")
-        for name, _ in pairs:
-            out.append(f'    patch -Np1 -d "$_pkgname-$pkgver" -i "$srcdir/{name}"')
-        out.append("}")
-        out.append("")
-        inserted_prepare = True
+    elif line.strip().startswith("options=("):
+        prefix = line[:line.index("options=(") + len("options=(")]
+        suffix = line[line.rindex(")"):]
+        inner = line[len(prefix):-len(suffix)].split()
+        filtered = [opt for opt in inner if opt not in ("lto", "'lto'", '"lto"')]
+        if not any(opt in ("!lto", "'!lto'", '"!lto"') for opt in filtered):
+            filtered.append("!lto")
+        line = prefix + " ".join(filtered) + suffix
+    elif line.startswith("build() {"):
+        if not has_options:
+            out.append("# Disable LTO to prevent GCC 16 ICE (segfault during IPA inline pass)")
+            out.append("options=(!lto)")
+            out.append("")
+            has_options = True
+        if not inserted_prepare:
+            out.append("prepare() {")
+            for name, _ in pairs:
+                out.append(f'    patch -Np1 -d "$_pkgname-$pkgver" -i "$srcdir/{name}"')
+            out.append("}")
+            out.append("")
+            inserted_prepare = True
     out.append(line)
     if (not inserted_python) and line.strip() == "-DBUILD_TESTING=OFF":
         # Pin distro Python so CMake does not pick ~/.local uv interpreters
