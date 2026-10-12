@@ -30,12 +30,20 @@ case "$arch" in
     # xz con filtro BCJ, como lo dejó el port ARM.
     airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'arm' '-b' '1M' '-Xdict-size' '1M')
     ;;
+  i686)
+    # i686 es x86, así que conserva BIOS (syslinux). El arranque UEFI lo cubre
+    # IA32 (grub i386-efi); lo aporta el mkarchiso de Arch Linux 32.
+    bootmodes=('bios.syslinux'
+               'uefi.grub')
+    airootfs_image_tool_options=('-comp' 'zstd' '-b' '1M')
+    ;;
   *)
-    printf 'profiledef.sh: arquitectura no soportada: %s (x86_64 o aarch64)\n' "$arch" >&2
+    printf 'profiledef.sh: arquitectura no soportada: %s (x86_64, aarch64 o i686)\n' "$arch" >&2
     exit 1
     ;;
 esac
-# Repos de cada arquitectura: Arch Linux (mirrorlist del host) o Arch Linux ARM.
+# Repos de cada arquitectura: Arch Linux (mirrorlist del host), Arch Linux ARM
+# o Arch Linux 32 (i686).
 pacman_conf="pacman.${arch}.conf"
 airootfs_image_type="squashfs"
 bootstrap_tarball_compression=('zstd' '-c' '-T0' '--auto-threads=logical' '--long' '-19')

@@ -8,6 +8,7 @@
 ./churros build --edition kde   # Build ISO with KDE Plasma edition
 ./churros build --edition server # Build ISO with the headless server edition
 ./churros build --arch arm64 # Build the aarch64 ISO (default: host architecture, uname -m; same for run)
+./churros build --arch i686  # Build the 32-bit ISO (Arch Linux 32 repos; same for run)
 ./churros build --container  # Same build inside the Arch container (Containerfile; podman or docker, --privileged)
 ./churros rust               # cargo build/test/clippy of rust/ inside the container (same as CI); --host runs it locally
 ./churros run                # Build (if needed) and launch QEMU
@@ -46,7 +47,7 @@ A trap on EXIT cleans generated files out of `archiso/airootfs/` (`root/customiz
 
 There are no unit tests yet. Two layers of verification exist today.
 
-`./churros check` runs the static checks (`scripts/cli/check.sh`): bash syntax, shellcheck at error level, Python syntax, duplicate entries in `packages.x86_64`, commands spawned by niri that resolve to a binary/crate/package, desktop `Exec`/`TryExec` resolution, Calamares exec order and shellprocess configs, Calamares branding (`componentName`, slideshow API 2, image files), Calamares host preview (`./churros apps calamares`), local AUR extras listed in `netinstall.yaml`, and `msgfmt --check` on `po/*.po`. It needs no ISO build and runs in seconds. The same script runs in CI (`.github/workflows/ci.yml`) on every push to `main` and every pull request.
+`./churros check` runs the static checks (`scripts/cli/check.sh`): bash syntax, shellcheck at error level, Python syntax, duplicate entries in the `packages.*` lists (x86_64, i686, editions), commands spawned by niri that resolve to a binary/crate/package, desktop `Exec`/`TryExec` resolution, Calamares exec order and shellprocess configs, Calamares branding (`componentName`, slideshow API 2, image files), Calamares host preview (`./churros apps calamares`), local AUR extras listed in `netinstall.yaml`, and `msgfmt --check` on `po/*.po`. It needs no ISO build and runs in seconds. The same script runs in CI (`.github/workflows/ci.yml`) on every push to `main` and every pull request.
 
 `./churros check` also runs the privileged-execution tests (see `docs/privileged-execution.md`): `scripts/test-polkit-rules.js` (Node, no dependencies; skipped with a notice if `node` is missing) checks every decision of the polkit rule and that each real caller still uses the argv the rule allows; `scripts/test-privileged-helpers.py` runs `churros-update-utils` against a fake root, `churros-write-root-config` and the edition → session table without root. CI also runs `scripts/test-polkit-pkexec.sh` (`.github/workflows/polkit.yml`) against real polkitd and pkexec in an Arch container; it needs root, so do not run it on your machine. If you change a pkexec caller, change `50-churros-store.rules` and the caller table in `scripts/test-polkit-rules.js` with it.
 
@@ -82,6 +83,7 @@ archiso/                      ArchISO profile root
   profiledef.sh               iso metadata, arch (CHURROS_ARCH), bootmodes, squashfs options, file_permissions map
   pacman.x86_64.conf          Bootstrap repos for x86_64 (Arch Linux, host mirrorlist)
   pacman.aarch64.conf         Bootstrap repos for aarch64 (Arch Linux ARM)
+  pacman.i686.conf            Bootstrap repos for i686 (Arch Linux 32)
   packages/                   Local pacman repo (built pkgs + repo db live here)
   airootfs/                   Squashfs root overlay
     etc/skel/.config/          niri, waybar, noctalia, foot, fuzzel — DO NOT MODIFY
@@ -104,9 +106,9 @@ docs/                         Project documentation
 - **Git workflow**: every change starts on a new branch (never on `main`). Create the branch, make and verify the changes there, and only merge back into `main` once everything works.
 - Shell scripts: `#!/usr/bin/env bash`, `set -e`, shellcheck-compliant.
 - Calamares modules: `.conf` (and `.yaml` for netinstall) in `installer/calamares/modules/`. Arch-specific variants (`unpackfs.conf`, `shellprocess-fixboot.conf`, `shellprocess-pacman.conf`) live in `installer/calamares/modules/<arch>/` and `apply-calamares.sh` copies them over the common ones.
-- Package lists: one package per line in `archiso/packages.x86_64`.
+- Package lists: one package per line in `archiso/packages.<arch>` (editions: `archiso/packages.<edition>.x86_64`).
 - File mode map (not git): declared in `archiso/profiledef.sh` `file_permissions` (e.g. `/usr/bin/churros-*` 0755).
-- Bootstrap uses `pacman.<arch>.conf`, chosen in `profiledef.sh` from `CHURROS_ARCH` (default: host arch); airootfs squashfs zstd on x86_64 and xz on aarch64; bootstrap tarball zstd.
+- Bootstrap uses `pacman.<arch>.conf`, chosen in `profiledef.sh` from `CHURROS_ARCH` (default: host arch); airootfs squashfs zstd on x86_64/i686 and xz on aarch64; bootstrap tarball zstd.
 
 ## Calamares Sequence
 
@@ -129,7 +131,7 @@ Config files per instance: `shellprocess-pacman.conf`, `shellprocess-fixboot.con
 - **Terminal**: foot.
 - **Apps**: portadas a Rust (gtk4-rs + libadwaita-rs) en `rust/`: `churros-welcome`, `churros-settings` (preferences), `churros-popup` (6 popups en un binario con toggle nativo vía pidfiles en `/tmp/churros/`), `churros-control-center` y `churros-tour` (recorrido guiado, se limpia al instalar). Sus binarios se despliegan en `/usr/bin/churros-*` por `build-rust.sh` (crates con `deploy = true`); los assets runtime viven en `/usr/share/churros/<app>/` (los crates resuelven a `assets/` local en desarrollo). Las traducciones gettext (`po/*.po`) siguen siendo las que usa el resto del sistema; las apps Rust llevan sus cadenas en el codigo.
 - **Installer**: Calamares with custom `churros` branding (slideshow, QSS stylesheet).
-- **Boot modes** (from `profiledef.sh`): `bios.syslinux` + `uefi.grub` on x86_64, `uefi.grub` on aarch64. No systemd-boot, no Limine (mkarchiso del host no lo soporta).
+- **Boot modes** (from `profiledef.sh`): `bios.syslinux` + `uefi.grub` on x86_64 and i686, `uefi.grub` on aarch64. No systemd-boot, no Limine (mkarchiso del host no lo soporta).
 - **Audio**: PipeWire + WirePlumber.
 - **Build system**: archiso (`mkarchiso`).
 

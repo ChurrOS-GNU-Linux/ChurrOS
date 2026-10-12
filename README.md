@@ -145,7 +145,7 @@ Los pasos que pasan por `sudo` son los que archiso necesita con privilegios. La 
 
 ### Requisitos
 
-ChurrOS está diseñado para desarrollarse desde Arch Linux o una distribución basada en Arch. `mkarchiso` construye la imagen dentro de la propia ISO, así que la máquina de build debe ser `x86_64`.
+ChurrOS está diseñado para desarrollarse desde Arch Linux o una distribución basada en Arch. `mkarchiso` construye la imagen dentro de la propia ISO, así que la máquina de build debe ser `x86_64`. Para otras arquitecturas (`./churros build --arch arm64`, `./churros build --arch i686`) el entorno de build debe ser el de esa arquitectura (Arch Linux ARM, Arch Linux 32); la ISO i686 usa los repositorios de [Arch Linux 32](https://archlinux32.org) y QEMU arranca con `qemu-system-i386`.
 
 ```bash
 sudo pacman -S archiso git qemu-full edk2-ovmf rust cargo shellcheck gettext
@@ -178,7 +178,6 @@ Se recomienda trabajar mediante ramas y pull requests en lugar de realizar cambi
 ./churros build              # edición Niri
 ./churros build --edition xfce
 ./churros build --edition kde
-```
 ./churros build --arch x86_64     # por defecto / anfitriona
 ./churros build --arch arm64      # ARM de 64 bits (edición pi / Raspberry Pi)
 ./churros build --arch i686       # i686 / Arch Linux 32
@@ -284,7 +283,7 @@ ChurrOS utiliza un repositorio local de paquetes durante la construcción (`arch
 
 El objetivo a largo plazo es disponer de un repositorio oficial de paquetes de ChurrOS.
 
-Cada edición de escritorio tiene además su propio perfil en `archiso/`: `packages.x86_64` (206 entradas), `packages.xfce.x86_64` (214), `packages.kde.x86_64` (209) y `packages.server.x86_64` (185).
+Cada edición de escritorio tiene además su propio perfil en `archiso/`: `packages.x86_64` (206 entradas), `packages.xfce.x86_64` (214), `packages.kde.x86_64` (209) y `packages.server.x86_64` (185). El port de 32 bits usa `packages.i686` (Arch Linux 32) y sigue la lista base del escritorio, pero recortada a lo que archlinux32 empaqueta: el compositor Niri, la shell Noctalia, Bazaar (y webkitgtk-6.0/glycin) y `polkit-qt6` (necesario para Calamares) no están disponibles y quedan pendientes de empaquetar para i686. Sus ediciones (xfce/kde/server) aún no tienen lista propia.
 
 ---
 

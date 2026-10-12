@@ -11,7 +11,7 @@
 # se rellenan copias a 64 MiB (el tamaño del pflash de AAVMF).
 
 # Imprime dos rutas (CODE y plantilla VARS) y devuelve 0.
-# $1: aarch64 o x86_64
+# $1: aarch64, x86_64 o i686
 # $2: directorio donde escribir las copias rellenadas
 # CHURROS_FIRMWARE_ROOT antepone un prefijo a /usr (tests).
 churros_resolve_pflash() {
@@ -29,6 +29,15 @@ churros_resolve_pflash() {
                 "/usr/share/edk2/aarch64/QEMU_EFI.fd|/usr/share/edk2/aarch64/QEMU_VARS.fd"
                 "/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw|/usr/share/edk2/aarch64/QEMU_VARS.fd"
                 "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd|/usr/share/qemu-efi-aarch64/QEMU_VARS.fd"
+            )
+            ;;
+        i686)
+            pairs=(
+                "/usr/share/OVMF/OVMF32_CODE_4M.fd|/usr/share/OVMF/OVMF32_VARS_4M.fd"
+                "/usr/share/OVMF/OVMF32_CODE.fd|/usr/share/OVMF/OVMF32_VARS.fd"
+                "/usr/share/OVMF32/OVMF32_CODE_4M.fd|/usr/share/OVMF32/OVMF32_VARS_4M.fd"
+                "/usr/share/edk2/ia32/OVMF_CODE.fd|/usr/share/edk2/ia32/OVMF_VARS.fd"
+                "/usr/share/ovmf/OVMF32_CODE_4M.fd|/usr/share/ovmf/OVMF32_VARS_4M.fd"
             )
             ;;
         x86_64)

@@ -5,7 +5,7 @@
 # en el servidor de actualizaciones.
 #
 # Uso:
-#   ./scripts/build-churros-release.sh [x86_64|aarch64]
+#   ./scripts/build-churros-release.sh [x86_64|aarch64|i686]
 #
 # Produce en release/:
 #   <arch>/churros-utils-<version>-<arch>.tar.zst
@@ -23,9 +23,9 @@ STAGE="$(mktemp -d)"
 ARCH="${1:-$(uname -m)}"
 
 case "$ARCH" in
-    x86_64|aarch64) ;;
+    x86_64|aarch64|i686) ;;
     *)
-        echo "Error: unsupported architecture '$ARCH' (use x86_64 or aarch64)." >&2
+        echo "Error: unsupported architecture '$ARCH' (use x86_64, aarch64 or i686)." >&2
         exit 1
         ;;
 esac

@@ -51,14 +51,30 @@ done
 [ -n "$TARGET_ARCH" ] || TARGET_ARCH="$(uname -m)"
 case "$TARGET_ARCH" in
     arm64) TARGET_ARCH="aarch64" ;;
+    i386|i486|i586|i686) TARGET_ARCH="i686" ;;
     x86_64|aarch64) ;;
     *)
-        echo "Error: unsupported architecture '$TARGET_ARCH' (use --arch arm64 or --arch x86_64)." >&2
+        echo "Error: unsupported architecture '$TARGET_ARCH' (use --arch x86_64, --arch arm64 or --arch i686)." >&2
         exit 1
         ;;
 esac
 
 PACKAGE_LIST="archiso/packages.${TARGET_ARCH}"
+
+# Los paquetes locales ([churros]: calamares, bazaar, yay, wlogout, pywal) los
+# compila makepkg para la arquitectura del host. Construir aquí una ISO de otra
+# arquitectura deja paquetes incompatibles en el repo y pacstrap falla con
+# "wrong architecture"; usa un host de esa arquitectura.
+HOST_ARCH="$(uname -m)"
+case "$HOST_ARCH" in
+    arm64) HOST_ARCH="aarch64" ;;
+    i386|i486|i586|i686) HOST_ARCH="i686" ;;
+esac
+if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
+    echo "WARNING: construyendo la ISO $TARGET_ARCH en un host $HOST_ARCH." >&2
+    echo "         Los paquetes locales del repo [churros] deben estar compilados" >&2
+    echo "         para $TARGET_ARCH o pacstrap rechazará los del host." >&2
+fi
 
 EDITION=$(echo "$EDITION" | tr '[:upper:]' '[:lower:]')
 if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "kde" ] && [ "$EDITION" != "server" ] && [ "$EDITION" != "pi" ]; then
@@ -354,22 +370,58 @@ for obsolete_pkg in noctalia-qs noctalia-qs-debug noctalia-shell; do
     fi
 done
 
+# El repo local es compartido entre arquitecturas: un calamares/yay/wlogout de
+# un build x86_64 quedaría aquí y pacstrap lo rechazaría al construir i686
+# (o aarch64). Se descartan los paquetes cuyo arch (.PKGINFO) no coincide.
+# bsdtar lo expone; si no está disponible (no debería en un host de build Arch),
+# se deja como está y el warning de arriba avisa.
+if command -v bsdtar >/dev/null 2>&1; then
+    for pkg in archiso/packages/*.pkg.tar.zst; do
+        [ -f "$pkg" ] || continue
+        pkg_arch=$(bsdtar -xOf "$pkg" .PKGINFO 2>/dev/null | sed -n 's/^arch = //p' | head -n1)
+        if [ -n "$pkg_arch" ] && [ "$pkg_arch" != "any" ] && [ "$pkg_arch" != "$TARGET_ARCH" ]; then
+            echo "  Removing local package for wrong architecture ($pkg_arch): $(basename "$pkg")"
+            rm -f "$pkg"
+        fi
+    done
+    if ls archiso/packages/*.pkg.tar.zst >/dev/null 2>&1; then
+        repo-add -q archiso/packages/churros.db.tar.gz archiso/packages/*.pkg.tar.zst 2>/dev/null || true
+    fi
+fi
+
 # Always invoke: rebuilds if the package is missing or linked against a
 # different libpython than the ISO's `python` package (pacstrap).
-bash scripts/build-calamares.sh
+# Always invoke Calamares on supported architectures: it rebuilds if missing or linked against a different libpython than the ISO. Arch Linux 32 lacks polkit-qt6, required by the PKGBUILD.
+if [ "$TARGET_ARCH" = "i686" ]; then
+    echo "  [i686] Calamares omitido: archlinux32 no empaqueta polkit-qt6."
+else
+    bash scripts/build-calamares.sh
+fi
 CALAMARES_PKG="$(churros_first_pkg "$LOCAL_REPO" 'calamares-[0-9]*' || true)"
 PYWAL_PKG="$(churros_first_pkg "$LOCAL_REPO" 'python-pywal-*' || true)"
 YAY_PKG="$(churros_first_pkg "$LOCAL_REPO" 'yay-*' || true)"
 WLOGOUT_PKG="$(churros_first_pkg "$LOCAL_REPO" 'wlogout-*' || true)"
+
+# En i686 no existen para la arquitectura (vistos arriba) y además pueden
+# quedar en archiso/packages/ los de un build x86_64 previo: integrarlos haría
+# que pacstrap los rechace por arquitectura. Fuerzan el camino "sin instalador".
+if [ "$TARGET_ARCH" = "i686" ]; then
+    CALAMARES_PKG=""
+    BAZAAR_PKG=""
+fi
 
 if [ -z "$PYWAL_PKG" ] || [ -z "$YAY_PKG" ] || [ -z "$WLOGOUT_PKG" ]; then
     echo "  AUR extras not found — building..."
     bash scripts/build-aur.sh
 fi
 
-# Siempre: el script reutiliza el paquete si ya depende de libdex>=1.2.
-echo "  Bazaar (libdex >= 1.2)..."
-bash scripts/build-bazaar.sh
+if [ "$TARGET_ARCH" = "i686" ]; then
+    echo "  [i686] Bazaar omitido: archlinux32 no empaqueta webkitgtk-6.0 ni glycin."
+else
+    # Siempre: el script reutiliza el paquete si ya depende de libdex>=1.2.
+    echo "  Bazaar (libdex >= 1.2)..."
+    bash scripts/build-bazaar.sh
+fi
 
 if [ -n "$CALAMARES_PKG" ]; then
     echo "  Integrating Calamares installer..."

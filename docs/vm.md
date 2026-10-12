@@ -53,6 +53,7 @@ Flags opcionales:
 | `--fresh` | Borra `vm/OVMF_VARS.fd` antes de arrancar para que OVMF parta limpio y arranque desde el CD-ROM en vez del disco. Útil tras instalar ChurrOS en la VM y necesitar probar de nuevo la ISO live. |
 | `--clean` | Borra `vm/ChurrOS.qcow2` y `vm/OVMF_VARS.fd` antes de arrancar (disco + variables EFI). |
 | `--arch arm64` | Ejecuta la ISO `*aarch64*.iso` con `qemu-system-aarch64`, máquina `virt`, CPU `cortex-a72` (o KVM si el host ya es aarch64), CD virtio-scsi y teclado USB. Usa `vm/ChurrOS-arm64.qcow2` y `vm/OVMF_VARS_arm64.fd`. |
+| `--arch i686` | Ejecuta la ISO de 32 bits con `qemu-system-i386`, máquina `q35` y CPU `qemu32`/`host`. Usa `vm/ChurrOS-i686.qcow2`; arranca por BIOS (SeaBIOS) y usa UEFI IA32 solo si hay OVMF de 32 bits instalado. |
 
 > **Consejo:** Si acabas de instalar ChurrOS en la VM, OVMF guarda la entrada `Boot0009 "ChurrOS"` en `OVMF_VARS.fd`, así que el siguiente arranque dirá `BdsDxe: starting Boot0009 "ChurrOS"` y entrará al sistema instalado. Ejecuta `./churros run --fresh` para arrancar limpio del CD-ROM, o simplemente `rm vm/OVMF_VARS.fd`.
 
@@ -110,10 +111,10 @@ Para resetear la VM, basta con borrar `vm/ChurrOS.qcow2` y `vm/OVMF_VARS.fd`. La
 ## ISO Detection
 
 ```bash
-ISO=$(find out -name "*.iso" | head -n1)
+ISO=$(find out \( -name "*-${TARGET_ARCH}.iso" -o -name "*-${TARGET_ARCH}-*.iso" \) -print 2>/dev/null | sort | tail -n1)
 ```
 
-El script toma la primera ISO que encuentra en `out/` (orden alfabético). Si la ISO tiene fecha en el nombre (`ChurrOS-2026.07-x86_64.iso`), la última será la más reciente.
+El script toma la ISO de la arquitectura pedida (`--arch`) que haya en `out/`; si hay varias (p. ej. con fechas distintas), la más reciente. Así `./churros run --arch i686` arranca la ISO i686 aunque `out/` contenga también la x86_64 o la aarch64.
 
 ---
 

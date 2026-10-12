@@ -69,6 +69,7 @@ check() {
 #     comando              Arch                Debian/Ubuntu      Fedora
 check git
 check qemu-system-x86_64  qemu-desktop        qemu-system-x86    qemu-system-x86
+check qemu-system-i386    qemu-desktop        qemu-system-x86    qemu-system-x86
 check qemu-system-aarch64 qemu-system-aarch64 qemu-system-arm    qemu-system-aarch64
 check qemu-img            qemu-img            qemu-utils         qemu-img
 check sudo

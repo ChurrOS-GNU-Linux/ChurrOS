@@ -11,8 +11,10 @@ archiso/
 ├── profiledef.sh              # Metadatos de la ISO, arquitectura, modos de arranque y mapa de permisos
 ├── packages.x86_64            # Paquetes de la ISO x86_64 (edición Niri; las demás ediciones tienen packages.<edición>.x86_64)
 ├── packages.aarch64           # Paquetes de la ISO ARM64
+├── packages.i686              # Paquetes de la ISO i686 (Arch Linux 32)
 ├── pacman.x86_64.conf         # Repositorios pacman del bootstrap x86_64 (Arch Linux)
 ├── pacman.aarch64.conf        # Repositorios pacman del bootstrap ARM64 (Arch Linux ARM)
+├── pacman.i686.conf           # Repositorios pacman del bootstrap i686 (Arch Linux 32)
 ├── pacman-build.conf          # Configuración extendida para incluir repositorios locales
 ├── packages/                  # Repositorio pacman local [churros] con paquetes AUR precompilados
 ├── efiboot/                   # Configuración del cargador UEFI
@@ -32,11 +34,11 @@ archiso/
 Define los metadatos de la distribución:
 - Nombre de la imagen (`iso_name="ChurrOS"`).
 - Arquitectura (`CHURROS_ARCH`, que pasa `build.sh`; por defecto la del equipo), con su `pacman.<arch>.conf` y su compresión del squashfs.
-- Modos de arranque: `bios.syslinux` y `uefi.grub` en x86_64; solo `uefi.grub` en ARM64.
+- Modos de arranque: `bios.syslinux` y `uefi.grub` en x86_64 e i686; solo `uefi.grub` en ARM64.
 - Mapa explícito de permisos y propietarios de archivos (`file_permissions`), asegurando que scripts y binarios en `/usr/bin/` y `/usr/local/bin/` tengan permisos de ejecución `0755`.
 
-### `packages.x86_64` y `packages.aarch64`
-Lista declarativa de todos los paquetes instalados en la imagen squashfs (un paquete por línea). Se valida automáticamente mediante `./churros check` para evitar duplicados.
+### `packages.x86_64`, `packages.aarch64` y `packages.i686`
+Lista declarativa de todos los paquetes instalados en la imagen squashfs (un paquete por línea). Se valida automáticamente mediante `./churros check` para evitar duplicados. La lista i686 se apoya en el proyecto Arch Linux 32.
 
 ### `packages/` (Repositorio local `[churros]`)
 Almacena paquetes generados en local durante el proceso de compilación (`calamares`, `yay`, `wlogout`, `python-pywal`). `scripts/cli/build.sh` ejecuta `repo-add` sobre este directorio para que `mkarchiso` pueda resolver dependencias offline.

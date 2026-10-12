@@ -1,0 +1,266 @@
+# Paquetes del perfil por defecto para i686.
+#
+# i686 no tiene repos oficiales de Arch Linux: el bootstrap usa el proyecto
+# Arch Linux 32 (pacman.i686.conf). Esta lista se validó contra core/extra/
+# community de archlinux32 (https://www.archlinux32.org/packages/): solo
+# contiene paquetes disponibles ahí; un paquete inexistente haría fallar
+# pacstrap, así que no se listan los que archlinux32 no empaqueta.
+#
+# Pendiente del port (NO disponibles en archlinux32, no listados):
+#   - escritorio Niri: niri, noctalia, xwayland-satellite. El greeter Live
+#     sigue autologeando la sesión (churros-niri-session -> niri), así que la
+#     edición por defecto no tiene sesión gráfica hasta empaquetarlos.
+#   - Bazaar: bazaar + webkitgtk-6.0 + glycin/glycin-gtk4.
+#   - polkit-qt6 (archlinux32 solo tiene polkit-qt5; bloquea Calamares, que
+#     por eso no se integra en la ISO i686).
+#   - bcachefs-tools, openpgp-card-tools, awww.
+#
+# Los extras AUR (yay, wlogout, python-pywal) se resuelven desde el repo local
+# [churros]: compílalos para i686 en un host archlinux32 (makepkg).
+alsa-utils
+arch-install-scripts
+archinstall
+base
+btrfs-progs
+cryptsetup
+dhcpcd
+diffutils
+dmidecode
+dmraid
+dosfstools
+e2fsprogs
+edk2-shell
+efibootmgr
+ethtool
+exfatprogs
+f2fs-tools
+foot-terminfo
+fsarchiver
+gptfdisk
+grub
+hdparm
+intel-ucode
+amd-ucode
+iw
+iwd
+jfsutils
+kitty-terminfo
+less
+libfido2
+libusb-compat
+linux
+linux-atm
+linux-firmware
+linux-firmware-marvell
+livecd-sounds
+lsscsi
+lvm2
+man-db
+man-pages
+mdadm
+memtest86+
+mkinitcpio
+mkinitcpio-archiso
+mmc-utils
+mtools
+nano
+nbd
+ndisc6
+nfs-utils
+nilfs-utils
+nvme-cli
+open-vm-tools
+openconnect
+openssh
+openvpn
+partclone
+parted
+pciutils
+pptpclient
+procps-ng
+pv
+qemu-guest-agent
+refind
+reflector
+rsync
+rxvt-unicode-terminfo
+sdparm
+sg3_utils
+smartmontools
+sof-firmware
+squashfs-tools
+sudo
+# checkupdates (Ajustes > Actualizaciones) comprueba sin root; fakeroot lo necesita
+pacman-contrib
+fakeroot
+pacman-mirrorlist
+# Arch Linux 32 usa su propio keyring (pacman-key --populate archlinux32).
+archlinux32-keyring
+syslinux
+systemd-resolvconf
+tcpdump
+terminus-font
+testdisk
+tpm2-tools
+tpm2-tss
+udftools
+usb_modeswitch
+usbmuxd
+usbutils
+vim
+virtualbox-guest-utils-nox
+vpnc
+wireless-regdb
+wireless_tools
+wpa_supplicant
+wvdial
+xdg-utils
+xfsprogs
+xl2tpd
+zsh
+# ===========================
+# ChurrOS Desktop
+# ===========================
+
+# GPU / Mesa (para la sesión Wayland cuando haya compositor; archlinux32 no
+# empaqueta niri todavía, ver cabecera)
+mesa
+mesa-utils
+vulkan-virtio
+
+foot
+flatpak
+waybar
+
+# Dependencias de Bazaar disponibles en archlinux32. bazaar, webkitgtk-6.0 y
+# glycin/glycin-gtk4 quedan pendientes (ver cabecera).
+appstream
+gtksourceview5
+libheif
+libmalcontent
+libsoup3
+libxmlb
+libyaml
+malcontent
+md4c
+json-glib
+graphene
+# yay se resuelve desde el repo local patcheado ([churros] en pacman.conf)
+yay
+
+
+thunar
+thunar-archive-plugin
+thunar-volman
+tumbler
+gvfs
+gvfs-mtp
+
+greetd
+greetd-regreet
+cage
+xorg-xwayland
+swaylock
+swayidle
+
+qt6-wayland
+qt5-wayland
+
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+python-psutil
+python-toml
+
+polkit
+polkit-gnome
+
+networkmanager
+
+pipewire
+pipewire-pulse
+wireplumber
+
+grim
+slurp
+wl-clipboard
+
+ttf-dejavu
+noto-fonts
+python
+python-gobject
+gtk4
+libadwaita
+gobject-introspection
+ddcutil
+ttf-jetbrains-mono
+ttf-nerd-fonts-symbols-mono
+otf-font-awesome
+firefox
+pavucontrol
+network-manager-applet
+swaybg
+fuzzel
+mako
+wlogout
+wlsunset
+playerctl
+pamixer
+btop
+imv
+
+# Noctalia (shell de la sesión Niri) pendiente: archlinux32 no lo empaqueta.
+wlr-randr
+imagemagick
+power-profiles-daemon
+
+upower
+bluez
+bluez-utils
+brightnessctl
+gsettings-desktop-schemas
+ufw
+plymouth
+papirus-icon-theme
+adwaita-icon-theme
+fastfetch
+
+# Multimedia base
+ffmpeg
+mpv
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
+
+# Impresión
+cups
+system-config-printer
+
+# Visor PDF
+evince
+
+# Calculadora
+gnome-calculator
+
+# Colores dinámicos (pywal) — desde el repo local [churros]; dependencia: imagemagick
+python-pywal
+
+# Notificaciones del actualizador (notify-send -> mako)
+libnotify
+
+# Descarga de releases de utilidades de ChurrOS (churros-update-utils)
+curl
+
+# Calamares installer dependencies (sin polkit-qt6: archlinux32 solo tiene
+# polkit-qt5, así que de momento la ISO i686 no integra el instalador)
+kcoreaddons
+kpmcore
+libpwquality
+yaml-cpp
+qt6-declarative
+qt6-svg
+kcrash
+os-prober
+udisks2
+zenity
+qt6-translations

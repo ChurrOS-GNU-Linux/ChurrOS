@@ -81,9 +81,9 @@ fi
 
 section "ISO package list"
 
-# Una lista por edicion (packages.<edicion>.x86_64). Se recorren todas para
-# que anadir una edicion no obligue a tocar este script.
-for pkg_list in archiso/packages*.x86_64 archiso/packages.aarch64; do
+# Una lista por edición (packages.<edicion>.x86_64) más las listas de arquitectura base (i686 y aarch64).
+# Se recorren todas para que añadir una edición no obligue a tocar este script.
+for pkg_list in archiso/packages*.x86_64 archiso/packages.i686 archiso/packages.aarch64; do
     [ -f "$pkg_list" ] || continue
 
     dups=$(grep -v '^#' "$pkg_list" | grep -v '^$' | sort | uniq -d)
@@ -104,7 +104,7 @@ section "archiso profile per architecture"
 # CHURROS_ARCH (build.sh: sudo env CHURROS_ARCH=... mkarchiso). Se carga como
 # lo hace mkarchiso (cwd archiso/, file_permissions asociativo) para cada arch.
 profile_ok=1
-for target in x86_64 aarch64; do
+for target in x86_64 aarch64 i686; do
     # shellcheck disable=SC2016
     if ! pv=$(CHURROS_ARCH="$target" bash -c '
         set -eu
@@ -124,7 +124,7 @@ for target in x86_64 aarch64; do
         fail "$target: profiledef.sh gives arch=$p_arch and archiso/$p_conf declares Architecture=${conf_arch:-?}"
         profile_ok=0
     fi
-    if [ "$target" != x86_64 ] && [[ " $p_boot " == *" bios."* ]]; then
+    if [ "$target" = "aarch64" ] && [[ " $p_boot " == *" bios."* ]]; then
         fail "$target: BIOS boot modes are x86-only"
         profile_ok=0
     fi
@@ -162,7 +162,7 @@ for target in x86_64 aarch64; do
         done
     fi
 done
-[ "$profile_ok" -eq 1 ] && pass "x86_64 and aarch64 get their own pacman.conf, boot modes, squashfs options and unpackfs source"
+[ "$profile_ok" -eq 1 ] && pass "x86_64, aarch64 e i686 get their own pacman.conf, boot modes, squashfs options and unpackfs source"
 
 # -------------------------------------------- Defaults vs skel (coherencia)
 
