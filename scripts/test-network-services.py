@@ -61,7 +61,10 @@ for rel in networkd_files:
     require(not (ROOT / rel).exists(), f"stale networkd configuration must be removed: {rel}")
 
 services = (ROOT / "archiso/airootfs/root/scripts/services.sh").read_text(encoding="utf-8")
-require("systemctl enable NetworkManager.service" in services, "Live must enable NetworkManager")
+require(
+    "enable_unit NetworkManager.service" in services and 'systemctl enable "$unit"' in services,
+    "Live must enable NetworkManager",
+)
 require("systemctl mask systemd-networkd-wait-online.service" not in services, "Live must not pass a networkd-wait-online mask to the installed system")
 
 nm_conf_path = ROOT / "archiso/airootfs/etc/NetworkManager/conf.d/20-churros-dns.conf"

@@ -2,14 +2,15 @@
 
 set -e
 
+# shellcheck source=scripts/lib/ovmf.sh
+source "$(cd "$(dirname "$0")/.." && pwd)/lib/ovmf.sh"
+
 VM_DIR="vm"
 # Sin --arch se usa la arquitectura del equipo, igual que ./churros build.
 TARGET_ARCH=""
 QEMU_BIN="qemu-system-aarch64"
 DISK="$VM_DIR/ChurrOS-arm64.qcow2"
 VARS="$VM_DIR/OVMF_VARS_arm64.fd"
-# i686 puede arrancar por BIOS (SeaBIOS) sin OVMF; el resto lo exige.
-OVMF_REQUIRED=true
 
 for ((arg_index = 1; arg_index <= $#; arg_index++)); do
     arg="${!arg_index}"
@@ -44,87 +45,30 @@ case "$TARGET_ARCH" in
         ;;
 esac
 
-if [ "$TARGET_ARCH" = "aarch64" ]; then
-    OVMF_CODE_CANDIDATES=(
-        /usr/share/edk2/aarch64/QEMU_EFI.fd
-        /usr/share/edk2/aarch64/QEMU_EFI-pflash.raw
-        /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
-        /usr/share/AAVMF/AAVMF_CODE.fd
-    )
-    OVMF_VARS_CANDIDATES=(
-        /usr/share/edk2/aarch64/QEMU_VARS.fd
-        /usr/share/AAVMF/AAVMF_VARS.fd
-    )
-elif [ "$TARGET_ARCH" = "i686" ]; then
-    # Firmware IA32 (32-bit UEFI). Si no está, el arranque por BIOS (SeaBIOS)
-    # sigue funcionando: OVMF_REQUIRED=false.
-    OVMF_REQUIRED=false
-    OVMF_CODE_CANDIDATES=(
-        /usr/share/OVMF/OVMF32_CODE_4M.fd
-        /usr/share/OVMF/OVMF32_CODE.fd
-        /usr/share/OVMF32/OVMF32_CODE_4M.fd
-        /usr/share/edk2/ia32/OVMF_CODE.fd
-        /usr/share/ovmf/OVMF32_CODE_4M.fd
-    )
-    OVMF_VARS_CANDIDATES=(
-        /usr/share/OVMF/OVMF32_VARS_4M.fd
-        /usr/share/OVMF/OVMF32_VARS.fd
-        /usr/share/OVMF32/OVMF32_VARS_4M.fd
-        /usr/share/edk2/ia32/OVMF_VARS.fd
-        /usr/share/ovmf/OVMF32_VARS_4M.fd
-    )
+# CODE y VARS se eligen juntos para evitar mezclar firmwares incompatibles.
+# i686 puede arrancar por BIOS si no hay firmware OVMF IA32.
+mkdir -p "$VM_DIR"
+pflash_out=""
+if [ "$TARGET_ARCH" = "i686" ]; then
+    pflash_out=$(churros_resolve_pflash "$TARGET_ARCH" "$VM_DIR" 2>/dev/null || true)
+    if [ -z "$pflash_out" ]; then
+        OVMF_CODE=""
+        OVMF_VARS=""
+    else
+        OVMF_CODE=$(printf '%s\n' "$pflash_out" | sed -n '1p')
+        OVMF_VARS=$(printf '%s\n' "$pflash_out" | sed -n '2p')
+    fi
 else
-    OVMF_CODE_CANDIDATES=(
-        /usr/share/edk2/x64/OVMF_CODE.4m.fd
-        /usr/share/edk2-ovmf/x64/OVMF_CODE.4m.fd
-        /usr/share/edk2/x64/OVMF_CODE.fd
-        /usr/share/OVMF/OVMF_CODE.fd
-        /usr/share/ovmf/x64/OVMF_CODE.4m.fd
-        /usr/share/ovmf/OVMF_CODE.fd
-    )
-    OVMF_VARS_CANDIDATES=(
-        /usr/share/edk2/x64/OVMF_VARS.4m.fd
-        /usr/share/edk2-ovmf/x64/OVMF_VARS.4m.fd
-        /usr/share/edk2/x64/OVMF_VARS.fd
-        /usr/share/OVMF/OVMF_VARS.fd
-        /usr/share/ovmf/x64/OVMF_VARS.4m.fd
-        /usr/share/ovmf/OVMF_VARS.fd
-    )
+    if ! pflash_out=$(churros_resolve_pflash "$TARGET_ARCH" "$VM_DIR"); then
+        echo "Error: OVMF firmware not found, do you have QEMU installed?"
+        echo "Please configure the OVMF firmware paths manually otherwise."
+        exit 1
+    fi
+    OVMF_CODE=$(printf '%s\n' "$pflash_out" | sed -n '1p')
+    OVMF_VARS=$(printf '%s\n' "$pflash_out" | sed -n '2p')
 fi
 
-# Search OVMF firmware files in standard locations
-OVMF_CODE=""
-for path in "${OVMF_CODE_CANDIDATES[@]}"; do
-    if [ -f "$path" ]; then
-        OVMF_CODE="$path"
-        break
-    fi
-done
-if [ -z "$OVMF_CODE" ]; then
-    if [ "$TARGET_ARCH" = "i686" ]; then
-        OVMF_CODE=$(find /usr/share/edk2 /usr/share/ovmf /usr/share/OVMF /usr/share/OVMF32 /usr/share/qemu -type f \( -iname 'OVMF32_CODE*.fd' -o -iname 'OVMF_CODE*ia32*.fd' \) ! -name '*secboot*' -print -quit 2>/dev/null || true)
-    else
-        OVMF_CODE=$(find /usr/share/edk2 /usr/share/ovmf /usr/share/OVMF /usr/share/AAVMF /usr/share/qemu /usr/share/qemu-efi-aarch64 -type f \( -iname 'OVMF_CODE*.4m.fd' -o -iname 'OVMF_CODE*.fd' -o -iname 'QEMU_EFI*.fd' -o -iname 'AAVMF_CODE*.fd' \) ! -name '*secboot*' -print -quit 2>/dev/null || true)
-    fi
-fi
-
-OVMF_VARS=""
-for path in "${OVMF_VARS_CANDIDATES[@]}"; do
-    if [ -f "$path" ]; then
-        OVMF_VARS="$path"
-        break
-    fi
-done
-if [ -z "$OVMF_VARS" ]; then
-    if [ "$TARGET_ARCH" = "i686" ]; then
-        OVMF_VARS=$(find /usr/share/edk2 /usr/share/ovmf /usr/share/OVMF /usr/share/OVMF32 /usr/share/qemu -type f \( -iname 'OVMF32_VARS*.fd' -o -iname 'OVMF_VARS*ia32*.fd' \) -print -quit 2>/dev/null || true)
-    else
-        OVMF_VARS=$(find /usr/share/edk2 /usr/share/ovmf /usr/share/OVMF /usr/share/AAVMF /usr/share/qemu -type f \( -iname 'OVMF_VARS*.4m.fd' -o -iname 'OVMF_VARS*.fd' -o -iname 'QEMU_VARS*.fd' -o -iname 'AAVMF_VARS*.fd' \) -print -quit 2>/dev/null || true)
-    fi
-fi
-
-# Solo la ISO de la arquitectura pedida: si en out/ conviven varias (x86_64,
-# i686, aarch64), head -n1 arrancaría la equivocada con este QEMU.
+# Seleccionar siempre la ISO de la arquitectura pedida.
 ISO=$(find out \( -name "*-${TARGET_ARCH}.iso" -o -name "*-${TARGET_ARCH}-*.iso" \) -print 2>/dev/null | sort | tail -n1)
 
 FORCE_NOKVM=false
@@ -138,17 +82,14 @@ for arg in "$@"; do
     esac
 done
 
-# If OVMF firmware files couldn't be found, exit 1 (salvo i686, que arranca
-# por BIOS sin OVMF).
 if [ -z "$OVMF_CODE" ] || [ -z "$OVMF_VARS" ]; then
-    if [ "$OVMF_REQUIRED" = true ]; then
+    if [ "$TARGET_ARCH" = "i686" ]; then
+        echo "OVMF IA32 firmware not found: arrancando por BIOS (SeaBIOS)."
+    else
         echo "Error: OVMF firmware not found, do you have QEMU installed?"
-        echo "Please configure the OVMF firmware paths manually otherwaise."
+        echo "Please configure the OVMF firmware paths manually otherwise."
         exit 1
     fi
-    echo "OVMF IA32 firmware not found: arrancando por BIOS (SeaBIOS)."
-    OVMF_CODE=""
-    OVMF_VARS=""
 else
     echo "OVMF firmware found:"
     echo "  OVMF_CODE: $OVMF_CODE"
@@ -163,7 +104,13 @@ if [ -z "$ISO" ]; then
     case "$answer" in
         [yY]|[yY][eE][sS])
             echo "Building..."
-            ./churros build "$@"
+            # --fresh y --nokvm son de run, no de build. En un host que no es
+            # aarch64 la ISO ARM solo se puede construir en el contenedor.
+            build_cmd=(./churros build --arch "$TARGET_ARCH")
+            if [ "$TARGET_ARCH" = aarch64 ] && [ "$(uname -m)" != aarch64 ]; then
+                build_cmd+=(--container)
+            fi
+            "${build_cmd[@]}"
 
             ISO=$(find out \( -name "*-${TARGET_ARCH}.iso" -o -name "*-${TARGET_ARCH}-*.iso" \) -print 2>/dev/null | sort | tail -n1)
 
@@ -201,90 +148,138 @@ if [ ! -f "$DISK" ]; then
     qemu-img create -f qcow2 "$DISK" 64G
 fi
 
-# If the OVMF vars file doesn't exist, copy the default one to the VM directory.
-# En i686 puede no haber OVMF (arranque BIOS): en ese caso no hay nada que copiar.
-if [ -n "$OVMF_VARS" ] && [ ! -f "$VARS" ]; then
-    cp "$OVMF_VARS" "$VARS"
+# ovmf.sh ya eligió un par coherente. En aarch64 QEMU exige además que las dos
+# imágenes pflash midan lo mismo; en x86 CODE y VARS miden distinto (normal).
+if [ -n "$OVMF_CODE" ] && [ -n "$OVMF_VARS" ]; then
+    code_bytes=$(stat -L -c %s "$OVMF_CODE")
+    template_vars_bytes=$(stat -L -c %s "$OVMF_VARS")
+    if [ "$TARGET_ARCH" = aarch64 ] && [ "$code_bytes" != "$template_vars_bytes" ]; then
+        echo "Error: el firmware pflash no coincide en tamaño." >&2
+        echo "  CODE $OVMF_CODE ($code_bytes bytes)" >&2
+        echo "  VARS $OVMF_VARS ($template_vars_bytes bytes)" >&2
+        echo "Elige un par CODE/VARS de la misma generación (p. ej. AAVMF_CODE + AAVMF_VARS)." >&2
+        exit 1
+    fi
+
+    # Si las variables EFI existentes pertenecen a otro firmware, se reinician.
+    if [ -f "$VARS" ] && [ "$(stat -L -c %s "$VARS")" != "$template_vars_bytes" ]; then
+        echo "EFI vars size does not match firmware template ($template_vars_bytes bytes); resetting $VARS"
+        rm -f "$VARS"
+    fi
+    if [ ! -f "$VARS" ]; then
+        cp "$OVMF_VARS" "$VARS"
+    fi
 fi
 
 echo
 echo "Launching ChurrOS Development VM..."
 echo
 
-KVM_ARGS=""
-GPU_ARGS=""
-CPU_ARGS=""
-MACHINE_ARGS=""
-AUDIO_ARGS=""
+KVM_ARGS=()
+GPU_ARGS=()
+CPU_ARGS=()
+MACHINE_ARGS=()
+AUDIO_ARGS=()
 
 if [ "$TARGET_ARCH" = "aarch64" ]; then
-    echo "  ARM64 QEMU: TCG software emulation"
-    KVM_ARGS="-cpu cortex-a72"
-    CPU_ARGS="-smp 4"
-    MACHINE_ARGS="-machine virt"
-    GPU_ARGS="-device virtio-gpu-gl-pci -display gtk,gl=on,show-cursor=on"
+    # virt no tiene IDE: -cdrom no engancha el disco. virtio-scsi + scsi-cd,
+    # disco virtio-blk y teclado USB (tampoco hay PS/2). La serie es PL011
+    # (console=ttyAMA0 en el menú GRUB).
+    if [ "$FORCE_NOKVM" = false ] && [ "$(uname -m)" = aarch64 ] && [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        echo "  ARM64 QEMU: KVM"
+        KVM_ARGS=(-cpu host)
+        CPU_ARGS=(-smp 4)
+        MACHINE_ARGS=(-machine "virt,accel=kvm")
+    else
+        echo "  ARM64 QEMU: TCG software emulation"
+        KVM_ARGS=(-cpu cortex-a72)
+        CPU_ARGS=(-smp 4)
+        MACHINE_ARGS=(-machine virt)
+    fi
+    GPU_ARGS=(-device virtio-gpu-gl-pci -display "gtk,gl=on,show-cursor=on")
 elif [ "$TARGET_ARCH" = "i686" ]; then
     if [ "$FORCE_NOKVM" = false ] && [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         echo "  KVM acceleration: enabled (i686)"
-        KVM_ARGS="-cpu host"
-        CPU_ARGS="-smp 4"
-        MACHINE_ARGS="-machine q35,accel=kvm"
+        KVM_ARGS=(-cpu host)
+        CPU_ARGS=(-smp 4)
+        MACHINE_ARGS=(-machine "q35,accel=kvm")
     else
         echo "  KVM acceleration: not available (using software emulation)"
-        KVM_ARGS="-cpu qemu32"
-        CPU_ARGS="-smp 2"
-        MACHINE_ARGS="-machine q35"
+        KVM_ARGS=(-cpu qemu32)
+        CPU_ARGS=(-smp 2)
+        MACHINE_ARGS=(-machine q35)
     fi
 elif [ "$FORCE_NOKVM" = false ] && [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
     echo "  KVM acceleration: enabled"
-    KVM_ARGS="-cpu host"
-    CPU_ARGS="-smp 4"
-    MACHINE_ARGS="-machine q35,accel=kvm"
+    KVM_ARGS=(-cpu host)
+    CPU_ARGS=(-smp 4)
+    MACHINE_ARGS=(-machine "q35,accel=kvm")
 else
     echo "  KVM acceleration: not available (using software emulation)"
-    KVM_ARGS=""
-    CPU_ARGS="-smp 2"
-    MACHINE_ARGS="-machine q35"
+    CPU_ARGS=(-smp 2)
+    MACHINE_ARGS=(-machine q35)
 fi
 
 # niri requires hardware-accelerated 3D (OpenGL via virgl).
 # Always attempt virtio-gpu-gl with GL; fall back to virtio-gpu (no GL) only if
 # the host lacks /dev/dri entirely — in that case niri will try llvmpipe.
 if [ -e /dev/dri ]; then
-    [ "$TARGET_ARCH" != "aarch64" ] && GPU_ARGS="-device virtio-vga-gl -display gtk,gl=on,show-cursor=on"
-    echo "  GPU: virtio-vga-gl + virgl (3D)"
+    if [ "$TARGET_ARCH" = "aarch64" ]; then
+        echo "  GPU: virtio-gpu-gl-pci + virgl (3D)"
+    else
+        GPU_ARGS=(-device virtio-vga-gl -display "gtk,gl=on,show-cursor=on")
+        echo "  GPU: virtio-vga-gl + virgl (3D)"
+    fi
 else
-    [ "$TARGET_ARCH" != "aarch64" ] && GPU_ARGS="-device virtio-gpu -display gtk,gl=off,show-cursor=on"
+    if [ "$TARGET_ARCH" != "aarch64" ]; then
+        GPU_ARGS=(-device virtio-gpu -display "gtk,gl=off,show-cursor=on")
+    fi
     echo "  GPU: virtio-gpu (no 3D — niri may fall back to software rendering)"
 fi
 
 if [ "$TARGET_ARCH" != "aarch64" ]; then
-    AUDIO_ARGS="-device intel-hda -device hda-duplex"
+    AUDIO_ARGS=(-device intel-hda -device hda-duplex)
 fi
 
-# En i686 sin OVMF se arranca por BIOS (SeaBIOS), sin pflash.
-FIRMWARE_ARGS=()
+QEMU_CMD=(
+    "$QEMU_BIN"
+    "${MACHINE_ARGS[@]}"
+    "${KVM_ARGS[@]}"
+    "${CPU_ARGS[@]}"
+    -m 4096
+    "${GPU_ARGS[@]}"
+    -device qemu-xhci
+    -device usb-tablet
+)
+if [ "$TARGET_ARCH" = aarch64 ]; then
+    QEMU_CMD+=(-device usb-kbd)
+fi
+QEMU_CMD+=(
+    "${AUDIO_ARGS[@]}"
+    -device virtio-serial-pci
+    -chardev "qemu-vdagent,id=vdagent,name=vdagent,clipboard=on"
+    -device "virtserialport,chardev=vdagent,name=com.redhat.spice.0"
+)
 if [ -n "$OVMF_CODE" ] && [ -n "$OVMF_VARS" ]; then
-    FIRMWARE_ARGS=(
-        -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE"
-        -drive if=pflash,format=raw,file="$VARS"
+    QEMU_CMD+=(
+        -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
+        -drive "if=pflash,format=raw,file=$VARS"
+    )i
+if [ "$TARGET_ARCH" = aarch64 ]; then
+    QEMU_CMD+=(
+        -device "virtio-scsi-pci,id=scsi0"
+        -device "scsi-cd,bus=scsi0.0,drive=cdrom0,bootindex=0"
+        -drive "id=cdrom0,if=none,format=raw,readonly=on,file=$ISO"
+        -device "virtio-blk-pci,drive=disk0,bootindex=1"
+        -drive "id=disk0,if=none,format=qcow2,file=$DISK"
+    )
+else
+    QEMU_CMD+=(
+        -drive "file=$DISK,format=qcow2,if=virtio"
+        -cdrom "$ISO"
+        -boot order=c
     )
 fi
+QEMU_CMD+=(-serial file:vm_serial.log)
 
-"$QEMU_BIN" \
-    $MACHINE_ARGS \
-    $KVM_ARGS \
-    $CPU_ARGS \
-    -m 4096 \
-    $GPU_ARGS \
-    -device qemu-xhci \
-    -device usb-tablet \
-    $AUDIO_ARGS \
-    -device virtio-serial-pci \
-    -chardev qemu-vdagent,id=vdagent,name=vdagent,clipboard=on \
-    -device virtserialport,chardev=vdagent,name=com.redhat.spice.0 \
-    ${FIRMWARE_ARGS[@]+"${FIRMWARE_ARGS[@]}"} \
-    -drive file="$DISK",format=qcow2,if=virtio \
-    -cdrom "$ISO" \
-    -boot order=c \
-    -serial file:vm_serial.log
+"${QEMU_CMD[@]}"

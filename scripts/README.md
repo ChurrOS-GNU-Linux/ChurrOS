@@ -21,7 +21,7 @@ scripts/
 │   └── version.sh             # Impresión de la versión
 │
 ├── build-rust.sh              # Compila crates de rust/ -> archiso/airootfs/usr/bin/
-├── build-calamares.sh         # Compila Calamares .pkg.tar.zst desde AUR
+├── build-calamares.sh         # Compila Calamares desde AUR (.pkg.tar.zst o .xz)
 ├── build-aur.sh               # Compila paquetes AUR (python-pywal, yay, wlogout)
 ├── build-bazaar.sh            # Compila la tienda de apps Bazaar
 ├── build-grub-theme.sh        # Genera fuentes .pf2 y assets de GRUB
@@ -36,9 +36,9 @@ scripts/
 | Script | Propósito | Salida generada |
 | :--- | :--- | :--- |
 | **`build-rust.sh`** | Compila en release los crates de `rust/` con `deploy = true`. | Binarios en `archiso/airootfs/usr/bin/` |
-| **`build-calamares.sh`** | Compila Calamares con parches locales y libpython acorde al sistema. | `archiso/packages/calamares-*.pkg.tar.zst` |
-| **`build-aur.sh`** | Construye dependencias de AUR necesarias para el Live y el sistema instalado. | `archiso/packages/{python-pywal,yay,wlogout}-*.pkg.tar.zst` |
-| **`build-bazaar.sh`** | Compila Bazaar resolviendo conflictos con libdex del repositorio. | `archiso/packages/bazaar-*.pkg.tar.zst` |
+| **`build-calamares.sh`** | Compila Calamares con parches locales y libpython acorde al sistema. | `archiso/packages/calamares-*.pkg.tar.*` |
+| **`build-aur.sh`** | Construye dependencias de AUR necesarias para el Live y el sistema instalado. | `archiso/packages/{python-pywal,yay,wlogout}-*.pkg.tar.*` |
+| **`build-bazaar.sh`** | Compila Bazaar contra libdex >= 1.2 (en ALARM construye y publica libdex 1.2). | `archiso/packages/bazaar-*.pkg.tar.*` |
 | **`build-grub-theme.sh`** | Convierte fuentes TTF a formato de mapa de bits de GRUB (`.pf2`). | `branding/grub-theme/*.pf2` |
 | **`build-i18n.sh`** | Compila archivos `.po` de localización con `msgfmt`. | `archiso/airootfs/usr/share/locale/*/LC_MESSAGES/churros.mo` |
 | **`build-churros-release.sh`** | Genera el tarball OTA de utilidades y el manifiesto JSON. | `release/churros-utils-<version>.tar.zst`, `release/updates.json` |

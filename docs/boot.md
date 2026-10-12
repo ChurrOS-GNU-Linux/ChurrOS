@@ -44,6 +44,10 @@ bootmodes=('uefi.grub')                   # aarch64
 
 Eso significa que en BIOS se usa Syslinux y en UEFI se usa GRUB. El bootmode `uefi.grub` hace que ArchISO genere el binario GRUB EFI (con `grub-mkstandalone`) y cree la imagen FAT de arranque El Torito. El archivo `grub/loopback.cfg` se usa para arrancar desde ISO por loopback.
 
+En aarch64 el perfil no activa `uefi.systemd-boot`: ese modo y `uefi.grub` escriben los dos `EFI/BOOT/BOOTAA64.EFI`. Syslinux no existe en ARM. archiso pide un conjunto fijo de módulos GRUB; ALARM no publica todos bajo `arm64-efi`, así que el build deja solo los que existen como `/usr/lib/grub/arm64-efi/<mod>.mod`. El menú no carga `usbserial_*` cuando `grub_cpu` es `arm64`.
+
+El kernel de Arch Linux ARM (`linux-aarch64`) instala `/boot/Image`, no `vmlinuz-linux`, y posee `/etc/mkinitcpio.d/linux-aarch64.preset`. Ese fichero no se copia antes de pacstrap. Tras instalar el paquete, `customize_airootfs.sh` pone el preset de archiso (`ALL_kver=/boot/Image`, imagen `initramfs-linux.img`) y vuelve a correr mkinitcpio. Los hooks `memdisk` y `archiso_pxe_*` no entran en ese initramfs: en ALARM no están syslinux ni `ipconfig` de pxe. `publish-aarch64-kernel` copia `Image` a `vmlinuz-linux-aarch64` e `initramfs-linux.img` a `initramfs-linux-aarch64.img` antes de que mkarchiso arme el arranque de la ISO, y otra vez en el sistema instalado (Calamares deja el preset en `initramfs-linux-aarch64.img` y un hook de pacman vuelve a publicar tras una actualización del kernel). El menú GRUB de la ISO elige esos nombres cuando `grub_cpu` es `arm64`, y la consola serie pasa a `ttyAMA0` (PL011 de la máquina `virt`). En x86_64 el menú y el preset siguen usando `vmlinuz-linux`, `initramfs-linux.img` y `ttyS0`, con los hooks pxe y memdisk.
+
 ---
 
 # GRUB

@@ -232,7 +232,7 @@ impl LockScreenService {
             .args(["-x", "swayidle"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn();
+            .status();
     }
 
     /// Aplica el estado: si enabled, relanza swayidle con el timeout y swaylock.

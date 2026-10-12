@@ -3,7 +3,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PACKAGE_DIR="$PROJECT_DIR/archiso/packages"
+# shellcheck source=scripts/lib/local-repo.sh
+source "$SCRIPT_DIR/lib/local-repo.sh"
+PACKAGE_DIR="$(churros_local_repo_dir)"
 
 choose_work_dir() {
     local parent="$PROJECT_DIR/work"
@@ -39,14 +41,15 @@ calamares_want_stamp() {
 
 WANT_STAMP="$(calamares_want_stamp)"
 
-if ls "$PACKAGE_DIR"/calamares-[0-9]*.pkg.tar.zst 1>/dev/null 2>&1; then
+if [ -n "$(churros_first_pkg "$PACKAGE_DIR" 'calamares-[0-9]*' || true)" ]; then
     HAVE_STAMP="$(cat "$STAMP_FILE" 2>/dev/null || true)"
     if [ "$HAVE_STAMP" = "$WANT_STAMP" ]; then
         echo "[skip] Calamares already built (python $HOST_PYTHON + patches stamp match)."
         exit 0
     fi
     echo "[rebuild] Calamares stamp mismatch (libpython or installer/patches changed)."
-    rm -f "$PACKAGE_DIR"/calamares-[0-9]*.pkg.tar.zst
+    churros_remove_pkgs "$PACKAGE_DIR" 'calamares-[0-9]*'
+    churros_remove_pkgs "$PACKAGE_DIR" 'calamares-debug-*' 
 fi
 
 choose_work_dir
@@ -121,6 +124,7 @@ open(path, "w", encoding="utf-8").write("\n".join(out) + "\n")
 PY
 
 echo "    PKGBUILD patched (source + prepare + checksum)"
+churros_pkgbuild_allow_arch "$WORK_DIR/PKGBUILD"
 
 echo "[3/4] Pre-downloading calamares source (codeberg can be flaky)..."
 
@@ -184,12 +188,12 @@ echo "    makepkg done."
 
 echo "[5/5] Installing package to local repo..."
 
-cp "$WORK_DIR"/*.pkg.tar.zst "$PACKAGE_DIR/"
-rm -f "$PACKAGE_DIR"/calamares-debug-*.pkg.tar.zst 2>/dev/null || true
+churros_copy_pkgs "$WORK_DIR" "$PACKAGE_DIR" 'calamares-*'
+churros_remove_pkgs "$PACKAGE_DIR" 'calamares-debug-*' 
 
 (
     cd "$PACKAGE_DIR"
-    repo-add churros.db.tar.gz *.pkg.tar.zst
+    churros_repo_add "$PACKAGE_DIR"
 )
 
 rm -rf "$WORK_DIR"
@@ -201,6 +205,6 @@ echo "======================================"
 echo "  Calamares build complete."
 echo "======================================"
 echo "  Packages:"
-ls -la "$PACKAGE_DIR"/*.pkg.tar.zst
+churros_pkg_archives "$PACKAGE_DIR" 'calamares-[0-9]*' 
 echo
 echo "  Now run: ./churros build"

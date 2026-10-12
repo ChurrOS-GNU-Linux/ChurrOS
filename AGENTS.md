@@ -19,7 +19,7 @@
 ./churros apps               # Open distro apps on the host (GTK preview is dummy; Calamares uses a tmp overlay)
 ./churros doctor             # Check tools per distro (Arch: mkarchiso & co.; elsewhere: podman/docker for --container)
 ./install-deps.sh            # Install dev deps with pacman, apt or dnf
-./scripts/build-calamares.sh # Build Calamares .pkg.tar.zst from AUR into archiso/packages/
+./scripts/build-calamares.sh # Build Calamares into archiso/packages/ (.pkg.tar.zst, or .xz)
 ./scripts/build-aur.sh       # Build python-pywal + yay + wlogout AUR packages
 ./scripts/build-grub-theme.sh # Regenerate GRUB theme fonts (.pf2) + assets in branding/grub-theme/
 ```
@@ -31,8 +31,8 @@ The `churros` dispatcher is at repo root and `cd`s to its own dir before delegat
 Ordered steps, runs from repo root:
 
 1. Copy `branding/customize_airootfs.sh` + `branding/files/` into `archiso/airootfs/root/`.
-2. `scripts/build-calamares.sh` (rebuilds if missing, if libpython does not match host/`python` on the ISO, or if `installer/patches/calamares-*.patch` changed), then `scripts/build-aur.sh` if those pkgs are missing. Expect `calamares-*.pkg.tar.zst`, `python-pywal-*.pkg.tar.zst`, `yay-*.pkg.tar.zst`, `wlogout-*.pkg.tar.zst` in `archiso/packages/`.
-3. If Calamares pkg exists: run `installer/apply-calamares.sh` (deploys `settings.conf`, `modules/*.conf`, `modules/*.yaml`, `branding/churros/`, plus a polkit rule `49-calamares.rules` allowing user `churros` to pkexec calamares) and copy all `archiso/packages/*.pkg.tar.zst` into `airootfs/root/packages/`.
+2. `scripts/build-calamares.sh` (rebuilds if missing, if libpython does not match host/`python` on the ISO, or if `installer/patches/calamares-*.patch` changed), then `scripts/build-aur.sh` if those pkgs are missing. Expect `calamares`, `python-pywal`, `yay` and `wlogout` packages in `archiso/packages/` (`.pkg.tar.zst` or `.pkg.tar.xz`).
+3. If Calamares pkg exists: run `installer/apply-calamares.sh` (deploys `settings.conf`, `modules/*.conf`, `modules/*.yaml`, `branding/churros/`, plus a polkit rule `49-calamares.rules` allowing user `churros` to pkexec calamares) and copy all `archiso/packages/*.pkg.tar.*` into `airootfs/root/packages/`.
 4. Run `scripts/build-rust.sh`: compiles every crate in `rust/` (release) and deploys binaries into `archiso/airootfs/usr/bin/`. Binary names match crate names (e.g. `churros-welcome`).
 5. `sudo rm -rf work out` then `sudo env CHURROS_ARCH=<arch> mkarchiso -v -w work -o out archiso` (`<arch>` comes from `--arch`; `profiledef.sh` reads it).
 6. `rm -rf work` and `chown` `out/` back to `$USER`.
@@ -41,7 +41,7 @@ A trap on EXIT cleans generated files out of `archiso/airootfs/` (`root/customiz
 
 ## Build Container
 
-`Containerfile` (repo root) is the Arch build environment: archiso, base-devel, grub, gtk4, libadwaita, rust, lld, nodejs, python (archiso only where the repos ship it: not on Arch Linux ARM, so an ARM image runs `./churros rust` but not `build --container`). `scripts/lib/container.sh` builds it as `localhost/churros-builder` (rebuilt when the Containerfile changes or the image is older than 7 days) and runs commands with the repo mounted at `/churros`; `scripts/container-entrypoint.sh` creates `builder` with the host UID/GID (makepkg refuses root; build.sh uses passwordless sudo inside). The engine runs as real root (`sudo podman` or the docker daemon) because pacstrap mounts devtmpfs/proc. In the container `CARGO_TARGET_DIR=rust/target/container` (`build-rust.sh` honours it). `scripts/lib/host.sh` detects the distro family from `/etc/os-release` (never by `command -v pacman`: Debian ships a game with that name). `.github/workflows/rust.yml` builds the image from the Containerfile on every PR and weekly, then runs `./churros rust` on x86_64 and on an arm64 runner (`ubuntu-24.04-arm`, `CHURROS_CONTAINER_BASE=docker.io/menci/archlinuxarm:latest`; a cross `cargo check --target aarch64` from x86_64 fails in glib-sys's pkg-config).
+`Containerfile` (repo root) is the Arch build environment: archiso, base-devel, grub, gtk4, libadwaita, rust, lld, nodejs, python. `scripts/lib/container.sh` builds it as `localhost/churros-builder` (rebuilt when the Containerfile changes or the image is older than 7 days) and runs commands with the repo mounted at `/churros`; `scripts/container-entrypoint.sh` creates `builder` with the host UID/GID (makepkg refuses root; build.sh uses passwordless sudo inside). The engine runs as real root (`sudo podman` or the docker daemon) because pacstrap mounts devtmpfs/proc. In the container `CARGO_TARGET_DIR=rust/target/container` (`build-rust.sh` honours it). `scripts/lib/host.sh` detects the distro family from `/etc/os-release` (never by `command -v pacman`: Debian ships a game with that name). `.github/workflows/rust.yml` builds the image from the Containerfile on every PR and weekly, then runs `./churros rust` on x86_64 and on an arm64 runner (`ubuntu-24.04-arm`, `CHURROS_CONTAINER_BASE=docker.io/menci/archlinuxarm:latest`; a cross `cargo check --target aarch64` from x86_64 fails in glib-sys's pkg-config). That ARM rust image does not install archiso. The aarch64 ISO is a different image: `Containerfile.aarch64` (`localhost/churros-builder-aarch64`, `--platform linux/arm64`, base `docker.io/menci/archlinuxarm:latest`). `./churros build --container --arch arm64` runs local packages, Rust and mkarchiso inside it. On x86_64 that needs qemu-user-static binfmt with the `C` (credentials) flag (`./churros doctor --arch arm64` reads `/proc/sys/fs/binfmt_misc/qemu-aarch64` and rejects `POF`); on an aarch64 host the same container is native. The image forces `PKGEXT='.pkg.tar.zst'` because ALARM defaults to `.pkg.tar.xz`; the build scripts still accept either extension when reusing a package. Bazaar links `libdex>=1.2` (ALARM ships 1.1.0, so `build-bazaar.sh` builds and publishes libdex 1.2 into the local repo). Cargo for that build goes to `rust/target/container-aarch64` and local packages to `archiso/packages/aarch64/`. The x86_64 container path is unchanged. `.github/workflows/iso-arm64.yml` builds that ISO on `ubuntu-24.04-arm` (workflow_dispatch, and PRs that touch the arm64 profile).
 
 ## Testing
 
@@ -76,7 +76,7 @@ rust/                         Rust workspace (apps portadas a gtk4-rs/libadwaita
   churros-tour/               Crate del recorrido guiado (binario churros-tour)
 scripts/
   cli/                        build.sh, run.sh, clean.sh, check.sh, doctor.sh, apps.sh, info.sh, version.sh, logo.sh
-  build-calamares.sh          Produces archiso/packages/calamares-*.pkg.tar.zst
+  build-calamares.sh          Produces archiso/packages/calamares-*.pkg.tar.*
   build-aur.sh                Produces python-pywal + yay + wlogout pkgs
   build-rust.sh               Compiles rust/* crates -> archiso/airootfs/usr/bin/
 archiso/                      ArchISO profile root

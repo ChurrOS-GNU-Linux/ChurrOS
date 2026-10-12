@@ -108,7 +108,7 @@ fn apply_live_icon_theme(theme: &str) {
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 pub struct IconsService;

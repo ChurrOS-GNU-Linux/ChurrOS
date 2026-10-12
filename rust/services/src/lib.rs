@@ -10,6 +10,7 @@ pub mod brightness;
 pub mod dev;
 pub mod ethernet;
 pub mod jsonc;
+pub mod noctalia;
 pub mod power;
 pub mod theme;
 pub mod version;

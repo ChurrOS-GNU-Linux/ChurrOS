@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Wrapper to launch labWC with clean Wayland environment
+# and pi-specific waybar config.
+
+export XDG_CURRENT_DESKTOP=ChurrOS
+export XDG_SESSION_DESKTOP=ChurrOS
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORM=wayland
+export GDK_BACKEND=wayland,x11
+export XCURSOR_THEME=Adwaita
+export XCURSOR_SIZE=24
+
+# Iniciar waybar con configuración específica de Pi en segundo plano
+waybar --config /usr/share/churros/pi/waybar/config.jsonc --style /usr/share/churros/pi/waybar/style.css &
+
+exec /usr/bin/labwc "$@"

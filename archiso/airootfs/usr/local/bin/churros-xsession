@@ -41,7 +41,10 @@ case "$EDITION" in
         echo "  Conéctate por SSH. Consulta docs/server.md." >&2
         exit 1
         ;;
-    *)
+    pi)
+        if [ -x /usr/bin/churros-pi-session ]; then
+            exec /usr/bin/churros-pi-session "$@"
+        fi
         exec /usr/bin/churros-niri-session "$@"
         ;;
 esac

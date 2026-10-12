@@ -454,7 +454,7 @@ impl UpdateService {
             .args(["-a", "ChurrOS", summary, body])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn();
+            .status();
     }
 }
 

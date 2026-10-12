@@ -38,7 +38,7 @@ El objetivo es generar imágenes ISO reproducibles, mantener un flujo sencillo y
   - `build-rust.sh`: Compila en release todos los crates de `rust/` con `deploy = true` y los instala en el airootfs.
   - `build-calamares.sh`: Compila el instalador Calamares desde AUR con parches locales y soporte de Python.
   - `build-aur.sh`: Compila paquetes AUR necesarios (`python-pywal`, `yay`, `wlogout`).
-  - `build-bazaar.sh`: Compila la tienda de aplicaciones Bazaar resolviendo conflictos de dependencias con libdex.
+  - `build-bazaar.sh`: Compila la tienda de aplicaciones Bazaar contra `libdex>=1.2` (meson pide `libdex-1`). En Arch extra esa versión ya está; en Arch Linux ARM el repo trae 1.1.0, así que el script construye libdex 1.2, lo instala en el contenedor y lo publica en el repo local.
   - `build-grub-theme.sh`: Genera fuentes `.pf2` y recursos gráficos para el tema de GRUB.
   - `build-i18n.sh`: Compila catálogos gettext de `po/*.po` a `.mo` en `archiso/airootfs/usr/share/locale/`.
   - `build-churros-release.sh`: Genera el bundle OTA `churros-utils-<version>.tar.zst` y `updates.json` para el servidor de actualizaciones.
@@ -60,7 +60,7 @@ Copia `branding/customize_airootfs.sh` y `branding/files/` al airootfs. Estampa 
 
 ## 2. Paquetes locales
 
-Si no están, construye Calamares y los extras AUR (`python-pywal`, `yay`, `wlogout`) en `archiso/packages/`. Si hay paquete de Calamares, `installer/apply-calamares.sh` despliega la config y se copian los `.pkg.tar.zst` a `airootfs/root/packages/`.
+Si no están, construye Calamares y los extras AUR (`python-pywal`, `yay`, `wlogout`) en `archiso/packages/` (en aarch64, `archiso/packages/aarch64/`). Un paquete ya compilado se reconoce tanto si es `.pkg.tar.zst` como `.pkg.tar.xz`. Si hay paquete de Calamares, `installer/apply-calamares.sh` despliega la config y se copian los paquetes a `airootfs/root/packages/`.
 
 ## 3. Apps Rust
 
@@ -206,7 +206,8 @@ Mejoras previstas:
 |----------|-------------|----------|
 | `ci.yml` | `ubuntu-latest` | `./churros check` y `cargo test -p churros-services` (rápido, sin GTK) |
 | `rust.yml` | imagen del `Containerfile`: `archlinux:latest` en `ubuntu-latest` y `menci/archlinuxarm` en `ubuntu-24.04-arm` | Compila el workspace completo (`--all-targets`), ejecuta sus tests y pasa clippy, en x86_64 y en ARM64 |
+| `iso-arm64.yml` | `ubuntu-24.04-arm`, contenedor `Containerfile.aarch64` | `./churros build --container --arch arm64` y sube la ISO como artefacto. Manual (`workflow_dispatch`) y en PRs que tocan el perfil arm64. No es un check obligatorio |
 
-Las apps GTK no se compilan en `ubuntu-latest`: gtk4-rs 0.11 exige GTK ≥ 4.22 y libadwaita-rs 0.9 exige libadwaita ≥ 1.9, versiones que Ubuntu no alcanza. `rust.yml` corre dentro de una imagen Arch, que es el mismo entorno donde se construye la ISO.
+Las apps GTK no se compilan en `ubuntu-latest`: gtk4-rs 0.11 exige GTK ≥ 4.22 y libadwaita-rs 0.9 exige libadwaita ≥ 1.9, versiones que Ubuntu no alcanza. `rust.yml` corre dentro de una imagen Arch, que es el mismo entorno donde se construye la ISO x86_64.
 
-ARM64 se compila en un runner arm64 nativo con Arch Linux ARM, no con `cargo check --target aarch64-unknown-linux-gnu` desde x86_64: glib-sys y gtk4-sys buscan con pkg-config las bibliotecas de aarch64, que el runner x86_64 no tiene. Arch Linux ARM no empaqueta archiso, así que esa imagen no lleva las herramientas de la ISO y el job ARM64 no las comprueba.
+ARM64 de las apps se compila en un runner arm64 nativo con Arch Linux ARM, no con `cargo check --target aarch64-unknown-linux-gnu` desde x86_64: glib-sys y gtk4-sys buscan con pkg-config las bibliotecas de aarch64, que el runner x86_64 no tiene. Esa imagen de `rust.yml` no instala archiso (Arch Linux ARM no lo empaqueta). La ISO aarch64 es otro contenedor, `Containerfile.aarch64`: instala el `archiso` de extra de Arch (`arch=any`) y corre el build entero de forma nativa en `ubuntu-24.04-arm`. En un host x86_64 el mismo contenedor usa qemu-user.

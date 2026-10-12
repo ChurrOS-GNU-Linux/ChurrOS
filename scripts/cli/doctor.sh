@@ -5,10 +5,19 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/host.sh"
 
 AUTO_INSTALL=false
+WANT_ARCH=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --install|-i|--yes|-y)
             AUTO_INSTALL=true
+            shift
+            ;;
+        --arch)
+            WANT_ARCH="${2:-}"
+            shift 2
+            ;;
+        --arch=*)
+            WANT_ARCH="${1#*=}"
             shift
             ;;
         *)
@@ -16,6 +25,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+case "$WANT_ARCH" in
+    ""|x86_64|amd64) WANT_ARCH="" ;;
+    arm64|aarch64) WANT_ARCH=aarch64 ;;
+    *)
+        echo "Error: arquitectura no soportada '$WANT_ARCH' (usa --arch arm64)." >&2
+        exit 1
+        ;;
+esac
 
 FAMILY="$(churros_host_family)"
 
@@ -113,6 +130,36 @@ else
 fi
 
 echo
+
+# La ISO aarch64 en un host x86_64 corre dentro de un contenedor ARM
+# (qemu-user). Sin --arch arm64 esto es un aviso: el build x86_64 no lo usa.
+if churros_need_aarch64_emulation; then
+    if churros_aarch64_emulation_ready; then
+        echo "✓ qemu-user aarch64 (binfmt, flag C) — ./churros build --container --arch arm64"
+    elif churros_aarch64_binfmt_entry >/dev/null 2>&1 && ! churros_aarch64_binfmt_has_credentials; then
+        if [ "$WANT_ARCH" = aarch64 ]; then
+            echo "✗ qemu-user aarch64 (binfmt) — registrado sin la bandera C (credentials)"
+            echo "  flags: $(churros_aarch64_binfmt_flags) ($(churros_aarch64_binfmt_entry))"
+            echo "  sudo dentro de makepkg falla con: effective uid is not 0"
+            churros_print_aarch64_binfmt_help | sed 's/^/  /'
+            missing=$((missing + 1))
+        else
+            echo "! qemu-user aarch64 — binfmt sin bandera C; sudo en makepkg fallará"
+            echo "  Comprueba con: ./churros doctor --arch arm64"
+        fi
+    elif [ "$WANT_ARCH" = aarch64 ]; then
+            echo "✗ qemu-user aarch64 (binfmt) — falta para ./churros build --container --arch arm64"
+        echo "  Debian/Ubuntu: sudo apt install qemu-user-static binfmt-support"
+        echo "  Fedora:        sudo dnf install qemu-user-static"
+        echo "  Arch:          sudo pacman -S qemu-user-static qemu-user-static-binfmt"
+        echo "  o:             ./install-deps.sh --arch arm64"
+        missing=$((missing + 1))
+    else
+        echo "! qemu-user aarch64 — no está registrado; hace falta para ./churros build --container --arch arm64"
+        echo "  Comprueba con: ./churros doctor --arch arm64"
+    fi
+    echo
+fi
 
 # KVM hardware virtualization check
 if [ -e /dev/kvm ]; then

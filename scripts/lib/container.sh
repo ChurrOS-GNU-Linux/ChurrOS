@@ -12,13 +12,28 @@
 #                              si no hay podman.
 #   CHURROS_CONTAINER_IMAGE    nombre de la imagen (localhost/churros-builder).
 #   CHURROS_CONTAINER_BASE     imagen base. Por defecto la oficial de Arch,
-#                              que solo existe para x86_64. En ARM, el CI usa
-#                              docker.io/menci/archlinuxarm.
+#                              que solo existe para x86_64. En ARM, el CI de
+#                              rust usa docker.io/menci/archlinuxarm. El build
+#                              de la ISO aarch64 fija la suya en container_use_arch.
 #   CHURROS_CONTAINER_REBUILD  1 = reconstruir la imagen aunque esté al día.
 #   CHURROS_CONTAINER_ARGS     argumentos extra para `run` (proxy, montajes).
+#
+# container_use_arch aarch64 cambia imagen, Containerfile, plataforma y
+# volúmenes. ./churros rust no la llama: el job ARM de rust.yml sigue con
+# Containerfile y CHURROS_CONTAINER_BASE.
 
 CHURROS_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHURROS_CONTAINER_IMAGE="${CHURROS_CONTAINER_IMAGE:-localhost/churros-builder}"
+if [ -n "${CHURROS_CONTAINER_IMAGE:-}" ]; then
+    CHURROS_CONTAINER_IMAGE_EXPLICIT=1
+else
+    CHURROS_CONTAINER_IMAGE_EXPLICIT=0
+    CHURROS_CONTAINER_IMAGE=localhost/churros-builder
+fi
+CHURROS_CONTAINERFILE="${CHURROS_CONTAINERFILE:-$CHURROS_REPO_ROOT/Containerfile}"
+CHURROS_CONTAINER_PLATFORM="${CHURROS_CONTAINER_PLATFORM:-}"
+CHURROS_CONTAINER_HOME_VOL="${CHURROS_CONTAINER_HOME_VOL:-churros-builder-home}"
+CHURROS_CONTAINER_CACHE_VOL="${CHURROS_CONTAINER_CACHE_VOL:-churros-pacman-cache}"
+CHURROS_CONTAINER_CARGO_DIR="${CHURROS_CONTAINER_CARGO_DIR:-/churros/rust/target/container}"
 # Arch es rolling: una imagen de más de una semana obliga a cada build a
 # actualizar medio sistema con pacman -Syu antes de empezar.
 CHURROS_CONTAINER_MAX_AGE=$((7 * 24 * 3600))
@@ -29,6 +44,30 @@ CONTAINER_ROOTLESS=0
 container_die() {
     printf 'Error: %s\n' "$*" >&2
     exit 1
+}
+
+# container_use_arch aarch64
+#
+# Imagen nativa de Arch Linux ARM para el build completo de la ISO
+# (paquetes locales, Rust y mkarchiso). --platform linux/arm64: en x86_64
+# el motor usa qemu-user; en aarch64 es nativo. Los volúmenes y el target
+# de cargo no se mezclan con los del build x86_64.
+container_use_arch() {
+    case "$1" in
+        aarch64|arm64)
+            if [ "$CHURROS_CONTAINER_IMAGE_EXPLICIT" -eq 0 ]; then
+                CHURROS_CONTAINER_IMAGE=localhost/churros-builder-aarch64
+            fi
+            CHURROS_CONTAINER_BASE="${CHURROS_CONTAINER_BASE:-docker.io/menci/archlinuxarm:latest}"
+            CHURROS_CONTAINERFILE="$CHURROS_REPO_ROOT/Containerfile.aarch64"
+            CHURROS_CONTAINER_PLATFORM=linux/arm64
+            CHURROS_CONTAINER_HOME_VOL=churros-builder-home-aarch64
+            CHURROS_CONTAINER_CACHE_VOL=churros-pacman-cache-aarch64
+            CHURROS_CONTAINER_CARGO_DIR=/churros/rust/target/container-aarch64
+            ;;
+        x86_64) ;;
+        *) container_die "container_use_arch: arquitectura no soportada '$1'" ;;
+    esac
 }
 
 # El contenedor corre con root de verdad: sudo podman, o el demonio de docker.
@@ -75,8 +114,8 @@ container_engine_init() {
 # Huella del Containerfile y de la imagen base: si cambia, se reconstruye.
 container_recipe() {
     {
-        cat "$CHURROS_REPO_ROOT/Containerfile"
-        printf 'base=%s\n' "${CHURROS_CONTAINER_BASE:-}"
+        cat "$CHURROS_CONTAINERFILE"
+        printf 'base=%s\nplatform=%s\n' "${CHURROS_CONTAINER_BASE:-}" "${CHURROS_CONTAINER_PLATFORM:-}"
     } | sha256sum | cut -c1-16
 }
 
@@ -114,7 +153,7 @@ container_ensure_image() {
     # Contexto vacío: el Containerfile no copia nada y así no se envían al
     # motor out/, vm/ ni rust/target.
     ctx=$(mktemp -d)
-    cp "$CHURROS_REPO_ROOT/Containerfile" "$ctx/Containerfile"
+    cp "$CHURROS_CONTAINERFILE" "$ctx/Containerfile"
 
     # --no-cache: si no, una reconstrucción por antigüedad reutilizaría la capa
     # de pacman y la imagen seguiría igual de vieja.
@@ -123,6 +162,9 @@ container_ensure_image() {
         --label "org.churros.built=$now"
         -t "$CHURROS_CONTAINER_IMAGE"
         -f "$ctx/Containerfile")
+    if [ -n "$CHURROS_CONTAINER_PLATFORM" ]; then
+        build_args+=(--platform "$CHURROS_CONTAINER_PLATFORM")
+    fi
     if [ -n "${CHURROS_CONTAINER_BASE:-}" ]; then
         build_args+=(--build-arg "BASE_IMAGE=$CHURROS_CONTAINER_BASE")
     fi
@@ -166,12 +208,15 @@ container_run() {
         --security-opt label=disable
         -v "$CHURROS_REPO_ROOT:/churros"
         -w /churros
-        -v churros-builder-home:/home/builder
-        -v churros-pacman-cache:/var/cache/pacman/pkg
+        -v "$CHURROS_CONTAINER_HOME_VOL:/home/builder"
+        -v "$CHURROS_CONTAINER_CACHE_VOL:/var/cache/pacman/pkg"
         -e CHURROS_IN_CONTAINER=1
-        -e CARGO_TARGET_DIR=/churros/rust/target/container
+        -e "CARGO_TARGET_DIR=$CHURROS_CONTAINER_CARGO_DIR"
         -e "CHURROS_HOST_UID=$uid"
         -e "CHURROS_HOST_GID=$gid")
+    if [ -n "$CHURROS_CONTAINER_PLATFORM" ]; then
+        run_args+=(--platform "$CHURROS_CONTAINER_PLATFORM")
+    fi
 
     while [ "$#" -gt 0 ]; do
         case "$1" in

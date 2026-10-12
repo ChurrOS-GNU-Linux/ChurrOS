@@ -1,0 +1,18 @@
+# mkinitcpio preset file for the 'linux-aarch64' package on archiso.
+#
+# linux-aarch64 installs /boot/Image. ALL_kver must be that file: the x86
+# preset's /boot/vmlinuz-linux is not readable here and mkinitcpio -P fails.
+# The image stays initramfs-linux.img. publish-aarch64-kernel copies it to
+# initramfs-linux-aarch64.img, which GRUB and the Calamares unpackfs expect.
+# shellprocess-fixboot rewrites this preset to PRESETS=('default') and
+# default_image="/boot/initramfs-linux-aarch64.img" on the installed system.
+# Pacman overwrites /etc/mkinitcpio.d/linux-aarch64.preset when it extracts
+# the package (it is not a backup file). customize_airootfs.sh copies this
+# file back and reruns mkinitcpio before publishing the kernel names.
+
+PRESETS=('archiso')
+
+ALL_kver='/boot/Image'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+
+archiso_image="/boot/initramfs-linux.img"

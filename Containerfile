@@ -27,7 +27,8 @@ RUN grep -q '^DisableSandboxFilesystem' /etc/pacman.conf \
 # vieja, -Syu falla por firmas de empaquetadores nuevos.
 #
 # Arch Linux ARM no empaqueta archiso: sobre esa base la imagen sirve para
-# ./churros rust, pero no para ./churros build --container.
+# ./churros rust, pero no para ./churros build. La ISO aarch64 usa
+# Containerfile.aarch64 (archiso instalado desde extra de Arch, arch=any).
 RUN pacman-key --init \
     && pacman-key --populate \
     && pacman -Sy --noconfirm --needed $(pacman -Qq | grep -- '-keyring$') \

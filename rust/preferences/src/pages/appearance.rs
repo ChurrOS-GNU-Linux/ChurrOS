@@ -6,6 +6,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use gtk::prelude::*;
+
 use crate::services::niri_config::NiriConfig;
 use crate::services::pywal::PywalService;
 use crate::services::settings;
@@ -34,7 +36,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
     // Modo oscuro
     let dark_active = ThemeService::is_dark();
     let feedback_rc = Rc::clone(&feedback);
-    theme_group.add(&SwitchRow::new(
+    let dark_row = SwitchRow::new(
         "Modo oscuro",
         Some("appearance.svg"),
         Some("Usar el tema oscuro"),
@@ -43,13 +45,27 @@ pub fn build(navigator: gtk::Stack) -> Page {
             ThemeService::set(active);
             set_feedback(
                 &feedback_rc,
-                if active { "Modo oscuro activado" } else { "Modo claro activado" },
+                if active {
+                    "Modo oscuro activado"
+                } else {
+                    "Modo claro activado"
+                },
             );
         })),
-    ));
+    );
+    let dark_switch = dark_row.switch.clone();
+    theme_group.add(&dark_row);
+    // La página se construye una vez: el interruptor no se entera del
+    // restablecer si nadie lo mueve. set_active reentra en el callback,
+    // y apply() ignora esa reentrada mientras APPLYING está puesto.
+    ThemeService::on_change(move |dark| {
+        if dark_switch.is_active() != dark {
+            dark_switch.set_active(dark);
+        }
+    });
 
     // Colores dinámicos (pywal)
-    let dynamic_active = settings::get_bool("theme.dynamic_colors", true);
+    let dynamic_active = settings::get_bool("theme.dynamic_colors", false);
     let feedback_rc = Rc::clone(&feedback);
     theme_group.add(&SwitchRow::new(
         "Colores dinámicos",
@@ -78,25 +94,23 @@ pub fn build(navigator: gtk::Stack) -> Page {
     // ============ Fondo de pantalla ============
     let mut wallpaper_group = Group::new("Fondo de pantalla");
 
-    let current = WallpaperService::current();
-    let (subtitle, value): (String, Option<String>) =
-        if !current.is_empty() && std::path::Path::new(&current).is_file() {
-            (format!("Actual: {current}"), None)
-        } else {
-            (
-                "Sin wallpaper configurado".to_string(),
-                Some("Sin fondo".to_string()),
-            )
-        };
-
-    wallpaper_group.add(&Row::new(
+    let wallpaper_row = Row::new(
         "Wallpaper actual",
-        Some(&subtitle),
+        Some(&wallpaper_subtitle()),
         Some("wallpaper.svg"),
-        value.as_deref(),
         None,
         None,
-    ));
+        None,
+    );
+    if let Some(label) = wallpaper_row.subtitle_label().cloned() {
+        let navigator_for_wallpaper = navigator.clone();
+        navigator_for_wallpaper.connect_visible_child_name_notify(move |stack| {
+            if stack.visible_child_name().as_deref() == Some("appearance") {
+                label.set_label(&wallpaper_subtitle());
+            }
+        });
+    }
+    wallpaper_group.add(&wallpaper_row);
 
     wallpaper_group.add(&navigation_row::new(
         navigator.clone(),
@@ -186,13 +200,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
         // ============ Componentes de UI (solo Niri) ============
         let mut components_group = Group::new("Componentes de UI");
 
-        for (title, subtitle, icon, page_name) in [
-            (
-                "Waybar",
-                "Barra superior: posicion, colores y modulos",
-                "waybar.svg",
-                "waybar",
-            ),
+        let mut components = vec![
             (
                 "Foot",
                 "Terminal: fuente, cursor, padding, bell",
@@ -205,13 +213,29 @@ pub fn build(navigator: gtk::Stack) -> Page {
                 "applications.svg",
                 "fuzzel",
             ),
-            (
+        ];
+        // Waybar y Mako solo si esta sesión los usa. Con Noctalia, aplicar
+        // Waybar lanza una segunda barra y Mako pisa sus notificaciones.
+        if churros_services::noctalia::uses_waybar() {
+            components.insert(
+                0,
+                (
+                    "Waybar",
+                    "Barra superior: posicion, colores y modulos",
+                    "waybar.svg",
+                    "waybar",
+                ),
+            );
+        }
+        if churros_services::noctalia::uses_mako() {
+            components.push((
                 "Mako",
                 "Notificaciones: fuente, colores, posicion, DND",
                 "mako.svg",
                 "mako",
-            ),
-        ] {
+            ));
+        }
+        for (title, subtitle, icon, page_name) in components {
             components_group.add(&navigation_row::new(
                 navigator.clone(),
                 title,
@@ -247,12 +271,17 @@ pub fn build(navigator: gtk::Stack) -> Page {
             Some("Temperatura de color y filtro de luz azul (wlsunset)"),
         ));
 
+        let lock_blurb = if churros_services::noctalia::shell_active() {
+            "El bloqueo lo gestiona Noctalia"
+        } else {
+            "swaylock + swayidle: estilo y bloqueo automatico"
+        };
         screen_group.add(&navigation_row::new(
             navigator.clone(),
             "Pantalla de bloqueo",
             "lock_screen.svg",
             "lock-screen",
-            Some("swaylock + swayidle: estilo y bloqueo automatico"),
+            Some(lock_blurb),
         ));
 
         page.add(screen_group.widget());
@@ -381,6 +410,15 @@ pub fn build(navigator: gtk::Stack) -> Page {
     page.add(status_group.widget());
 
     page
+}
+
+fn wallpaper_subtitle() -> String {
+    let current = WallpaperService::current();
+    if !current.is_empty() && std::path::Path::new(&current).is_file() {
+        format!("Actual: {current}")
+    } else {
+        "Sin wallpaper configurado".to_string()
+    }
 }
 
 fn set_feedback(feedback: &Rc<RefCell<Option<Row>>>, text: &str) {

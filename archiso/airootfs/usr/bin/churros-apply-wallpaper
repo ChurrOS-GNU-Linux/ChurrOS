@@ -4,8 +4,10 @@
 #   Aplica un wallpaper al compositor activo (Niri / Hyprland / Sway).
 #
 #   Backends soportados en orden:
-#     1. swaybg (estatico, simple)
-#     2. awww (animations, GIF, multi-output)
+#     1. Noctalia, si está en marcha. Reintenta el IPC y, si falla, sale
+#        con error: swaybg no puede arrancar encima del shell.
+#     2. swaybg (estatico, simple; KDE/XFCE y sesiones sin Noctalia)
+#     3. awww (animations, GIF, multi-output)
 #
 #   Detecta automaticamente WAYLAND_DISPLAY y XDG_RUNTIME_DIR si no
 #   estan en el entorno (caso live ISO sin session explicita).
@@ -16,8 +18,6 @@
 #
 
 set -u
-
-ARG_PATH="${1:-}"
 
 SETTINGS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/churros/settings.json"
 
@@ -196,18 +196,57 @@ apply_swaybg() {
     return 1
 }
 
-# Noctalia (sesión Niri) pinta su propio fondo encima de swaybg/awww y saca
-# de él la paleta: se le pasa la misma imagen por IPC.
+# Noctalia en marcha: es el único pintor del fondo. `pgrep` falla si no corre.
+noctalia_running() {
+    command -v noctalia >/dev/null 2>&1 || return 1
+    pgrep -u "$(id -u)" -x noctalia >/dev/null 2>&1
+}
+
+# IPC de Noctalia 5.2.1: `noctalia msg wallpaper-set <ruta>`.
+# EAGAIN (`Resource temporarily unavailable`) es transitorio: Noctalia puede
+# haber pintado el fondo y seguir ocupado. Cada intento se corta a los 3 s
+# y entre medias se espera 1.5 s y luego 2.5 s (como mucho ~13 s, por debajo
+# del tope de 18 s de Settings). Si los tres fallan, se devuelve error.
+# No se arranca swaybg.
 apply_noctalia() {
 
     local path="$1"
+    local attempt rc log
 
-    command -v noctalia >/dev/null 2>&1 || return 1
-    pgrep -u "$(id -u)" -x noctalia >/dev/null 2>&1 || return 1
-    _detect_session_env || return 1
+    noctalia_running || return 1
+    # Un swaybg de un intento anterior se queda debajo del shell.
+    _swaybg_kill
 
-    echo "$LOG_PREFIX noctalia msg wallpaper-set $path" >&2
-    noctalia msg wallpaper-set "$path" >/dev/null 2>&1
+    for attempt in 1 2 3; do
+        echo "$LOG_PREFIX noctalia msg wallpaper-set $path (intento $attempt)" >&2
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 3 noctalia msg wallpaper-set "$path" >/tmp/noctalia-wallpaper.log 2>&1
+        else
+            noctalia msg wallpaper-set "$path" >/tmp/noctalia-wallpaper.log 2>&1
+        fi
+        rc=$?
+        if [ "$rc" -eq 0 ]; then
+            echo "$LOG_PREFIX noctalia OK intento $attempt: $path" >&2
+            return 0
+        fi
+        log="$(head -3 /tmp/noctalia-wallpaper.log 2>/dev/null || true)"
+        echo "$LOG_PREFIX noctalia intento $attempt fallo: $log" >&2
+        if [ "$attempt" -ge 3 ]; then
+            break
+        fi
+        # EAGAIN y el corte por timeout se reintentan; no son un fallo final.
+        if [ "$rc" -eq 124 ] || printf '%s\n' "$log" | grep -Eiq 'resource temporarily unavailable|eagain'; then
+            echo "$LOG_PREFIX noctalia ocupado (EAGAIN); se reintenta" >&2
+        fi
+        if [ "$attempt" -eq 1 ]; then
+            sleep 1.5
+        else
+            sleep 2.5
+        fi
+    done
+
+    echo "$LOG_PREFIX noctalia no acepto el fondo tras 3 intentos; swaybg no se arranca" >&2
+    return 1
 }
 
 apply_kde() {
@@ -273,7 +312,12 @@ apply() {
         fi
     fi
 
-    apply_noctalia "$path" || true
+    # Con Noctalia en marcha no hay otro pintor. Un IPC fallido no cae en
+    # swaybg ni en awww: el fondo de Noctalia y swaybg se pisan.
+    if noctalia_running; then
+        apply_noctalia "$path"
+        return $?
+    fi
 
     if command -v swaybg >/dev/null 2>&1; then
 
@@ -309,8 +353,10 @@ apply() {
     return 1
 }
 
-if [ -n "$ARG_PATH" ]; then
-    apply "$ARG_PATH"
+# Un argumento explícito, aunque sea "", no es "sin argumentos": apply()
+# imprime el error y el proceso tiene que salir con ese código.
+if [ "$#" -gt 0 ]; then
+    apply "$1"
     exit $?
 fi
 
@@ -336,7 +382,9 @@ fi
 DEFAULT="/usr/share/churros/wallpapers/default.png"
 
 if [ -f "$DEFAULT" ]; then
-    apply "$DEFAULT" || true
+    apply "$DEFAULT"
+    exit $?
 fi
 
-exit 0
+echo "$LOG_PREFIX archivo no existe:" >&2
+exit 1

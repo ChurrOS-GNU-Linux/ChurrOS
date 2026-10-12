@@ -41,7 +41,7 @@ impl PywalService {
     }
 
     pub fn enabled() -> bool {
-        settings::get_bool("theme.dynamic_colors", true)
+        settings::get_bool("theme.dynamic_colors", false)
     }
 
     fn current_wallpaper() -> Option<String> {
@@ -109,13 +109,18 @@ impl PywalService {
         crate::logging::log(&format!("[pywal] aplicando acento hex: {accent}, bg: {bg}, fg: {fg}"));
         AccentService::set_hex(accent);
 
-        // Waybar: colors-waybar.css
-        WaybarService::apply_pywal_colors(bg, fg, accent);
+        // Waybar y Mako no corren con Noctalia. Escribir sus configs y
+        // lanzar makoctl deja procesos zombi y, en Waybar, una segunda barra.
+        if churros_services::noctalia::uses_waybar() {
+            WaybarService::apply_pywal_colors(bg, fg, accent);
+        }
 
         if let (Some(colors_map), Some(special_map)) = (colors, specials) {
             FootConfig::apply_pywal(colors_map, special_map);
             FuzzelConfig::apply_pywal(colors_map, special_map);
-            MakoConfig::apply_pywal(colors_map, special_map);
+            if churros_services::noctalia::uses_mako() {
+                MakoConfig::apply_pywal(colors_map, special_map);
+            }
         }
 
         crate::logging::log("[pywal] apply_accent completado OK");

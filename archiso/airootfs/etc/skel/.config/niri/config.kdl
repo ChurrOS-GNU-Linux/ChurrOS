@@ -168,46 +168,51 @@ layer-rule {
     }
 }
 
+// El overlay de Niri pone en inglés las acciones que no llevan título, y
+// también las que no están asignadas. hide-not-bound deja solo las reales.
+hotkey-overlay {
+    hide-not-bound true
+}
+
 // Keybindings
 binds {
 
-    // Launch
-    Mod+Return { spawn "foot"; }
-    Mod+Q { close-window; }
-    Mod+Shift+M { quit; }
-    Mod+F { maximize-column; }
-    Mod+Shift+F { fullscreen-window; }
-    Mod+Space { spawn "fuzzel"; }
+    // Launch. Los títulos del overlay son los que muestra Mod+Shift+/.
+    // IPC de Noctalia 5.2.1: `noctalia msg panel-toggle <id>`.
+    Mod+Return hotkey-overlay-title="Abrir la terminal" { spawn "foot"; }
+    Mod+Q hotkey-overlay-title="Cerrar la ventana" { close-window; }
+    Mod+Shift+M hotkey-overlay-title="Salir de Niri" { quit; }
+    Mod+F hotkey-overlay-title="Maximizar la columna" { maximize-column; }
+    Mod+Shift+F hotkey-overlay-title="Pantalla completa" { fullscreen-window; }
+    Mod+Space hotkey-overlay-title="Abrir el lanzador" { spawn-sh "noctalia msg panel-toggle launcher"; }
+    Mod+Shift+Space hotkey-overlay-title="Lanzador alternativo (Fuzzel)" { spawn "fuzzel"; }
 
-    // ChurrOS apps
-    Mod+C { spawn "churros-control-center"; }
-    Mod+P { spawn "churros-settings"; }
-    Mod+W { spawn "churros-welcome"; }
-    Mod+S { spawn "bazaar"; }
-    Mod+E { spawn "thunar"; }
-    Mod+Shift+E { spawn "wlogout"; }
-    Mod+Shift+N { spawn "churros-popup" "network"; }
-    Mod+Shift+A { spawn "churros-popup" "audio"; }
-    Mod+Shift+B { spawn "churros-popup" "bluetooth"; }
-    Mod+Shift+L { spawn "churros-popup" "brightness"; }
-    Mod+Shift+T { spawn "churros-popup" "battery"; }
+    // ChurrOS apps. El centro de control de Noctalia ya cubre red, audio,
+    // bluetooth, brillo y batería. churros-popup y churros-control-center
+    // siguen en la ISO y se abren desde el lanzador, sin atajo en esta sesión.
+    Mod+C hotkey-overlay-title="Abrir el centro de control" { spawn-sh "noctalia msg panel-toggle control-center"; }
+    Mod+P hotkey-overlay-title="Abrir ajustes" { spawn "churros-settings"; }
+    Mod+W hotkey-overlay-title="Abrir la bienvenida" { spawn "churros-welcome"; }
+    Mod+S hotkey-overlay-title="Abrir la tienda" { spawn "bazaar"; }
+    Mod+E hotkey-overlay-title="Abrir archivos" { spawn "thunar"; }
+    Mod+Shift+E hotkey-overlay-title="Menú de sesión" { spawn "wlogout"; }
 
     // Escape hatch
-    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Escape allow-inhibiting=false hotkey-overlay-title="Alternar el bloqueo de atajos" { toggle-keyboard-shortcuts-inhibit; }
 
     // Overlay & overview
-    Mod+Shift+Slash { show-hotkey-overlay; }
-    Mod+O { toggle-overview; }
+    Mod+Shift+Slash hotkey-overlay-title="Mostrar los atajos" { show-hotkey-overlay; }
+    Mod+O hotkey-overlay-title="Abrir la vista general" { toggle-overview; }
 
     // Layout
-    Mod+R { switch-preset-column-width; }
-    Mod+V { toggle-window-floating; }
-    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Mod+R hotkey-overlay-title="Cambiar el ancho de columna" { switch-preset-column-width; }
+    Mod+V hotkey-overlay-title="Alternar ventana flotante" { toggle-window-floating; }
+    Mod+Shift+V hotkey-overlay-title="Cambiar entre flotante y mosaico" { switch-focus-between-floating-and-tiling; }
 
     // Screenshots
-    Print { screenshot; }
-    Ctrl+Print { screenshot-screen; }
-    Alt+Print { screenshot-window; }
+    Print hotkey-overlay-title="Capturar la pantalla" { screenshot; }
+    Ctrl+Print hotkey-overlay-title="Capturar toda la pantalla" { screenshot-screen; }
+    Alt+Print hotkey-overlay-title="Capturar la ventana" { screenshot-window; }
 
     // Workspaces
     Mod+1 { focus-workspace 1; }
@@ -230,15 +235,16 @@ binds {
     Mod+Shift+8 { move-window-to-workspace 8; }
     Mod+Shift+9 { move-window-to-workspace 9; }
 
-    // Focus movement
-    Mod+Left { focus-column-left; }
-    Mod+Right { focus-column-right; }
+    // Focus movement. Izquierda y derecha salen en el overlay de Niri;
+    // arriba y abajo no, y un título las añadiría a la lista.
+    Mod+Left hotkey-overlay-title="Enfocar la columna izquierda" { focus-column-left; }
+    Mod+Right hotkey-overlay-title="Enfocar la columna derecha" { focus-column-right; }
     Mod+Up { focus-window-up; }
     Mod+Down { focus-window-down; }
 
     // Window movement
-    Mod+Shift+Left { move-column-left; }
-    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Left hotkey-overlay-title="Mover la columna a la izquierda" { move-column-left; }
+    Mod+Shift+Right hotkey-overlay-title="Mover la columna a la derecha" { move-column-right; }
     Mod+Shift+Up { move-window-up; }
     Mod+Shift+Down { move-window-down; }
 
@@ -253,8 +259,9 @@ binds {
     XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "10%-"; }
 }
 
-// Autostart
-spawn-at-startup "swaybg" "-i" "/usr/share/churros/wallpapers/default.png" "-m" "fill"
+// Autostart. El fondo lo pinta solo Noctalia ([wallpaper.default] en
+// ~/.config/noctalia/config.toml). swaybg sigue instalado como respaldo
+// fuera de esta sesión, pero no se arranca aquí: si no, se superpone.
 spawn-at-startup "churros-portal-start"
 spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 spawn-at-startup "noctalia"

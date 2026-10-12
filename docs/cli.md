@@ -52,8 +52,8 @@ Construye una nueva imagen ISO de ChurrOS.
 ```
 
 Opciones:
-- `--arch <x86_64|arm64|i686>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64` y la de 32 bits con `--arch i686` (repos de Arch Linux 32).
-- `--container`: construye dentro del contenedor Arch del `Containerfile` (podman, o docker si no hay podman; con `sudo` y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. Detalle en `docs/getting-started.md`.
+- `--arch <x86_64|arm64|i686>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64` y la de 32 bits con `--arch i686` (repos de Arch Linux 32). En aarch64 solo existe la edición niri; esa ISO requiere el entorno de build ARM, dentro de un contenedor en hosts que no sean aarch64.
+- `--container`: construye dentro del contenedor Arch (podman, o docker si no hay podman; con `sudo` y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. x86_64 usa `Containerfile`. `--arch arm64` usa `Containerfile.aarch64` (`--platform linux/arm64`): en x86_64 hace falta qemu-user-static con binfmt y la bandera `C`; en aarch64 el contenedor es nativo. Detalle en `docs/getting-started.md` y `docs/vm.md`.
 - `--edition <niri|xfce|kde|server>` (o `-e`): Selecciona la edición de la ISO (por defecto: `niri`). La edición `server` instala un sistema sin escritorio, accesible por SSH.
   - `niri`: Compositor Wayland con tiling dinámico horizontal (Noctalia Shell, foot, Fuzzel, Mako).
   - `xfce`: Entorno de escritorio clásico X11 (XFCE 4, panel ChurrOS, xfwm4, xfce4-terminal).
@@ -86,7 +86,7 @@ Este comando permite probar rápidamente los cambios realizados sin necesidad de
 
 Flags opcionales (detalle en `docs/vm.md`):
 
-- `--arch <x86_64|arm64|i686>` — arquitectura de la ISO y de QEMU. Por defecto, la del equipo, igual que `build`. La ISO i686 arranca en QEMU con `qemu-system-i386` (BIOS SeaBIOS o UEFI IA32 si hay OVMF de 32 bits).
+- `--arch <x86_64|arm64|i686>` — arquitectura de la ISO y de QEMU. Por defecto, la del equipo, igual que `build`. ARM usa `qemu-system-aarch64`, máquina `virt`, CD virtio-scsi (virt no tiene IDE) y consola `ttyAMA0`; si falta su ISO y el host no es aarch64, el build automático lleva `--container`. i686 usa `qemu-system-i386` y arranca por BIOS SeaBIOS o UEFI IA32 si hay OVMF de 32 bits.
 - `--nokvm` — emulación por software, sin KVM.
 - `--fresh` — resetea `vm/OVMF_VARS.fd` para arrancar desde el CD-ROM.
 - `--clean` — borra el disco de la VM y las variables EFI antes de arrancar.

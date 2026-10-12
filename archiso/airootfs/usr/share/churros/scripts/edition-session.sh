@@ -31,6 +31,7 @@ churros_session_command() {
         server) return 1 ;;
         xfce)   printf '%s\n' /usr/bin/startxfce4 ;;
         kde)    printf '%s\n' /usr/bin/startplasma-wayland ;;
+        pi)     printf '%s\n' /usr/bin/churros-pi-session ;;
         *)      printf '%s\n' /usr/bin/churros-niri-session ;;
     esac
 }
@@ -41,6 +42,7 @@ churros_lightdm_session() {
         server) return 1 ;;
         xfce)   printf '%s\n' xfce ;;
         kde)    printf '%s\n' plasma ;;
+        pi)     printf '%s\n' pi ;;
         *)      printf '%s\n' niri ;;
     esac
 }

@@ -129,6 +129,13 @@ fn migrate_adwaita_dark_ini(ini: &Path) {
     let _ = fs::write(ini, updated);
 }
 
+fn noctalia_prefers_dark() -> Option<bool> {
+    let home = PathBuf::from(churros_services::home_dir());
+    let state = fs::read_to_string(home.join(".local/state/noctalia/settings.toml")).ok();
+    let config = fs::read_to_string(home.join(".config/noctalia/config.toml")).ok();
+    churros_services::noctalia::preferred_dark(state.as_deref(), config.as_deref())
+}
+
 fn write_dark_flag(dark: bool) {
     if let Some(parent) = dark_flag().parent() {
         let _ = fs::create_dir_all(parent);
@@ -178,8 +185,9 @@ fn persist_desktop(dark: bool) {
         .output();
 
     // Noctalia (sesión Niri) vuelve a escribir color-scheme desde su
-    // [theme].mode al arrancar y con cada paleta: se le pasa el mismo modo,
-    // que guarda en su settings.toml. Sin Noctalia corriendo no hace nada.
+    // [theme].mode al arrancar. shell_mode = "follow" en config.toml hace
+    // que la barra y los paneles usen esa misma variante. El modo se guarda
+    // en settings.toml. Sin Noctalia corriendo no hace nada.
     if churros_services::which("noctalia") {
         let _ = Command::new("noctalia")
             .args(["msg", "theme-mode-set", if dark { "dark" } else { "light" }])
@@ -268,6 +276,13 @@ impl ThemeService {
     }
 
     pub fn is_dark() -> bool {
+        // Con Noctalia el modo real es [theme].mode: settings.toml si hay
+        // override, y si no el config.toml de fábrica (oscuro).
+        if churros_services::noctalia::shell_active() {
+            if let Some(dark) = noctalia_prefers_dark() {
+                return dark;
+            }
+        }
         if let Ok(content) = fs::read_to_string(dark_flag()) {
             return content.trim() == "1";
         }
@@ -278,10 +293,17 @@ impl ThemeService {
     }
 
     pub fn set(dark: bool) {
-        if APPLYING.with(Cell::get) {
+        if APPLYING.with(Cell::get) || Self::is_dark() == dark {
             return;
         }
-        if Self::is_dark() == dark {
+        Self::apply(dark);
+    }
+
+    /// Escribe el modo aunque `is_dark()` ya coincida. Tras restablecer,
+    /// el config de Noctalia vuelve a `mode = "dark"` y `set(true)` saldría
+    /// sin `theme-mode-set` ni el prefer-dark de GTK.
+    pub fn apply(dark: bool) {
+        if APPLYING.with(Cell::get) {
             return;
         }
         APPLYING.with(|flag| flag.set(true));

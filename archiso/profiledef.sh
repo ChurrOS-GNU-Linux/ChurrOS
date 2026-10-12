@@ -24,7 +24,8 @@ case "$arch" in
     airootfs_image_tool_options=('-comp' 'zstd' '-b' '1M')
     ;;
   aarch64)
-    # Sin BIOS en ARM: syslinux es solo x86.
+    # Sin BIOS en ARM: syslinux es solo x86. Tampoco uefi.systemd-boot:
+    # los dos modos UEFI escriben EFI/BOOT/BOOTAA64.EFI y se pisan.
     bootmodes=('uefi.grub')
     # xz con filtro BCJ, como lo dejó el port ARM.
     airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'arm' '-b' '1M' '-Xdict-size' '1M')
@@ -49,6 +50,8 @@ bootstrap_tarball_compression=('zstd' '-c' '-T0' '--auto-threads=logical' '--lon
 file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
+  # .zlogin lo ejecuta. Sin 0755 zsh dice "permission denied".
+  ["/root/.automated_script.sh"]="0:0:755"
 
   ["/usr/bin/churros-welcome"]="0:0:755"
   ["/usr/bin/churros-niri-session"]="0:0:755"
@@ -74,7 +77,9 @@ file_permissions=(
   ["/usr/bin/churros-pkexec"]="0:0:755"
   ["/usr/bin/churros-portal-start"]="0:0:755"
   ["/usr/bin/churros-apply-wallpaper"]="0:0:755"
+  ["/usr/bin/churros-pi-session"]="0:0:755"
   ["/usr/share/churros/scripts/make-boot-grub-readable"]="0:0:755"
+  ["/usr/share/churros/scripts/publish-aarch64-kernel"]="0:0:755"
   ["/usr/share/churros/scripts/configure-greeter-locale"]="0:0:755"
   ["/usr/share/churros/scripts/configure-greetd-session"]="0:0:755"
   ["/usr/share/churros/scripts/configure-server"]="0:0:755"

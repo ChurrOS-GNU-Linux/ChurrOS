@@ -112,7 +112,7 @@ cargo test -p churros-welcome
 **Path:** `rust/control-center/`
 **Binario:** `/usr/bin/churros-control-center`
 **Desktop entry:** `archiso/airootfs/usr/share/applications/churros-control-center.desktop`
-**Atajo:** `Mod + C` (niri)
+**Atajo:** ninguno en Niri. `Mod+C` abre el centro de control de Noctalia. Este binario se abre desde el lanzador o desde Waybar.
 
 Centro de control con tarjetas que abren el popup correspondiente (`churros-popup <nombre>`).
 
@@ -165,7 +165,7 @@ Un solo binario con los seis popups y toggle nativo (pidfiles en `/tmp/churros/`
 # fuzzel (launcher)
 
 **Path:** paquete del sistema (`archiso/packages.x86_64`).
-**Atajo:** `Mod + Space`
+**Atajo:** `Mod + Shift + Space` (el lanzador de Noctalia ocupa `Mod + Space`)
 **Waybar:** `custom/launcher` → `fuzzel`
 
 No es una app ChurrOS. Config: `archiso/airootfs/etc/skel/.config/fuzzel/fuzzel.ini`.

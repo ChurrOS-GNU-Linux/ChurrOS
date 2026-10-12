@@ -1,0 +1,66 @@
+name: ISO ARM64
+
+# Construcción opcional de la ISO aarch64. No es un check obligatorio: la
+# imagen es grande y el job corre en un runner ARM nativo. Se dispara a mano
+# y en los pull requests que tocan el perfil arm64.
+#
+# Usa el mismo contenedor que ./churros build --container --arch arm64
+# (Containerfile.aarch64). En ubuntu-24.04-arm ese contenedor es nativo;
+# no interviene qemu-user.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Containerfile.aarch64
+      - archiso/packages.aarch64
+      - archiso/pacman.aarch64.conf
+      - archiso/profiledef.sh
+      - archiso/grub/**
+      - archiso/efiboot/**
+      - archiso/airootfs/usr/share/churros/scripts/publish-aarch64-kernel
+      - archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable
+      - archiso/airootfs/etc/pacman.d/hooks/91-churros-boot-grub-readable.hook
+      - installer/calamares/modules/aarch64/**
+      - installer/calamares/modules/grubcfg.conf
+      - branding/customize_airootfs.sh
+      - scripts/lib/container.sh
+      - scripts/lib/host.sh
+      - scripts/lib/local-repo.sh
+      - scripts/cli/build.sh
+      - scripts/cli/run.sh
+      - scripts/build-aur.sh
+      - scripts/build-bazaar.sh
+      - scripts/build-calamares.sh
+      - scripts/build-rust.sh
+      - .github/workflows/iso-arm64.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iso-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iso:
+    name: Build aarch64 ISO
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    env:
+      CHURROS_CONTAINER_ENGINE: docker
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build ISO
+        run: ./churros build --container --arch arm64
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: churros-aarch64-iso
+          path: out/*.iso
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

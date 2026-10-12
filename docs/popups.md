@@ -100,18 +100,7 @@ Acciones secundarias de Waybar (no pasan por el popup):
 - `pulseaudio` → click derecho silencia; scroll ajusta volumen
 - `backlight` → scroll ajusta brillo con `brightnessctl`
 
-Atajos en niri:
-
-```kdl
-Mod+Shift+N { spawn "churros-popup" "network"; }
-Mod+Shift+A { spawn "churros-popup" "audio"; }
-Mod+Shift+B { spawn "churros-popup" "bluetooth"; }
-Mod+Shift+L { spawn "churros-popup" "brightness"; }
-Mod+Shift+T { spawn "churros-popup" "battery"; }
-Mod+Shift+E { spawn "churros-popup" "power"; }
-```
-
-El control center lanza el mismo binario (`churros-popup <nombre>`), no un `python3` por archivo.
+En la sesión Niri esos atajos ya no están: el centro de control de Noctalia cubre red, audio, bluetooth, brillo y batería (`noctalia msg panel-toggle control-center`, con pestaña `audio`, `network`, `bluetooth`, `monitor` o `power`). `churros-popup` sigue instalado para Waybar y para abrirlo a mano. `Mod+Shift+E` abre `wlogout`, no el popup de energía.
 
 ---
 

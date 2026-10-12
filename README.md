@@ -178,8 +178,10 @@ Se recomienda trabajar mediante ramas y pull requests en lugar de realizar cambi
 ./churros build              # edición Niri
 ./churros build --edition xfce
 ./churros build --edition kde
+./churros build --arch x86_64     # por defecto / anfitriona
+./churros build --arch arm64      # ARM de 64 bits (edición pi / Raspberry Pi)
+./churros build --arch i686       # i686 / Arch Linux 32
 ```
-
 ### Probar en QEMU
 
 ```bash

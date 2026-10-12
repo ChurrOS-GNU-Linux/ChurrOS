@@ -16,14 +16,30 @@ cd "$(dirname "$0")"
 source scripts/lib/host.sh
 
 ASSUME_YES=0
-for arg in "$@"; do
+WANT_ARM64=0
+args=("$@")
+i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+    arg="${args[$i]}"
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
+        --arch=arm64|--arch=aarch64) WANT_ARM64=1 ;;
+        --arch)
+            i=$((i + 1))
+            case "${args[$i]:-}" in
+                arm64|aarch64) WANT_ARM64=1 ;;
+                *)
+                    echo "Uso: ./install-deps.sh [-y|--yes] [--arch arm64]" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
         *)
-            echo "Uso: ./install-deps.sh [-y|--yes]" >&2
+            echo "Uso: ./install-deps.sh [-y|--yes] [--arch arm64]" >&2
             exit 1
             ;;
     esac
+    i=$((i + 1))
 done
 
 if [[ "${EUID}" -eq 0 ]]; then
@@ -163,6 +179,20 @@ if [ "$FAMILY" != arch ] && ! command -v podman >/dev/null 2>&1 && ! command -v 
     REQUIRED+=(podman)
 fi
 
+# En un host que no es aarch64, --arch arm64 registra qemu-user para que
+# el contenedor Arch Linux ARM arranque. En un host aarch64 no hace falta.
+if [ "$WANT_ARM64" -eq 1 ] && [ "$(uname -m)" != aarch64 ]; then
+    case "$FAMILY" in
+        debian) REQUIRED+=(qemu-user-static binfmt-support) ;;
+        fedora) REQUIRED+=(qemu-user-static) ;;
+        arch)   REQUIRED+=(qemu-user-static qemu-user-static-binfmt) ;;
+        *)
+            echo "ERROR: --arch arm64 en $(churros_host_name) necesita qemu-user-static y binfmt a mano." >&2
+            exit 1
+            ;;
+    esac
+fi
+
 echo "[1/4] Actualizando la base de datos de paquetes..."
 "${PM_REFRESH[@]}"
 
@@ -246,6 +276,19 @@ elif command -v podman >/dev/null 2>&1; then
     check_command podman
 else
     check_command docker
+fi
+
+if [ "$WANT_ARM64" -eq 1 ] && [ "$(uname -m)" != aarch64 ]; then
+    if churros_aarch64_emulation_ready; then
+        echo "  [OK] qemu-user aarch64 (binfmt, flag C)"
+    elif churros_aarch64_binfmt_entry >/dev/null 2>&1 && ! churros_aarch64_binfmt_has_credentials; then
+        echo "  [FAIL] qemu-user aarch64 (binfmt sin bandera C; sudo en makepkg falla)"
+        churros_print_aarch64_binfmt_help | sed 's/^/  /'
+        FAILED=1
+    else
+        echo "  [FAIL] qemu-user aarch64 (binfmt no quedó registrado)"
+        FAILED=1
+    fi
 fi
 
 echo

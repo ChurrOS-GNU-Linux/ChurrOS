@@ -212,13 +212,22 @@ impl PreferencesWindow {
         self.register_subpage("cursor", "appearance", |n| pages::cursor::build(n));
         self.register_subpage("fonts", "appearance", |n| pages::fonts::build(n));
         let is_niri = churros_services::version::edition().contains("niri");
+        // Con Noctalia en la sesión, Waybar y Mako no se ofrecen: aplicar
+        // Waybar arranca una segunda barra y Mako choca con sus avisos.
+        // Si la sesión sí los ejecuta, las páginas siguen registradas.
+        let show_waybar = churros_services::noctalia::uses_waybar();
+        let show_mako = churros_services::noctalia::uses_mako();
 
         if is_niri {
-            self.register_subpage("waybar", "appearance", |n| pages::waybar::build(n));
+            if show_waybar {
+                self.register_subpage("waybar", "appearance", |n| pages::waybar::build(n));
+            }
             self.register_subpage("niri", "appearance", |n| pages::niri::build(n));
             self.register_subpage("foot", "appearance", |n| pages::foot::build(n));
             self.register_subpage("fuzzel", "appearance", |n| pages::fuzzel::build(n));
-            self.register_subpage("mako", "appearance", |n| pages::mako::build(n));
+            if show_mako {
+                self.register_subpage("mako", "appearance", |n| pages::mako::build(n));
+            }
         }
         self.register_subpage("wallpaper", "appearance", |n| pages::wallpaper::build(n));
         if is_niri {
@@ -248,24 +257,33 @@ impl PreferencesWindow {
             s.register_subpage(
                 "fonts", "appearance", "Fuentes", "Familia y tamano de fuente", Some("font.svg"));
             if is_niri {
-                s.register_subpage(
-                    "waybar", "appearance", "Waybar", "Barra: posicion, colores, modulos", Some("waybar.svg"));
+                if show_waybar {
+                    s.register_subpage(
+                        "waybar", "appearance", "Waybar", "Barra: posicion, colores, modulos", Some("waybar.svg"));
+                }
                 s.register_subpage(
                     "niri", "appearance", "Niri", "Compositor: disposicion, bordes, blur", Some("niri.svg"));
                 s.register_subpage(
                     "foot", "appearance", "Foot", "Terminal: fuente, cursor, padding, bell", Some("terminal.svg"));
                 s.register_subpage(
                     "fuzzel", "appearance", "Fuzzel", "Launcher: fuente, layout, iconos", Some("applications.svg"));
-                s.register_subpage(
-                    "mako", "appearance", "Mako", "Notificaciones: fuente, colores, posicion, DND", Some("mako.svg"));
+                if show_mako {
+                    s.register_subpage(
+                        "mako", "appearance", "Mako", "Notificaciones: fuente, colores, posicion, DND", Some("mako.svg"));
+                }
             }
             s.register_subpage(
                 "wallpaper", "appearance", "Fondo", "Cambiar el fondo de pantalla", Some("wallpaper.svg"));
             if is_niri {
                 s.register_subpage(
                     "night-light", "appearance", "Luz nocturna", "Temperatura de color y filtro de luz azul", Some("night_light.svg"));
+                let lock_blurb = if churros_services::noctalia::shell_active() {
+                    "El bloqueo lo gestiona Noctalia"
+                } else {
+                    "swaylock + swayidle: estilo y bloqueo automatico"
+                };
                 s.register_subpage(
-                    "lock-screen", "appearance", "Pantalla de bloqueo", "swaylock + swayidle: estilo y bloqueo automatico", Some("lock_screen.svg"));
+                    "lock-screen", "appearance", "Pantalla de bloqueo", lock_blurb, Some("lock_screen.svg"));
             }
             s.register_subpage(
                 "power-profile", "power", "Perfiles de energia", "Performance, balanced o power-saver", None);

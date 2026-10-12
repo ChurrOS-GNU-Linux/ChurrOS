@@ -77,8 +77,9 @@ layout {
 | `SUPER + M` | Sale de Niri |
 | `SUPER + F` | Maximiza columna |
 | `SUPER + SHIFT + F` | Pantalla completa |
-| `SUPER + SPACE` | Abre el launcher (fuzzel) |
-| `SUPER + C` | Abre el centro de control |
+| `SUPER + SPACE` | Abre el lanzador de Noctalia |
+| `SUPER + SHIFT + SPACE` | Lanzador alternativo (Fuzzel) |
+| `SUPER + C` | Abre el centro de control de Noctalia |
 | `SUPER + P` | Abre preferencias (churros-settings) |
 | `SUPER + W` | Abre churros-welcome |
 | `SUPER + S` | Abre Bazaar (tienda Flatpak) |
@@ -86,12 +87,8 @@ layout {
 | `SUPER + SHIFT + V` | Cambiar foco entre floating y tiling |
 | `SUPER + O` | Toggle overview |
 | `SUPER + R` | Cambiar preset de ancho de columna |
-| `SUPER + SHIFT + N` | Popup de red |
-| `SUPER + SHIFT + A` | Popup de audio |
-| `SUPER + SHIFT + B` | Popup de bluetooth |
-| `SUPER + SHIFT + L` | Popup de brillo |
-| `SUPER + SHIFT + T` | Popup de batería |
-| `SUPER + SHIFT + E` | Popup de energía |
+| `SUPER + SHIFT + E` | Menú de sesión (wlogout) |
+| `SUPER + SHIFT + /` | Overlay de atajos |
 | `Print` | Screenshot interactivo |
 | `Ctrl + Print` | Screenshot de pantalla |
 | `Alt + Print` | Screenshot de ventana |
@@ -108,13 +105,12 @@ layout {
 ## Autostart
 
 ```kdl
-spawn-at-startup "swaybg" "-i" "/usr/share/churros/wallpapers/default.png" "-m" "fill"
 spawn-at-startup "churros-portal-start"
 spawn-at-startup "noctalia"
 spawn-at-startup "churros-welcome"
 ```
 
-`swaybg` carga el wallpaper inicial. `churros-portal-start` arranca los xdg-desktop-portals. Noctalia arranca la barra, notificaciones, OSD y launcher; Waybar, Fuzzel y Mako siguen instalados como alternativa (`./churros apps` y Mod+Space siguen usando sus configs). `churros-welcome` muestra la pantalla de bienvenida.
+El fondo lo pinta Noctalia (`[wallpaper.default]` en `config.toml`, `default.png`). `swaybg` sigue instalado, pero no arranca con la sesión: si lo hiciera, se vería encima o debajo del fondo de Noctalia. `churros-portal-start` arranca los xdg-desktop-portals. Noctalia arranca la barra, notificaciones, OSD, lanzador y centro de control. Waybar, Fuzzel y Mako siguen instalados como alternativa; Fuzzel queda en `Mod+Shift+Space`. `churros-welcome` muestra la pantalla de bienvenida.
 
 ---
 
@@ -126,9 +122,9 @@ spawn-at-startup "churros-welcome"
 
 - Terminal: Noctalia usa `$TERMINAL` o el primer terminal que encuentra (`foot` en ChurrOS).
 - Historial de portapapeles propio de Noctalia (sin `cliphist`), sin pegado automático.
-- Wallpapers desde `/usr/share/churros/wallpapers` (por defecto `default.png`), relleno `#111827`.
-- Colores derivados del wallpaper (`m3-tonal-spot`). Las apps siguen el modo de `churros-settings`, que se lo pasa a Noctalia con `noctalia msg theme-mode-set`; la barra y los paneles quedan en oscuro.
-- Fuente `JetBrains Mono`, barra al 0.85 de opacidad y paneles translúcidos.
+- Wallpapers desde `/usr/share/churros/wallpapers` (por defecto `default.png`, recorte `crop`), relleno `#111827`.
+- Paleta propia `palettes/ChurrOS.json` (naranja `#F97316`, midnight `#111827`, grafito `#1F2937`, texto `#F8FAFC`), con variante clara y oscura. `shell_mode = "follow"`: Ajustes → Apariencia → Modo oscuro llama a `noctalia msg theme-mode-set` y el shell cambia con las apps.
+- Fuente `Inter` (paquete `inter-font`), densidad cómoda (`ui_scale = 1.0`, lanzador no compacto), esquinas `corner_radius_scale = 1.2`, barra al 0.85 y paneles en modo `soft` (el modo `glass` deja el fondo al 55 % y, en oscuro sobre un wallpaper claro, el texto se vuelve ilegible).
 - Sin asistente de primer arranque, sin telemetría, sin clima ni geolocalización y sin sonidos de interfaz.
 - Idle/lock gestionado por Noctalia (pantalla 600 s, bloqueo 660 s, suspensión 28800 s); dock flotante que se oculta solo.
 - El agente de polkit sigue siendo `polkit-gnome` (`polkit_agent = false`).
@@ -150,12 +146,13 @@ Atajos de Niri relacionados con el shell (`config.kdl`):
 
 | Atajo | Acción |
 |-------|--------|
-| `Mod+Space` | Launcher (Fuzzel) |
-| `Mod+C` | Control center (`churros-control-center`) |
+| `Mod+Space` | Lanzador de Noctalia (`noctalia msg panel-toggle launcher`) |
+| `Mod+Shift+Space` | Fuzzel, por si hace falta un lanzador aparte |
+| `Mod+C` | Centro de control de Noctalia (`noctalia msg panel-toggle control-center`) |
 | `Mod+Shift+E` | Menú de sesión (`wlogout`) |
-| `Mod+Shift+N/A/B/L/T` | Popups: network, audio, bluetooth, brightness, battery |
+| `Mod+Shift+/` | Overlay de atajos de Niri, con esos títulos |
 
-Los popups `churros-popup` y el control center Rust conviven con los widgets equivalentes de Noctalia; los atajos siguen apuntando a las apps Rust para mantener el mismo comportamiento en las tres ediciones.
+El centro de control de Noctalia ya tiene pestañas de audio, red, bluetooth, brillo (`monitor`) y batería (`power`). Por eso Niri no ata `churros-popup` ni `churros-control-center`. Esos binarios siguen en la ISO: Waybar los lanza al hacer clic y se pueden abrir desde el lanzador. KDE y XFCE no usan este `config.kdl`.
 
 # Waybar
 
@@ -386,7 +383,7 @@ Durante el arranque del Live, los servicios y la configuración se aplican en es
    - Copia la configuración de `/etc/skel/` a `/home/churros/` (`desktop.sh`)
    - Limpia la cache de pacman (`cleanup.sh`)
 5. greetd arranca, autologin como `churros`, carga `niri`.
-6. Niri lee `config.kdl` y ejecuta los `spawn-at-startup` (swaybg, noctalia, churros-welcome, …).
+6. Niri lee `config.kdl` y ejecuta los `spawn-at-startup` (noctalia, churros-welcome, …).
 7. Noctalia arranca (barra, notificaciones, widgets). Waybar puede lanzarse manualmente como respaldo.
 
 ---
@@ -409,7 +406,7 @@ input {
 
 ## Cambiar el wallpaper
 
-Reemplaza `archiso/airootfs/usr/share/churros/wallpapers/default.png` con tu imagen. `swaybg` la carga al inicio y Noctalia la pinta encima (`[wallpaper.default]` en `~/.config/noctalia/config.toml`).
+Reemplaza `archiso/airootfs/usr/share/churros/wallpapers/default.png` con tu imagen. Noctalia la carga al inicio (`[wallpaper.default]` en `~/.config/noctalia/config.toml`).
 
 ## Cambiar los gaps
 

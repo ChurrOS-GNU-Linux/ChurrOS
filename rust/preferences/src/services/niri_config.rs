@@ -265,7 +265,7 @@ impl NiriConfig {
             .args(["msg", "action", "load-config-file"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     // -------------------------------------------------------- Animations

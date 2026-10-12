@@ -4,6 +4,8 @@ set -e
 
 # shellcheck source=scripts/lib/host.sh
 source "$(dirname "$0")/../lib/host.sh"
+# shellcheck source=scripts/lib/local-repo.sh
+source "$(dirname "$0")/../lib/local-repo.sh"
 
 HOST_REPO_SYMLINK=0
 EDITION="niri"
@@ -75,8 +77,27 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
 fi
 
 EDITION=$(echo "$EDITION" | tr '[:upper:]' '[:lower:]')
-if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "kde" ] && [ "$EDITION" != "server" ]; then
+if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "kde" ] && [ "$EDITION" != "server" ] && [ "$EDITION" != "pi" ]; then
     echo "Error: unsupported edition '$EDITION' (supported: niri, xfce, kde, server)" >&2
+    exit 1
+fi
+
+# Solo la edición niri tiene lista aarch64. El resto seguiría copiando
+# packages.<edicion>.x86_64 o fallaría a medias.
+if [ "$TARGET_ARCH" = aarch64 ] && [ "$EDITION" != niri ]; then
+    echo "Error: la ISO aarch64 solo tiene la edición niri (no hay packages.${EDITION}.aarch64)." >&2
+    exit 1
+fi
+
+# En un host que no es aarch64, pacstrap y makepkg tienen que ser nativos
+# de Arch Linux ARM. Sin --container se estarían usando las herramientas
+# x86_64 del host.
+if [ "$TARGET_ARCH" = aarch64 ] && [ "$(uname -m)" != aarch64 ] && ! churros_in_container && [ "$USE_CONTAINER" -ne 1 ]; then
+    echo "Error: este host es $(uname -m). La ISO aarch64 se construye entera dentro de" >&2
+    echo "un contenedor Arch Linux ARM (qemu-user en x86_64, nativo en aarch64):" >&2
+    echo "  ./churros build --container --arch arm64" >&2
+    echo "Comprueba binfmt con:" >&2
+    echo "  ./churros doctor --arch arm64" >&2
     exit 1
 fi
 
@@ -84,11 +105,33 @@ fi
 # contenedor Arch del Containerfile. El repo se monta dentro, así que la ISO
 # queda en out/ igual que en un build normal. --privileged porque pacstrap
 # monta proc, sys y dev en el chroot de la ISO.
+# aarch64 usa Containerfile.aarch64 (--platform linux/arm64): el mismo
+# contenedor es nativo en un host ARM y emulado con qemu-user en x86_64.
 if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then
     # shellcheck source=scripts/lib/container.sh
     source "$(dirname "$0")/../lib/container.sh"
 
-    echo "[container] Build de la edición $EDITION ($TARGET_ARCH) en el contenedor Arch."
+    if [ "$TARGET_ARCH" = aarch64 ]; then
+        container_use_arch aarch64
+        if churros_need_aarch64_emulation && ! churros_aarch64_emulation_ready; then
+            if churros_aarch64_binfmt_entry >/dev/null 2>&1 && ! churros_aarch64_binfmt_has_credentials; then
+                echo "Error: qemu-aarch64 binfmt está registrado sin la bandera C (credentials)." >&2
+                echo "sudo dentro de makepkg falla con 'effective uid is not 0'." >&2
+                churros_print_aarch64_binfmt_help >&2
+            else
+            echo "Error: falta qemu-user aarch64 (binfmt) para construir la ISO ARM en este host." >&2
+            echo "  Debian/Ubuntu: sudo apt install qemu-user-static binfmt-support" >&2
+            echo "  Fedora:        sudo dnf install qemu-user-static" >&2
+            echo "  Arch:          sudo pacman -S qemu-user-static qemu-user-static-binfmt" >&2
+            echo "  o:             ./install-deps.sh --arch arm64" >&2
+            fi
+            echo "Comprueba con: ./churros doctor --arch arm64" >&2
+            exit 1
+        fi
+        echo "[container] Build de la edición $EDITION ($TARGET_ARCH) en el contenedor Arch Linux ARM."
+    else
+        echo "[container] Build de la edición $EDITION ($TARGET_ARCH) en el contenedor Arch."
+    fi
     container_engine_init
     container_ensure_image
     # La arquitectura ya resuelta en el host manda: dentro de un contenedor
@@ -97,6 +140,16 @@ if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then
         bash scripts/cli/build.sh ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"} --arch "$TARGET_ARCH"
     exit 0
 fi
+
+# x86_64 sigue en archiso/packages/. aarch64 tiene su propio directorio para
+# que un paquete -x86_64 no entre en el repo que pacstrap de la ISO ARM.
+if [ "$TARGET_ARCH" = aarch64 ]; then
+    LOCAL_REPO="archiso/packages/aarch64"
+else
+    LOCAL_REPO="archiso/packages"
+fi
+mkdir -p "$LOCAL_REPO"
+export CHURROS_PKG_DIR="$PWD/$LOCAL_REPO"
 
 PACKAGES_BACKED_UP=0
 unmount_work_submounts() {
@@ -150,6 +203,9 @@ cleanup_temp() {
     rm -f archiso/airootfs/usr/bin/churros-tour 2>/dev/null || true
     # GRUB theme copiado al airootfs para que esté disponible en el sistema instalado
     rm -rf --one-file-system archiso/airootfs/usr/share/churros/grub-theme 2>/dev/null || true
+    # Preset y hooks de mkinitcpio que apply-aarch64-mkinitcpio.sh mete solo
+    # en el build ARM. En x86 restore no encuentra el stash y no toca nada.
+    bash scripts/apply-aarch64-mkinitcpio.sh restore
 }
 
 trap cleanup_temp EXIT
@@ -188,7 +244,11 @@ if [ "${#missing_deps[@]}" -gt 0 ]; then
     done
     echo >&2
     if churros_in_container; then
-        echo "La imagen del contenedor no trae estas herramientas: revisa Containerfile" >&2
+        if [ "$TARGET_ARCH" = aarch64 ]; then
+            echo "La imagen del contenedor no trae estas herramientas: revisa Containerfile.aarch64" >&2
+        else
+            echo "La imagen del contenedor no trae estas herramientas: revisa Containerfile" >&2
+        fi
         echo "y reconstruye la imagen con CHURROS_CONTAINER_REBUILD=1." >&2
         exit 1
     elif churros_host_is_arch; then
@@ -238,6 +298,7 @@ case "$EDITION" in
     niri)                SESSION_CMD="niri" ;;
     xfce|server)         SESSION_CMD="startxfce4" ;;
     kde)                 SESSION_CMD="startplasma-wayland" ;;
+    pi)                SESSION_CMD="/usr/bin/churros-pi-session" ;;
     *)
         echo "Error: sin comando de sesión definido para la edición '$EDITION'" >&2
         exit 1
@@ -299,13 +360,13 @@ echo "[2/5] Checking packages..."
 # instala ahora `noctalia` de [extra]. Los paquetes que dejó un build anterior
 # se copiarían a /root/packages y seguirían en el índice churros.db.
 for obsolete_pkg in noctalia-qs noctalia-qs-debug noctalia-shell; do
-    if compgen -G "archiso/packages/${obsolete_pkg}-*.pkg.tar.zst" >/dev/null; then
+    if compgen -G "${LOCAL_REPO}/${obsolete_pkg}-*.pkg.tar.*" >/dev/null; then
         echo "  Removing obsolete local package: $obsolete_pkg"
-        rm -f archiso/packages/"${obsolete_pkg}"-*.pkg.tar.zst
+        churros_remove_pkgs "$LOCAL_REPO" "${obsolete_pkg}-*"
     fi
-    if [ -f archiso/packages/churros.db.tar.gz ] &&
-        tar -tzf archiso/packages/churros.db.tar.gz 2>/dev/null | grep -qE "^${obsolete_pkg}-[^-/]+-[^-/]+/desc$"; then
-        repo-remove -q archiso/packages/churros.db.tar.gz "$obsolete_pkg"
+    if [ -f "$LOCAL_REPO/churros.db.tar.gz" ] &&
+        tar -tzf "$LOCAL_REPO/churros.db.tar.gz" 2>/dev/null | grep -qE "^${obsolete_pkg}-[^-/]+-[^-/]+/desc$"; then
+        repo-remove -q "$LOCAL_REPO/churros.db.tar.gz" "$obsolete_pkg"
     fi
 done
 
@@ -330,18 +391,16 @@ fi
 
 # Always invoke: rebuilds if the package is missing or linked against a
 # different libpython than the ISO's `python` package (pacstrap).
-# En i686 se omite: archlinux32 no empaqueta polkit-qt6 (solo polkit-qt5) y el
-# PKGBUILD de Calamares lo exige; la ISO sale sin instalador.
+# Always invoke Calamares on supported architectures: it rebuilds if missing or linked against a different libpython than the ISO. Arch Linux 32 lacks polkit-qt6, required by the PKGBUILD.
 if [ "$TARGET_ARCH" = "i686" ]; then
     echo "  [i686] Calamares omitido: archlinux32 no empaqueta polkit-qt6."
 else
     bash scripts/build-calamares.sh
 fi
-CALAMARES_PKG=$(ls archiso/packages/calamares-[0-9]*.pkg.tar.zst 2>/dev/null | head -1 || true)
-PYWAL_PKG=$(ls archiso/packages/python-pywal-*.pkg.tar.zst 2>/dev/null | head -1 || true)
-YAY_PKG=$(ls archiso/packages/yay-*.pkg.tar.zst 2>/dev/null | head -1 || true)
-BAZAAR_PKG=$(ls archiso/packages/bazaar-*.pkg.tar.zst 2>/dev/null | head -1 || true)
-WLOGOUT_PKG=$(ls archiso/packages/wlogout-*.pkg.tar.zst 2>/dev/null | head -1 || true)
+CALAMARES_PKG="$(churros_first_pkg "$LOCAL_REPO" 'calamares-[0-9]*' || true)"
+PYWAL_PKG="$(churros_first_pkg "$LOCAL_REPO" 'python-pywal-*' || true)"
+YAY_PKG="$(churros_first_pkg "$LOCAL_REPO" 'yay-*' || true)"
+WLOGOUT_PKG="$(churros_first_pkg "$LOCAL_REPO" 'wlogout-*' || true)"
 
 # En i686 no existen para la arquitectura (vistos arriba) y además pueden
 # quedar en archiso/packages/ los de un build x86_64 previo: integrarlos haría
@@ -358,8 +417,9 @@ fi
 
 if [ "$TARGET_ARCH" = "i686" ]; then
     echo "  [i686] Bazaar omitido: archlinux32 no empaqueta webkitgtk-6.0 ni glycin."
-elif [ -z "$BAZAAR_PKG" ]; then
-    echo "  Bazaar not found — building (patched to fix libdex conflict)..."
+else
+    # Siempre: el script reutiliza el paquete si ya depende de libdex>=1.2.
+    echo "  Bazaar (libdex >= 1.2)..."
     bash scripts/build-bazaar.sh
 fi
 
@@ -374,6 +434,7 @@ if [ -n "$CALAMARES_PKG" ]; then
         xfce)   EDITION_NAME="XFCE" ;;
         kde)    EDITION_NAME="KDE Plasma" ;;
         server) EDITION_NAME="Servidor" ;;
+    pi)   EDITION_NAME="Raspberry Pi Lite" ;;
         *)      EDITION_NAME="Niri" ;;
     esac
 
@@ -384,9 +445,9 @@ if [ -n "$CALAMARES_PKG" ]; then
     fi
 
     mkdir -p archiso/airootfs/root/packages
-    cp archiso/packages/*.pkg.tar.zst archiso/airootfs/root/packages/
-    cp archiso/packages/churros.db* archiso/airootfs/root/packages/ 2>/dev/null || true
-    cp archiso/packages/churros.files* archiso/airootfs/root/packages/ 2>/dev/null || true
+    churros_copy_pkgs "$LOCAL_REPO" archiso/airootfs/root/packages
+    cp "$LOCAL_REPO"/churros.db* archiso/airootfs/root/packages/ 2>/dev/null || true
+    cp "$LOCAL_REPO"/churros.files* archiso/airootfs/root/packages/ 2>/dev/null || true
 else
     echo "  Calamares not available — building without installer."
 fi
@@ -412,19 +473,29 @@ echo "[5/5] Building ISO...";
 # El repo local [churros] usa Server = file:///root/packages. Durante pacstrap
 # file:// se resuelve contra el root del HOST (no el chroot), así que exponemos
 # el repo local en /root/packages del host para que el build lo encuentre.
-if sudo test -L /root/packages && [ "$(sudo readlink /root/packages)" = "$PWD/archiso/packages" ]; then
+LOCAL_REPO_LINK="$(cd "$LOCAL_REPO" && pwd)"
+if sudo test -L /root/packages && [ "$(sudo readlink /root/packages)" = "$LOCAL_REPO_LINK" ]; then
     echo "  /root/packages symlink already in place."
     HOST_REPO_SYMLINK=1
 elif sudo test -e /root/packages || sudo test -L /root/packages; then
     echo "  WARNING: /root/packages exists but is not our symlink — leaving as is."
 else
     echo "  Exposing local repo at host /root/packages..."
-    sudo ln -sfn "$PWD/archiso/packages" /root/packages
+    sudo ln -sfn "$LOCAL_REPO_LINK" /root/packages
     HOST_REPO_SYMLINK=1
 fi
 
 # profiledef.sh elige arch, bootmodes, compresión y pacman.<arch>.conf a partir
 # de CHURROS_ARCH. sudo limpia el entorno: la variable se pasa con env.
+# En aarch64 el preset x86 (vmlinuz-linux) y los hooks memdisk/pxe no sirven.
+# Hay que cambiarlos antes de que mkarchiso copie airootfs y pacstrap lance
+# mkinitcpio. El trap los devuelve al terminar.
+# archiso además lista módulos GRUB que ALARM no tiene en arm64-efi. El
+# parche deja solo los .mod que existen; si el array desaparece, falla.
+if [ "$TARGET_ARCH" = aarch64 ]; then
+    bash scripts/apply-aarch64-mkinitcpio.sh apply
+    sudo bash scripts/patch-mkarchiso-grubmodules.sh /usr/bin/mkarchiso
+fi
 sudo env CHURROS_ARCH="$TARGET_ARCH" mkarchiso -v \
     -w work \
     -o out \

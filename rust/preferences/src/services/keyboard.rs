@@ -138,6 +138,22 @@ fn line_matches_key(stripped: &str, key: &str) -> bool {
     }
 }
 
+/// Conserva `hotkey-overlay-title="…"` o `=null` al reescribir un atajo
+/// desde Ajustes. Sin esto, el overlay de Niri perdería el título.
+fn hotkey_overlay_property(head: &str) -> Option<String> {
+    let marker = "hotkey-overlay-title=";
+    let start = head.find(marker)?;
+    let rest = &head[start + marker.len()..];
+    if let Some(quoted) = rest.strip_prefix('"') {
+        let end = quoted.find('"')?;
+        return Some(format!("hotkey-overlay-title=\"{}\"", &quoted[..end]));
+    }
+    if rest.starts_with("null") {
+        return Some("hotkey-overlay-title=null".to_string());
+    }
+    None
+}
+
 /// Parsea una línea de bind "    Mod+X { spawn \"foot\"; }".
 fn parse_bind_line(line: &str) -> Option<Bind> {
     let stripped = line.trim();
@@ -244,8 +260,12 @@ impl KeyboardService {
             }
             if in_binds && !replaced && line_matches_key(stripped, key) {
                 let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+                let titled = match hotkey_overlay_property(stripped) {
+                    Some(prop) => format!("{key} {prop} {{ {new_action}; }}"),
+                    None => new_line.clone(),
+                };
                 out.push_str(&indent);
-                out.push_str(&new_line);
+                out.push_str(&titled);
                 out.push('\n');
                 replaced = true;
                 continue;
@@ -396,6 +416,29 @@ mod tests {
         let bind = parse_bind_line("    Mod+Shift+N { spawn \"churros-popup\" \"network\"; }").unwrap();
         assert_eq!(bind.command, "churros-popup");
         assert_eq!(bind.args, "network");
+
+        let bind = parse_bind_line(
+            "    Mod+Space hotkey-overlay-title=\"Abrir el lanzador\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }",
+        )
+        .unwrap();
+        assert_eq!(bind.key, "Mod+Space");
+        assert_eq!(bind.kind, "spawn-sh");
+        assert_eq!(bind.command, "noctalia msg panel-toggle launcher");
+    }
+
+    #[test]
+    fn overlay_title_roundtrip() {
+        assert_eq!(
+            hotkey_overlay_property(
+                "Mod+Space hotkey-overlay-title=\"Abrir el lanzador\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }"
+            )
+            .as_deref(),
+            Some("hotkey-overlay-title=\"Abrir el lanzador\"")
+        );
+        assert_eq!(
+            hotkey_overlay_property("Mod+Q hotkey-overlay-title=null { close-window; }").as_deref(),
+            Some("hotkey-overlay-title=null")
+        );
     }
 
     #[test]
@@ -458,6 +501,25 @@ mod tests {
         assert!(
             content.contains("binds {") && content.contains("    Mod+T { close-window; }"),
             "sin binds: {content}"
+        );
+
+        fs::write(
+            &config,
+            "binds {\n    Mod+Space hotkey-overlay-title=\"Abrir el lanzador\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }\n}\n",
+        )
+        .unwrap();
+        assert!(KeyboardService::set_keybind(
+            "Mod+Space",
+            "spawn-sh",
+            "noctalia msg panel-toggle launcher",
+            ""
+        ));
+        let content = fs::read_to_string(&config).unwrap();
+        assert!(
+            content.contains(
+                "Mod+Space hotkey-overlay-title=\"Abrir el lanzador\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }"
+            ),
+            "set conserva el título del overlay: {content}"
         );
 
         let _ = fs::remove_dir_all(&tmp);

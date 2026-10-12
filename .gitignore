@@ -23,7 +23,7 @@ session-*.md
 # Local pacman repo: built packages and repo databases.
 # These are produced by scripts/build-calamares.sh and scripts/build-aur.sh
 # and are not part of the source tree — each developer rebuilds them locally.
-archiso/packages/*.pkg.tar.zst
+archiso/packages/*.pkg.tar.*
 archiso/packages/churros.db
 archiso/packages/churros.db.tar.gz
 archiso/packages/churros.db.tar.gz.old
@@ -32,6 +32,14 @@ archiso/packages/churros.files.tar.gz
 archiso/packages/churros.files.tar.gz.old
 archiso/packages/.calamares-build.stamp
 archiso/packages/packages
+archiso/packages/aarch64/*.pkg.tar.*
+archiso/packages/aarch64/churros.db
+archiso/packages/aarch64/churros.db.tar.gz
+archiso/packages/aarch64/churros.db.tar.gz.old
+archiso/packages/aarch64/churros.files
+archiso/packages/aarch64/churros.files.tar.gz
+archiso/packages/aarch64/churros.files.tar.gz.old
+archiso/packages/aarch64/.calamares-build.stamp
 
 # Rust workspace: build artifacts and deployed binaries.
 # Produced by scripts/build-rust.sh — binaries land in the airootfs tree
@@ -63,3 +71,7 @@ archiso/airootfs/usr/share/churros/grub-theme/
 # Build-time backups of versioned files (restored by the cleanup trap)
 archiso/packages.*.orig
 archiso/airootfs/etc/greetd/config.toml.bak
+archiso/airootfs/etc/mkinitcpio.d/linux.preset.x86-stash
+archiso/airootfs/etc/mkinitcpio.d/linux-aarch64.preset
+archiso/airootfs/etc/mkinitcpio.conf.d/archiso.conf.x86-stash
+archiso/airootfs/usr/share/churros/mkinitcpio/

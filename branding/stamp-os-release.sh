@@ -49,8 +49,8 @@ case "$edition" in
         set_or_insert PRETTY_NAME "\"ChurrOS Server ${ver}\"" NAME
         ;;
     *)
-        set_or_insert VARIANT "\"Niri Edition\"" VERSION
-        set_or_insert VARIANT_ID "\"niri\"" VARIANT
-        set_or_insert PRETTY_NAME "\"ChurrOS ${ver}\"" NAME
+        set_or_insert VARIANT "\"Raspberry Pi Edition\"" VERSION
+        set_or_insert VARIANT_ID "\"pi\"" VARIANT
+        set_or_insert PRETTY_NAME "\"ChurrOS Raspberry Pi ${ver}\"" NAME
         ;;
 esac

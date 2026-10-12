@@ -3,7 +3,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PACKAGE_DIR="$PROJECT_DIR/archiso/packages"
+# shellcheck source=scripts/lib/local-repo.sh
+source "$SCRIPT_DIR/lib/local-repo.sh"
+PACKAGE_DIR="$(churros_local_repo_dir)"
 
 choose_work_dir() {
     local parent="$PROJECT_DIR/work"
@@ -27,7 +29,7 @@ build_aur() {
     local name="$1"
     local package_dir="$WORK_DIR/$name"
 
-    if ls "$PACKAGE_DIR"/"$name"-*.pkg.tar.zst 1>/dev/null 2>&1; then
+    if [ -n "$(churros_first_pkg "$PACKAGE_DIR" "$name-*" || true)" ]; then
         echo "[skip] $name already built"
         return
     fi
@@ -37,10 +39,11 @@ build_aur() {
     git clone "https://aur.archlinux.org/${name}.git" "$package_dir"
     (
         cd "$package_dir"
+        churros_pkgbuild_allow_arch PKGBUILD
         makepkg -sf --noconfirm --skippgpcheck
     )
-    cp "$package_dir"/*.pkg.tar.zst "$PACKAGE_DIR/"
-    rm -f "$PACKAGE_DIR"/"$name"-debug-*.pkg.tar.zst 2>/dev/null || true
+    churros_copy_pkgs "$package_dir" "$PACKAGE_DIR" "$name-*"
+    churros_remove_pkgs "$PACKAGE_DIR" "$name-debug-*"
     echo "[done] $name built"
 }
 
@@ -52,7 +55,7 @@ echo
 echo "Updating churros local repo..."
 (
     cd "$PACKAGE_DIR"
-    repo-add churros.db.tar.gz *.pkg.tar.zst
+    churros_repo_add "$PACKAGE_DIR"
 )
 
 rm -rf "$WORK_DIR"
@@ -61,8 +64,17 @@ echo
 echo "======================================"
 echo "  AUR extras built."
 echo "======================================"
-ls -la "$PACKAGE_DIR"/python-pywal-*.pkg.tar.zst 2>/dev/null || echo "(pywal not built)"
-ls -la "$PACKAGE_DIR"/yay-*.pkg.tar.zst 2>/dev/null || echo "(yay not built)"
-ls -la "$PACKAGE_DIR"/wlogout-*.pkg.tar.zst 2>/dev/null || echo "(wlogout not built)"
+show_pkg() {
+    local label="$1"
+    local glob="$2"
+    if churros_first_pkg "$PACKAGE_DIR" "$glob" >/dev/null; then
+        churros_pkg_archives "$PACKAGE_DIR" "$glob"
+    else
+        echo "($label not built)"
+    fi
+}
+show_pkg pywal 'python-pywal-*'
+show_pkg yay 'yay-*'
+show_pkg wlogout 'wlogout-*'
 echo
 echo "  Run: ./churros build"

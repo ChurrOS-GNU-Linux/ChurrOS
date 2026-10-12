@@ -63,7 +63,7 @@ fn stop() {
         .args(["-x", "wlsunset"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 /// Arranca/para wlsunset según el estado guardado (equivalente a _apply_state)

@@ -116,21 +116,21 @@ fn apply_live_cursor_theme(theme_name: &str, size: i64) {
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 
     let _ = Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", "cursor-theme", theme_name])
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 
     let _ = Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", "cursor-size", &size.to_string()])
         .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 /// Reescritura del interior del bloque "cursor { ... }" en config.kdl:

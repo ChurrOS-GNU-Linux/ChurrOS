@@ -5,8 +5,16 @@
 # Comprobar con: noctalia config validate
 
 # ── Shell ─────────────────────────────────────────────────────────────────────
+# Inter es la UI de ChurrOS (sitio, GTK, instalador). JetBrains Mono se queda
+# en la terminal. ui_scale es la densidad de paneles, lanzador y ajustes
+# (1.0 = cómoda, la de las apps propias). corner_radius_scale acerca las
+# esquinas al radio ~18 px de esas apps (0 = cuadrado, 1 = defecto, 2 = píldora).
+[accessibility]
+ui_scale = 1.0
+
 [shell]
-font_family           = "JetBrains Mono"
+font_family           = "Inter"
+corner_radius_scale   = 1.2
 # Privacidad: sin telemetría (decisión de ChurrOS).
 telemetry_enabled     = false
 # Sin asistente de primer arranque: el sistema ya llega configurado.
@@ -21,7 +29,10 @@ clipboard_auto_paste  = "off"
 speed = 1.25
 
 [shell.panel]
-# Paneles flotantes ligeramente translúcidos (equivale a la opacidad 0.85 de v4).
+# "soft" deja el panel flotante al 80 % y las tarjetas entre 82 % y 92 %.
+# "glass" baja el fondo al 55 %: en oscuro, sobre un wallpaper claro, el
+# midnight se mezcla hasta un gris ilegible (el lanzador cae a ~#7C7C72
+# encima del crema por defecto).
 transparency_mode              = "soft"
 open_near_click_control_center = true
 # Menú de sesión flotante y centrado, como en v4.
@@ -29,6 +40,8 @@ session_placement              = "floating"
 session_position               = "center"
 
 [shell.launcher]
+# Lista cómoda, no compacta: misma densidad que el resto de la UI.
+compact              = false
 # Sin descargar tipos de cambio ni pegar automáticamente tras copiar.
 fetch_exchange_rates = false
 auto_paste           = "off"
@@ -78,14 +91,16 @@ countdown_seconds = 10.0
 
 # ── Tema y fondo ──────────────────────────────────────────────────────────────
 [theme]
-# Modo oscuro con colores generados a partir del fondo de pantalla.
-# mode es el de las apps (Noctalia lo escribe en gsettings color-scheme);
-# churros-settings lo cambia con `noctalia msg theme-mode-set`. La barra y los
-# paneles de Noctalia se quedan siempre en oscuro, como en v4.
+# Paleta propia (palettes/ChurrOS.json), con variante clara y oscura.
+# mode es el de las apps: Noctalia lo escribe en gsettings color-scheme y
+# churros-settings lo cambia con `noctalia msg theme-mode-set`. shell_mode
+# "follow" hace que la barra, los paneles, el bloqueo y el dock usen la misma
+# variante, así el cambio en Ajustes → Apariencia pinta también el shell.
 mode             = "dark"
-shell_mode       = "dark"
-source           = "wallpaper"
-wallpaper_scheme = "m3-tonal-spot"
+shell_mode       = "follow"
+source           = "custom"
+custom_palette   = "ChurrOS"
+pure_black_dark  = false
 
 [theme.templates]
 # Sin descargar el catálogo de plantillas comunitarias (api.noctalia.dev).
@@ -93,6 +108,7 @@ enable_community_templates = false
 
 [wallpaper]
 directory           = "/usr/share/churros/wallpapers"
+fill_mode           = "crop"
 fill_color          = "#111827"
 transition_duration = 800
 
@@ -114,6 +130,8 @@ auto_update = "none"
 [bar.default]
 thickness          = 31     # altura de la barra "default" de v4
 background_opacity = 0.85
+compositor_blur    = true
+font_weight        = 500    # medio, como la UI del sitio
 capsule            = true   # cada widget en su cápsula, como en v4
 margin_ends        = 0      # barra a todo el ancho (tipo "simple" de v4)
 start  = ["launcher", "clock", "cpu", "temp", "ram", "active_window", "media"]
@@ -158,7 +176,7 @@ enabled             = true
 auto_hide           = true
 reserve_space       = false
 margin_edge         = 13     # separación del dock flotante de v4
-background_opacity  = 1.0
+background_opacity  = 0.92
 active_monitor_only = true
 
 # ── Centro de control (v5 muestra como máximo 6 accesos directos) ────────────
