@@ -397,6 +397,10 @@ if [ "$TARGET_ARCH" = "i686" ]; then
 else
     bash scripts/build-calamares.sh
 fi
+
+if [ "$TARGET_ARCH" = "x86_64" ]; then
+    bash scripts/build-kernel-vyper.sh
+fi
 CALAMARES_PKG="$(churros_first_pkg "$LOCAL_REPO" 'calamares-[0-9]*' || true)"
 PYWAL_PKG="$(churros_first_pkg "$LOCAL_REPO" 'python-pywal-*' || true)"
 YAY_PKG="$(churros_first_pkg "$LOCAL_REPO" 'yay-*' || true)"

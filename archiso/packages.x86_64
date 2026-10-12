@@ -1,10 +1,14 @@
 alsa-utils
 amd-ucode
+ananicy-cpp
 arch-install-scripts
 archinstall
 base
 bcachefs-tools
 btrfs-progs
+cachyos-ananicy-rules
+cachyos-keyring
+cachyos-mirrorlist
 cryptsetup
 dhcpcd
 diffutils
@@ -255,3 +259,4 @@ os-prober
 udisks2
 zenity
 qt6-translations
+zram-generator
