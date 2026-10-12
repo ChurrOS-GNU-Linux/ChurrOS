@@ -150,6 +150,13 @@ if [ -f /boot/Image ]; then
     /usr/share/churros/scripts/publish-aarch64-kernel --require
 fi
 
+if [ -f /boot/vmlinuz-linux-churrosvyper ] && [ ! -f /boot/vmlinuz-linux ]; then
+    ln -sf /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
+fi
+if [ -f /boot/initramfs-linux-churrosvyper.img ] && [ ! -f /boot/initramfs-linux.img ]; then
+    ln -sf /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
+fi
+
 echo "Cleaning..."
 bash /root/scripts/cleanup.sh
 

@@ -221,11 +221,6 @@ source=(
     "config"
     "linux-churrosvyper.preset"
 )
-sha256sums=(
-    'SKIP'
-    'SKIP'
-    'SKIP'
-)
 validpgpkeys=(
   E18447AC260021D31F3FF6C4C8A2A4774B8B63C4  # Eric Naim <dnaim@cachyos.org>
   E8B9AA39F054E30E8290D492C3C4820857F654FE  # Peter Jung <admin@ptr1337.dev>
@@ -510,8 +505,8 @@ prepare() {
 
     ### Rewrite configuration
     echo "Rewrite configuration..."
+    make "${BUILD_FLAGS[@]}" olddefconfig
     make "${BUILD_FLAGS[@]}" prepare
-    yes "" | make "${BUILD_FLAGS[@]}" config >/dev/null
     diff -u ../config .config || :
 
     ### Prepared version
@@ -835,7 +830,7 @@ for _p in "${pkgname[@]}"; do
     }"
 done
 
-b2sums=('8a545c8da5cc1e0d803db9f761ee159733c963b40c594ba74f3723eab68abfd7e7a4ac92139a064cff65b0a0c742bf6989c5d05cd98f057a2ad9efd154c7df25'
-        'SKIP'
-        '21343697f5f1647aadbdec8a4aa477b10622e5ae04fa07fcf6f9bab67dece7180872676bdc49a90de5d273c2c13127c5812a7ca67dbd9edce3e26e8c38d358d1'
-        'c992567bd7dd8553432be496ffa1c17e2f5ebe9c7edb51945cf977e1b742dd6517c210d8843bb82744ca705efd07f8027cd7dde41b50215ebd707a34aa81462e')
+sha256sums=()
+for _ in "${source[@]}"; do
+    sha256sums+=('SKIP')
+done

@@ -21,9 +21,10 @@ for arg in "$@"; do
     esac
 done
 
-# Verificar si ya existe el paquete compilado en el repositorio local
-existing_kernel="$(churros_first_pkg "$PACKAGE_DIR" "linux-churrosvyper-*" || true)"
-if [ -n "$existing_kernel" ] && [ "$FORCE" -eq 0 ]; then
+# Verificar si ya existen los paquetes compilados en el repositorio local
+existing_kernel="$(churros_first_pkg "$PACKAGE_DIR" 'linux-churrosvyper-[0-9]*' || true)"
+existing_headers="$(churros_first_pkg "$PACKAGE_DIR" 'linux-churrosvyper-headers-[0-9]*' || true)"
+if [ -n "$existing_kernel" ] && [ -n "$existing_headers" ] && [ "$FORCE" -eq 0 ]; then
     echo "[skip] linux-churrosvyper ya compilado ($(basename "$existing_kernel"))"
     echo "       (usa --force para forzar la recompilación)"
     exit 0
@@ -60,7 +61,7 @@ echo "      Esto tomará varios minutos dependiendo de tu CPU."
 (
     cd "$WORK_DIR"
     churros_pkgbuild_allow_arch PKGBUILD
-    makepkg -sf --noconfirm --skippgpcheck
+    makepkg -sf --noconfirm --skipinteg
 )
 
 echo "[3/3] Publicando paquetes en el repositorio local [churros]..."
