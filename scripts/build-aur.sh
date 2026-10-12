@@ -40,7 +40,17 @@ build_aur() {
     (
         cd "$package_dir"
         churros_pkgbuild_allow_arch PKGBUILD
-        makepkg -sf --noconfirm --skippgpcheck
+        success=0
+        for attempt in 1 2 3 4; do
+            if makepkg -sf --noconfirm --skippgpcheck; then
+                success=1
+                break
+            fi
+            echo "[warn] makepkg failed for $name (attempt $attempt/4). Retrying in 5s..."
+            rm -f ./*.part
+            sleep 5
+        done
+        [ "$success" -eq 1 ]
     )
     churros_copy_pkgs "$package_dir" "$PACKAGE_DIR" "$name-*"
     churros_remove_pkgs "$PACKAGE_DIR" "$name-debug-*"
