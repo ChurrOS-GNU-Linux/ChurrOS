@@ -78,14 +78,14 @@ fi
 
 EDITION=$(echo "$EDITION" | tr '[:upper:]' '[:lower:]')
 if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "kde" ] && [ "$EDITION" != "server" ] && [ "$EDITION" != "pi" ]; then
-    echo "Error: unsupported edition '$EDITION' (supported: niri, xfce, kde, server)" >&2
+    echo "Error: unsupported edition '$EDITION' (supported: niri, xfce, kde, server, pi)" >&2
     exit 1
 fi
 
-# Solo la edición niri tiene lista aarch64. El resto seguiría copiando
+# Solo niri y pi tienen lista aarch64. El resto seguiría copiando
 # packages.<edicion>.x86_64 o fallaría a medias.
-if [ "$TARGET_ARCH" = aarch64 ] && [ "$EDITION" != niri ]; then
-    echo "Error: la ISO aarch64 solo tiene la edición niri (no hay packages.${EDITION}.aarch64)." >&2
+if [ "$TARGET_ARCH" = aarch64 ] && [ "$EDITION" != niri ] && [ "$EDITION" != pi ]; then
+    echo "Error: la ISO aarch64 solo tiene la edición niri o pi (no hay packages.${EDITION}.aarch64)." >&2
     exit 1
 fi
 

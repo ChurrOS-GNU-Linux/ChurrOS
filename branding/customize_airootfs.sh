@@ -18,8 +18,12 @@ cp /root/branding/files/motd /etc/motd
 
 if [ -f /root/branding/VERSION ] && [ -f /root/branding/stamp-os-release.sh ]; then
     ver=$(tr -d '[:space:]' < /root/branding/VERSION)
-    bash /root/branding/stamp-os-release.sh /etc/os-release "$ver"
-    bash /root/branding/stamp-os-release.sh /usr/lib/os-release "$ver"
+    ed="niri"
+    if [ -f /etc/churros-edition ]; then
+        ed=$(tr -d '[:space:]' < /etc/churros-edition | tr '[:upper:]' '[:lower:]')
+    fi
+    bash /root/branding/stamp-os-release.sh /etc/os-release "$ver" "$ed"
+    bash /root/branding/stamp-os-release.sh /usr/lib/os-release "$ver" "$ed"
 fi
 
 chmod 644 /etc/os-release

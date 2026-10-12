@@ -1851,6 +1851,25 @@ fi
 
 if [ -f branding/stamp-os-release.sh ]; then
     pass "branding/stamp-os-release.sh present"
+
+    test_os_rel=$(mktemp)
+    stamp_errors=""
+    for test_ed in niri xfce kde server pi; do
+        cat branding/files/os-release > "$test_os_rel"
+        bash branding/stamp-os-release.sh "$test_os_rel" "2.0.0" "$test_ed"
+        var_id=$(grep '^VARIANT_ID=' "$test_os_rel" | cut -d= -f2 | tr -d '"')
+        if [ "$test_ed" = "niri" ] && [ "$var_id" != "niri" ]; then
+            stamp_errors="$stamp_errors niri->$var_id"
+        elif [ "$test_ed" != "niri" ] && [ "$var_id" != "$test_ed" ]; then
+            stamp_errors="$stamp_errors $test_ed->$var_id"
+        fi
+    done
+    rm -f "$test_os_rel"
+    if [ -z "$stamp_errors" ]; then
+        pass "stamp-os-release.sh assigns correct VARIANT_ID per edition"
+    else
+        fail "stamp-os-release.sh incorrect VARIANT_ID mappings:$stamp_errors"
+    fi
 else
     fail "branding/stamp-os-release.sh missing"
 fi

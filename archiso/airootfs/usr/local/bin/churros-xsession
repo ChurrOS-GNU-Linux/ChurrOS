@@ -47,4 +47,7 @@ case "$EDITION" in
         fi
         exec /usr/bin/churros-niri-session "$@"
         ;;
+    niri|*)
+        exec /usr/bin/churros-niri-session "$@"
+        ;;
 esac
