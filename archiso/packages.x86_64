@@ -3,6 +3,7 @@ amd-ucode
 arch-install-scripts
 archinstall
 base
+base-devel
 bcachefs-tools
 btrfs-progs
 cryptsetup
@@ -109,6 +110,9 @@ zsh
 mesa
 mesa-utils
 vulkan-virtio
+vulkan-icd-loader
+lib32-mesa
+lib32-vulkan-icd-loader
 
 niri
 
