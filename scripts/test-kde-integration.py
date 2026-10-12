@@ -82,24 +82,14 @@ class KdeIntegration(unittest.TestCase):
 
     def test_calamares_preserves_native_kde_binary(self):
         lines = (ROOT / "installer/calamares/modules/shellprocess-cleanup.conf").read_text().splitlines()
-        command = next(json.loads(line.split("command: ", 1)[1]) for line in lines
-                       if "ln -sf /usr/bin/churros-settings /usr/bin/systemsettings" in line)
-        command = command.removeprefix("-")  # Calamares permits a nonzero exit.
-        edition = self.home / "edition"
-        native = self.home / "systemsettings"
-        churros = self.executable("churros-settings", "#!/bin/sh\nexit 0\n")
-        command = command.replace("/etc/churros-edition", str(edition))
-        command = command.replace("/usr/bin/systemsettings", str(native))
-        command = command.replace("/usr/bin/churros-settings", str(churros))
-        edition.write_text("kde\n")
-        native.write_text("original KDE binary")
-        subprocess.run(["bash", "-c", command], env=self.env, capture_output=True)
-        self.assertFalse(native.is_symlink())
-        self.assertEqual(native.read_text(), "original KDE binary")
-        for name in ("niri", "xfce", "server"):
-            edition.write_text(name + "\n")
-            self.run_command(["bash", "-c", command])
-            self.assertTrue(native.is_symlink())
+        commands = [json.loads(line.split("command: ", 1)[1]) for line in lines
+                    if "command: " in line]
+        self.assertFalse(
+            any("/usr/bin/systemsettings" in command for command in commands),
+            "Calamares cleanup must not replace or remove Plasma's native binary",
+        )
+        wrapper = (OVERLAY / "usr/local/bin/systemsettings").read_text()
+        self.assertIn('exec /usr/bin/systemsettings "$@"', wrapper)
 
     def test_portal_kde_selection(self):
         config = configparser.ConfigParser()
