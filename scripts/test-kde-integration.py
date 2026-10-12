@@ -155,7 +155,7 @@ fn main() {
                          env=os.environ)
         config = etc / "greetd/config.toml"
         for edition, session in (("kde", "/usr/bin/startplasma-wayland"),
-                                 ("xfce", "/usr/bin/startxfce4"),
+                                 ("xfce", "/usr/bin/churros-xfce-session"),
                                  ("niri", "/usr/bin/churros-niri-session")):
             config.write_text("[default_session]\ncommand = \"regreet\"\n")
             (etc / "churros-edition").write_text(edition + "\n")

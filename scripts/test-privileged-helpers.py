@@ -39,7 +39,7 @@ HAS_ZSTD = shutil.which("zstd") is not None
 
 SESSIONS = {
     "niri": "/usr/bin/churros-niri-session",
-    "xfce": "/usr/bin/startxfce4",
+    "xfce": "/usr/bin/churros-xfce-session",
     "kde": "/usr/bin/startplasma-wayland",
 }
 

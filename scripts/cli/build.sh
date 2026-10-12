@@ -296,7 +296,7 @@ mkdir -p archiso/airootfs/etc/greetd
 # este case, el build se para aquí en vez de generar una ISO que instala mal.
 case "$EDITION" in
     niri)                SESSION_CMD="niri" ;;
-    xfce|server)         SESSION_CMD="startxfce4" ;;
+    xfce|server)         SESSION_CMD="/usr/bin/churros-xfce-session" ;;
     kde)                 SESSION_CMD="startplasma-wayland" ;;
     pi)                SESSION_CMD="/usr/bin/churros-pi-session" ;;
     *)

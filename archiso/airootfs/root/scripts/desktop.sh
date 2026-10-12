@@ -26,10 +26,10 @@ XDG_SESSION_TYPE=x11
 DESKTOP_SESSION=xfce
 EOF
 
-    # Asegurar que la sesión X11 ejecute el wrapper para iniciar Xorg desde greetd
-    if [ -f /usr/share/xsessions/xfce.desktop ]; then
-        sed -i 's|^Exec=.*|Exec=churros-xfce-session|' /usr/share/xsessions/xfce.desktop
-    fi
+    # Sesión X11 con el wrapper churros-xfce-session y sin la sesión Wayland
+    # experimental de xfce4-session 4.20 ('startxfce4 --wayland' exige labwc).
+    # El hook 92-churros-xfce-x11-session lo reaplica tras cada pacman -Syu.
+    /usr/share/churros/scripts/fix-xfce-sessions
 
     # Asegurar que el fondo de ChurrOS se aplique incluso en monitores no preconfigurados por XFCE
     mkdir -p /usr/share/backgrounds/xfce

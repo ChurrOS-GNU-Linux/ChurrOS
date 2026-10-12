@@ -32,7 +32,7 @@ ChurrOS utiliza una arquitectura gráfica moderna y ultraligera para la pantalla
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │                     Sesión de Usuario                   │
-│          churros-niri-session / startxfce4              │
+│     churros-niri-session / churros-xfce-session         │
 └─────────────────────────────────────────────────────────┘
 ```
 

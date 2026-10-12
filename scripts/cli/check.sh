@@ -1338,6 +1338,132 @@ else
     pass "partition labels secondary-text patch present"
 fi
 
+# ------------------------------------------------ XFCE X11-only session
+
+section "XFCE X11 session"
+
+XFCE_FIX=archiso/airootfs/usr/share/churros/scripts/fix-xfce-sessions
+XFCE_HOOK=archiso/airootfs/etc/pacman.d/hooks/92-churros-xfce-x11-session.hook
+XFCE_WRAPPER=archiso/airootfs/usr/bin/churros-xfce-session
+
+xfce_ok=1
+if [ ! -f "$XFCE_FIX" ]; then
+    fail "$XFCE_FIX missing (xfce-wayland.desktop would need labwc and bounce the login)"
+    xfce_ok=0
+elif ! grep -q 'fix-xfce-sessions' archiso/profiledef.sh; then
+    fail "archiso/profiledef.sh must declare the file_permissions entry for $XFCE_FIX"
+    xfce_ok=0
+else
+    # Run the script against a fixture shaped like xfce4-session 4.20.
+    xfce_tmp=$(mktemp -d)
+    mkdir -p "$xfce_tmp/usr/share/wayland-sessions" "$xfce_tmp/usr/share/xsessions"
+    printf '[Desktop Entry]\nName=Xfce Session (Wayland)\nExec=startxfce4 --wayland\n' \
+        > "$xfce_tmp/usr/share/wayland-sessions/xfce-wayland.desktop"
+    printf '[Desktop Entry]\nName=Xfce Session\nExec=startxfce4\nType=Application\n' \
+        > "$xfce_tmp/usr/share/xsessions/xfce.desktop"
+    if ! CHURROS_SESSION_ROOT="$xfce_tmp" bash "$XFCE_FIX" \
+        || ! CHURROS_SESSION_ROOT="$xfce_tmp" bash "$XFCE_FIX"; then
+        fail "$XFCE_FIX failed (it must be idempotent: the pacman hook reruns it)"
+        xfce_ok=0
+    elif [ -e "$xfce_tmp/usr/share/wayland-sessions/xfce-wayland.desktop" ]; then
+        fail "$XFCE_FIX does not remove xfce-wayland.desktop"
+        xfce_ok=0
+    elif ! grep -qx 'Exec=/usr/bin/churros-xfce-session' "$xfce_tmp/usr/share/xsessions/xfce.desktop"; then
+        fail "$XFCE_FIX does not point xfce.desktop at churros-xfce-session"
+        xfce_ok=0
+    fi
+    rm -rf "$xfce_tmp"
+fi
+
+if [ ! -f "$XFCE_HOOK" ]; then
+    fail "$XFCE_HOOK missing (pacman -Syu would bring back xfce-wayland.desktop)"
+    xfce_ok=0
+elif grep -q 'remove from airootfs' "$XFCE_HOOK"; then
+    fail "$XFCE_HOOK would be deleted by the ISO-only hook cleaner"
+    xfce_ok=0
+elif ! grep -qE 'Type[[:space:]]*=[[:space:]]*Path' "$XFCE_HOOK" \
+    || ! grep -q 'usr/share/wayland-sessions/xfce-wayland.desktop' "$XFCE_HOOK" \
+    || ! grep -q 'usr/share/xsessions/xfce.desktop' "$XFCE_HOOK" \
+    || ! grep -q 'When[[:space:]]*=[[:space:]]*PostTransaction' "$XFCE_HOOK" \
+    || ! grep -q 'Exec[[:space:]]*=[[:space:]]*/usr/share/churros/scripts/fix-xfce-sessions' "$XFCE_HOOK"; then
+    fail "$XFCE_HOOK must be a PostTransaction Path hook on both XFCE session files running fix-xfce-sessions"
+    xfce_ok=0
+fi
+
+for f in archiso/airootfs/root/scripts/desktop.sh \
+    archiso/airootfs/usr/share/churros/scripts/configure-greetd-session; do
+    if ! grep -q 'fix-xfce-sessions' "$f"; then
+        fail "$f must run fix-xfce-sessions (live boot / install)"
+        xfce_ok=0
+    fi
+done
+
+# ReGreet runs X11 sessions as 'startx /usr/bin/env <Exec>': the wrapper must
+# notice the running X server instead of nesting a second startx.
+if ! grep -q 'DISPLAY' "$XFCE_WRAPPER" || ! grep -q 'xset q' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must detect an already running X server (ReGreet x11_prefix = startx)"
+    xfce_ok=0
+fi
+# Arch's /etc/X11/xinit/xinitrc ends in 'exec xterm' (not installed): sourcing
+# it kills the session with 127 before XFCE starts.
+if grep -qE '^[^#]*(\.|source)[[:space:]]+/etc/X11/xinit/xinitrc' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER sources /etc/X11/xinit/xinitrc (ends in 'exec xterm', exit 127)"
+    xfce_ok=0
+fi
+# startxfce4 runs /etc/xdg/xfce4/xinitrc (XDG_MENU_PREFIX, xrdb, dbus/systemd
+# env); a bare xfce4-session skips all of it.
+if grep -qE '^[^#]*exec[[:space:]]+(/usr/bin/)?xfce4-session' "$XFCE_WRAPPER" \
+    || ! grep -qE '^[^#]*exec[[:space:]]+/usr/bin/startxfce4' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must exec startxfce4, not a bare xfce4-session"
+    xfce_ok=0
+fi
+# A hardcoded display defeats startx's free-display search (stale .X0-lock).
+if grep -qE '^[^#]*startx[^#]*--[[:space:]]+:[0-9]' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER hardcodes the X display in startx (let startx pick a free one)"
+    xfce_ok=0
+fi
+# startx only accepts its client as the session program when the path starts
+# with '/' or './' (startx.c: case "$1" in /''*|\./''*)). Given a bare name it
+# silently falls back to its default client, xterm, which is not installed in
+# any ChurrOS package list: xinit exits 127 and greetd bounces to the greeter.
+# So the wrapper must resolve itself to an absolute path before calling startx.
+if grep -qE '^[^#]*exec[[:space:]]+startx[[:space:]]+"\$0"' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER passes \"\$0\" to startx: a relative \$0 makes startx run xterm (not installed) and greetd bounce to the greeter"
+    xfce_ok=0
+fi
+if ! grep -qE '^[^#]*exec[[:space:]]+startx[[:space:]]+"\$self"' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER must exec startx with an absolute, pre-resolved path (got \$self, not \$0)"
+    xfce_ok=0
+fi
+# Xorg finds the VT to take by inspecting its own fds 0-2 (lnx_init.c,
+# parse_vt_settings) and greetd watches the session on that same tty, so the
+# wrapper must not redirect stdout/stderr before exec'ing startx. Diagnostics
+# belong in a log() helper, not in an 'exec >' at the top of the session.
+if grep -qE '^[^#]*\{[[:space:]]*exec[[:space:]]*>{1,2}' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER redirects its own stdout/stderr before starting Xorg (Xorg reads fds 0-2 to find the VT; greetd watches that tty)"
+    xfce_ok=0
+fi
+# 'xsetroot -cursor_name' goes through XLoadFont on the core X11 "cursor" font
+# and XDefineCursor on the root window; libXcursor is only reached via -cursor
+# and -xcf. So it overrides the theme xsettings.xml asks for (Adwaita, 24) with
+# a 1-bit 16x16 glyph that does not scale and vanishes against the wallpaper.
+# It was inert until d9f285a added xorg-fonts-misc, which ships the cursor.pcf
+# that XLoadFont needs; xsetroot exits 0 either way, so '|| true' never hid it.
+if grep -qE '^[^#]*xsetroot[[:space:]]+-cursor_name' "$XFCE_WRAPPER"; then
+    fail "$XFCE_WRAPPER calls 'xsetroot -cursor_name': it bypasses the Xcursor theme (Adwaita) with a 1-bit core-font glyph and hides the pointer. Set CursorThemeName in xsettings.xml instead"
+    xfce_ok=0
+fi
+
+# A "Device" section forcing Driver "modesetting" breaks the NVIDIA driver
+# that netinstall offers; VM-only tweaks go in an OutputClass.
+if grep -lE '^[[:space:]]*Driver[[:space:]]+"modesetting"' archiso/airootfs/etc/X11/xorg.conf.d/*.conf 2>/dev/null \
+    | xargs -r grep -lE '^[[:space:]]*Section[[:space:]]+"Device"' | grep -q .; then
+    fail "archiso/airootfs/etc/X11/xorg.conf.d forces Driver \"modesetting\" in a Device section (breaks NVIDIA)"
+    xfce_ok=0
+fi
+
+[ "$xfce_ok" -eq 1 ] && pass "XFCE stays X11-only (wrapper + session fix + pacman hook)"
+
 # ----------------------------------------------- Calamares branding files
 
 section "Calamares branding"

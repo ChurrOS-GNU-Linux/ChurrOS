@@ -8,7 +8,7 @@
 #
 #   edición  greetd [initial_session]         LightDM autologin-session
 #   niri     /usr/bin/churros-niri-session     niri
-#   xfce     /usr/bin/startxfce4               xfce
+#   xfce     /usr/bin/churros-xfce-session     xfce
 #   kde      /usr/bin/startplasma-wayland      plasma
 #   server   (sin sesión: el sistema instalado no tiene display manager)
 #
@@ -29,7 +29,7 @@ churros_edition() {
 churros_session_command() {
     case "$1" in
         server) return 1 ;;
-        xfce)   printf '%s\n' /usr/bin/startxfce4 ;;
+        xfce)   printf '%s\n' /usr/bin/churros-xfce-session ;;
         kde)    printf '%s\n' /usr/bin/startplasma-wayland ;;
         pi)     printf '%s\n' /usr/bin/churros-pi-session ;;
         *)      printf '%s\n' /usr/bin/churros-niri-session ;;

@@ -159,7 +159,7 @@ quien pudiera escribirlo controlaba el arranque. Ahora:
 - el comando de sesión sale de `/etc/churros-edition` con la tabla de
   `edition-session.sh`, la misma que usa la instalación
   (`configure-greetd-session`): Niri → `/usr/bin/churros-niri-session`,
-  XFCE → `/usr/bin/startxfce4`, KDE → `/usr/bin/startplasma-wayland`, server →
+  XFCE → `/usr/bin/churros-xfce-session`, KDE → `/usr/bin/startplasma-wayland`, server →
   sin sesión;
 - el fondo tiene que ser un fichero regular de `/usr/share/churros/wallpapers`,
   `/usr/share/backgrounds` o `/usr/share/wallpapers` (tras resolver enlaces) y

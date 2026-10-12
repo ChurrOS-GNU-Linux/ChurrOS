@@ -128,6 +128,16 @@ case "$EDITION" in
             "$([ -n "$SESSION" ] && echo yes || echo no)"
         check "el lanzador de sesión existe en disco ($SESSION)" \
             "$([ -n "$SESSION" ] && [ -x "$SESSION" ] && echo yes || echo no)"
+        if [ "$EDITION" = "xfce" ]; then
+            check "sesión XFCE usa el wrapper churros-xfce-session" \
+                "$(case "$SESSION" in *churros-xfce-session*) echo yes ;; *) echo no ;; esac)"
+            check "sesión experimental xfce-wayland desactivada" \
+                "$([ ! -e /usr/share/wayland-sessions/xfce-wayland.desktop ] && echo yes || echo no)"
+            check "xfce.desktop lanza churros-xfce-session" \
+                "$(grep -q '^Exec=/usr/bin/churros-xfce-session$' /usr/share/xsessions/xfce.desktop 2>/dev/null && echo yes || echo no)"
+            check "hook de pacman protege la sesión X11 ante actualizaciones" \
+                "$([ -f /etc/pacman.d/hooks/92-churros-xfce-x11-session.hook ] && [ -x /usr/share/churros/scripts/fix-xfce-sessions ] && echo yes || echo no)"
+        fi
         check "greetd habilitado" "$(unit_enabled greetd.service && echo yes || echo no)"
         check "config de greetd sin sección inicial_session" \
             "$(grep -q '^\[initial_session\]' /etc/greetd/config.toml 2>/dev/null && echo no || echo yes)"

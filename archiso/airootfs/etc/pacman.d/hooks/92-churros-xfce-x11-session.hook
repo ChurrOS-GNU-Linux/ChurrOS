@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/wayland-sessions/xfce-wayland.desktop
+Target = usr/share/xsessions/xfce.desktop
+
+[Action]
+Description = Keeping ChurrOS XFCE on its X11 session (no xfce-wayland/labwc)
+When = PostTransaction
+Exec = /usr/share/churros/scripts/fix-xfce-sessions
