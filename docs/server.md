@@ -31,7 +31,6 @@ Cierre de dependencias medido contra las bases de pacman de Arch:
 | server | 185 | 279 | **1843 MiB** |
 | xfce | 214 | 318 | 3097 MiB |
 | niri | 206 | 309 | 3142 MiB |
-| kde | 209 | 308 | 3343 MiB |
 
 Un **41 % menos** que la edición Niri.
 

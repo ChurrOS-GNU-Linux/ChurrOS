@@ -38,11 +38,6 @@ case "$edition" in
         set_or_insert VARIANT_ID "\"xfce\"" VARIANT
         set_or_insert PRETTY_NAME "\"ChurrOS XFCE ${ver}\"" NAME
         ;;
-    kde)
-        set_or_insert VARIANT "\"KDE Plasma Edition\"" VERSION
-        set_or_insert VARIANT_ID "\"kde\"" VARIANT
-        set_or_insert PRETTY_NAME "\"ChurrOS KDE ${ver}\"" NAME
-        ;;
     server)
         set_or_insert VARIANT "\"Server Edition\"" VERSION
         set_or_insert VARIANT_ID "\"server\"" VARIANT

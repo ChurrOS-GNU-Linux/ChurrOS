@@ -77,8 +77,8 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
 fi
 
 EDITION=$(echo "$EDITION" | tr '[:upper:]' '[:lower:]')
-if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "kde" ] && [ "$EDITION" != "server" ] && [ "$EDITION" != "pi" ]; then
-    echo "Error: unsupported edition '$EDITION' (supported: niri, xfce, kde, server, pi)" >&2
+if [ "$EDITION" != "niri" ] && [ "$EDITION" != "xfce" ] && [ "$EDITION" != "server" ] && [ "$EDITION" != "pi" ]; then
+    echo "Error: unsupported edition '$EDITION' (supported: niri, xfce, server, pi)" >&2
     exit 1
 fi
 
@@ -297,7 +297,6 @@ mkdir -p archiso/airootfs/etc/greetd
 case "$EDITION" in
     niri)                SESSION_CMD="niri" ;;
     xfce|server)         SESSION_CMD="/usr/bin/churros-xfce-session" ;;
-    kde)                 SESSION_CMD="startplasma-wayland" ;;
     pi)                SESSION_CMD="/usr/bin/churros-pi-session" ;;
     *)
         echo "Error: sin comando de sesión definido para la edición '$EDITION'" >&2
@@ -432,7 +431,6 @@ if [ -n "$CALAMARES_PKG" ]; then
     # texto que ve la persona depende de la edición que esta instalando.
     case "$EDITION" in
         xfce)   EDITION_NAME="XFCE" ;;
-        kde)    EDITION_NAME="KDE Plasma" ;;
         server) EDITION_NAME="Servidor" ;;
     pi)   EDITION_NAME="Raspberry Pi Lite" ;;
         *)      EDITION_NAME="Niri" ;;

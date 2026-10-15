@@ -26,14 +26,12 @@ ChurrOS se desarrolla sobre Arch Linux, pero se puede trabajar desde cualquier d
 Notas:
 
 - `install-deps.sh` en Debian/Ubuntu instala `rustup` si el `rustc` de apt es anterior a 1.85 (Ubuntu 24.04 trae 1.75). Debian 12 no empaqueta rustup: instálalo desde https://rustup.rs.
-- `scripts/test-kde-integration.py` salta (SKIP) la prueba del panel sin `kwriteconfig6` y la de autologin sin un `rustc` ≥ 1.85.
 - Fuera de Arch, `./churros check` no compara la libpython del paquete de Calamares con el Python del host (no es el de la ISO): esa comprobación la hace el build en el contenedor.
 
 ## Contenedor de build
 
 ```bash
 ./churros build --container              # ISO, en cualquier distro
-./churros build --container --edition kde
 ./churros rust                           # build + test + clippy de rust/, como el CI
 ```
 
@@ -137,7 +135,6 @@ Sin opciones compila la edición **niri**. Las otras se piden explícitamente:
 
 ```bash
 ./churros build --edition xfce   # XFCE
-./churros build --edition kde    # KDE Plasma
 ```
 
 Cada edición tiene su lista de paquetes (`archiso/packages.<edición>.x86_64`) y su lanzador de sesión. La lista se elige al construir, no después: una ISO de niri no se convierte en una de XFCE. El detalle de cada escritorio está en [`docs/desktop-config.md`](desktop-config.md).

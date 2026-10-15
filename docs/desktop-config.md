@@ -152,7 +152,7 @@ Atajos de Niri relacionados con el shell (`config.kdl`):
 | `Mod+Shift+E` | Menú de sesión (`wlogout`) |
 | `Mod+Shift+/` | Overlay de atajos de Niri, con esos títulos |
 
-El centro de control de Noctalia ya tiene pestañas de audio, red, bluetooth, brillo (`monitor`) y batería (`power`). Por eso Niri no ata `churros-popup` ni `churros-control-center`. Esos binarios siguen en la ISO: Waybar los lanza al hacer clic y se pueden abrir desde el lanzador. KDE y XFCE no usan este `config.kdl`.
+El centro de control de Noctalia ya tiene pestañas de audio, red, bluetooth, brillo (`monitor`) y batería (`power`). Por eso Niri no ata `churros-popup` ni `churros-control-center`. Esos binarios siguen en la ISO: Waybar los lanza al hacer clic y se pueden abrir desde el lanzador. XFCE no usa este `config.kdl`.
 
 # Waybar
 
@@ -291,39 +291,6 @@ El script es seguro para el Live porque el sistema corre en RAM: cualquier cambi
 ChurrOS XFCE Edition ofrece una experiencia de escritorio clásica, ligera y basada en ventanas flotantes tradicionales gestionadas por `xfwm4`.
 
 ---
-
-# KDE Plasma Edition (Wayland)
-
-ChurrOS KDE Plasma Edition parte de Plasma 6 con su propia lista de paquetes (`archiso/packages.kde.x86_64`) y arranca en la sesión Wayland de Plasma.
-
-## Sesión
-
-| Aspecto | Valor |
-|---|---|
-| Comando de sesión | `startplasma-wayland` |
-| `XDG_CURRENT_DESKTOP` | `KDE` |
-| `XDG_SESSION_DESKTOP` | `plasma` |
-| `XDG_SESSION_TYPE` | `wayland` |
-| Pantalla de inicio | greetd + ReGreet sobre cage, igual que en las otras ediciones |
-
-El comando de sesión queda escrito en `/etc/greetd/environments` por `configure-greetd-session` al terminar la instalación, en función de `/etc/churros-edition`.
-
-## Lo que aporta Plasma
-
-- Escritorio: Plasma 6 (`plasma-desktop`, `plasma-workspace`, `kwin`).
-- Gestión de energía y red: `plasma-pa` y `plasma-nm`.
-- Portales: `xdg-desktop-portal-kde` y `polkit-kde-agent` para los avisos de privilegios.
-- Aplicaciones: Dolphin, Konsole, Kate, Gwenview, KCalc, Ark, Spectacle.
-
-## Lo que cambia respecto a la edición Niri
-
-La capa de shell de Niri no se instala en esta edición: `niri`, Waybar, foot, Fuzzel, Mako, swaybg, grim/slurp y swaylock/swayidle se sustituyen por los equivalentes de Plasma (KRunner, paneles de Plasma, Konsole, notificaciones de Plasma, capturas con Spectacle y kscreenlocker).
-
-## Personalización e Integración con ChurrOS
-
-- **Fondo de pantalla:** `churros-apply-wallpaper` y el selector de fondos de `churros-settings` aplican fondos en vivo vía `plasma-apply-wallpaperimage`. Además, el fondo predeterminado de ChurrOS se enlaza como fondo del sistema en Plasma.
-- **Branding y Tema:** ChurrOS Dark (`ChurroOSDark.colors`) con acento naranja (#F97316), iconos Papirus-Dark, fuentes Inter y cursor Adwaita se sincronizan automáticamente con Plasma 6 y sus apps GTK/Qt.
-- **Ajustes adaptados:** `churros-settings` detecta la edición KDE y oculta dinámicamente las páginas y opciones exclusivas de Niri/Waybar/Foot/Fuzzel/Mako, integrando accesos directos a las Preferencias del Sistema de KDE (KCM) para pantalla, teclado, ratón, bloqueo y luz nocturna.
 
 ## Estructura de configuración (xfconf y GTK)
 

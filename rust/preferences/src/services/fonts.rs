@@ -105,16 +105,6 @@ impl FontService {
             ])
             .output();
 
-        if churros_services::version::edition().contains("kde")
-            || churros_services::which("kwriteconfig6")
-        {
-            let _ = Command::new("kwriteconfig6")
-                .args(["--file", "kdeglobals", "--group", "General", "--key", "font", &format!("{family},10,-1,5,50,0,0,0,0,0")])
-                .output();
-            let _ = Command::new("kwriteconfig6")
-                .args(["--file", "kdeglobals", "--group", "General", "--key", "fixed", &format!("{family} Mono,10,-1,5,50,0,0,0,0,0")])
-                .output();
-        }
     }
 
     /// Escala de fuentes desde settings.json ("fonts.scale", default 1.0)

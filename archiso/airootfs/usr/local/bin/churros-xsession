@@ -13,7 +13,6 @@
 #   niri    -> churros-niri-session   (Wayland, compositor propio)
 #   xfce    -> churros-xfce-session   (X11; el wrapper limpia el entorno y
 #                                       pasa a Xorg el VT que asignó greetd)
-#   kde     -> startplasma-wayland    (Wayland)
 #   server  -> no hay sesión gráfica: greetd queda desactivado por
 #              configure-server, así que este script no llega a ejecutarse.
 
@@ -30,9 +29,6 @@ case "$EDITION" in
             exec /usr/bin/churros-xfce-session "$@"
         fi
         exec /usr/bin/startxfce4 "$@"
-        ;;
-    kde)
-        exec /usr/bin/startplasma-wayland "$@"
         ;;
     server)
         # Sin display manager no hay sesión que lanzar. Si alguien lo invoca a

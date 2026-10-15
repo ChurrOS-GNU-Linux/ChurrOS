@@ -6,8 +6,8 @@
 #   'agreety' as the default session and doesn't handle XFCE editions properly.
 # - We extract the autologin user (if any) that Calamares carefully configured.
 # - We rewrite the config.toml to use our graphical regreet GTK theme.
-# - We correctly enforce the session command of the installed edition (niri,
-#   churros-xfce-session or startplasma-wayland). The edition -> session table lives in
+# - We correctly enforce the session command of the installed edition (niri or
+#   churros-xfce-session). The edition -> session table lives in
 #   edition-session.sh, shared with churros-write-root-config (autologin from
 #   Settings), so both write the same [initial_session].
 

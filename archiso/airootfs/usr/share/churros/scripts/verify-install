@@ -9,7 +9,7 @@
 # ningún sitio donde mirar.
 #
 # Lo que se comprueba por edición:
-#   niri / xfce / kde -> existe el lanzador de sesión y greetd está habilitado
+#   niri / xfce       -> existe el lanzador de sesión y greetd está habilitado
 #   server           -> no hay display manager, el target es multi-user y
 #                        sshd está habilitado
 

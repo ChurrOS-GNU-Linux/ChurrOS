@@ -48,7 +48,6 @@ Calamares no sabe qué edición se está instalando, así que el proyecto no le 
 |---|---|---|
 | niri | `churros-niri-session` | greetd |
 | xfce | `churros-xfce-session` (env X11 y VT de Xorg) | greetd |
-| kde | `startplasma-wayland` | greetd |
 | server | ninguna | desactivado |
 
 La ISO de la edición server sí lleva un XFCE mínimo, porque Calamares es gráfico y necesita una sesión donde dibujar. No es parte del producto final: `configure-server` lo quita al terminar.
@@ -88,7 +87,6 @@ En la edición server, en su lugar:
 ```
 ✓ edicion niri cableada en el instalador
 ✓ edicion xfce cableada en el instalador
-✓ edicion kde cableada en el instalador
 ✓ edicion server cableada en el instalador
 ✓ el instalador resuelve la edicion en runtime (churros-xsession)
 ```

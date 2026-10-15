@@ -124,7 +124,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     let edition = churros_services::version::edition();
     let is_niri = edition.contains("niri");
-    let is_kde = edition.contains("kde");
     let is_xfce = edition.contains("xfce");
 
     // ============ Rendimiento (solo Niri) ============
@@ -285,39 +284,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
         ));
 
         page.add(screen_group.widget());
-    } else if is_kde {
-        // ============ Pantalla y Bloqueo (KDE Plasma) ============
-        let mut kde_screen_group = Group::new("Pantalla y Bloqueo");
-
-        let lock_row = Row::new(
-            "Pantalla de bloqueo",
-            Some("Configurar tiempo de espera y fondo de bloqueo en KDE"),
-            Some("lock_screen.svg"),
-            None,
-            None,
-            Some(Box::new(|_| {
-                let _ = std::process::Command::new("systemsettings")
-                    .arg("kcm_screenlocker")
-                    .spawn();
-            })),
-        );
-        kde_screen_group.add(&lock_row);
-
-        let night_row = Row::new(
-            "Color nocturno",
-            Some("Configurar filtro de luz azul en Preferencias de KDE"),
-            Some("night_light.svg"),
-            None,
-            None,
-            Some(Box::new(|_| {
-                let _ = std::process::Command::new("systemsettings")
-                    .arg("kcm_nightlight")
-                    .spawn();
-            })),
-        );
-        kde_screen_group.add(&night_row);
-
-        page.add(kde_screen_group.widget());
     }
 
     // ============ Personalización básica ============
@@ -363,20 +329,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
         ));
 
         page.add(window_rules_group.widget());
-    } else if is_kde {
-        let mut kde_group = Group::new("Ajustes del Entorno");
-        let sys_row = Row::new(
-            "Preferencias del Sistema de KDE",
-            Some("Abrir el panel de control completo de Plasma 6"),
-            Some("appearance.svg"),
-            None,
-            None,
-            Some(Box::new(|_| {
-                let _ = std::process::Command::new("systemsettings").spawn();
-            })),
-        );
-        kde_group.add(&sys_row);
-        page.add(kde_group.widget());
     } else if is_xfce {
         let mut xfce_group = Group::new("Ajustes del Entorno");
         let sys_row = Row::new(

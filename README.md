@@ -8,7 +8,7 @@
     <img alt="Base" src="https://img.shields.io/badge/base-Arch%20Linux-1793D1.svg">
     <img alt="Build" src="https://img.shields.io/badge/build-archiso-1793D1.svg">
     <img alt="Apps" src="https://img.shields.io/badge/apps-Rust-orange.svg">
-    <img alt="Escritorios" src="https://img.shields.io/badge/escritorios-Niri%20%2F%20XFCE%20%2F%20Plasma%20%2F%20Server-FFBC00.svg">
+    <img alt="Escritorios" src="https://img.shields.io/badge/escritorios-Niri%20%2F%20XFCE%20%2F%20Server-FFBC00.svg">
   </p>
 </div>
 
@@ -44,7 +44,6 @@ ChurrOS utiliza Arch Linux como base actualmente, mientras desarrolla progresiva
 | QEMU para pruebas | ✅ |
 | Edición Niri | ✅ |
 | Edición XFCE | ✅ |
-| Edición KDE Plasma | ✅ |
 | Edición Servidor (sin escritorio, por SSH) | ✅ |
 | Aplicaciones oficiales en Rust | ✅ |
 | Calamares con branding propio | ✅ |
@@ -81,17 +80,6 @@ Edición basada en XFCE, orientada a una experiencia de escritorio tradicional y
 ```bash
 ./churros build --edition xfce
 ```
-
-### KDE Plasma
-
-Edición basada en KDE Plasma 6, completa y orientada a un escritorio tradicional con muchas opciones. Usa su propia lista de paquetes (`archiso/packages.kde.x86_64`, 209 paquetes) y arranca en la sesión Wayland de Plasma (`startplasma-wayland`).
-
-```bash
-./churros build --edition kde
-./churros build --edition server
-```
-
-Es la edición más pesada: el cierre de dependencias ronda los **3340 MiB instalados**, frente a unos 3140 (niri) y 3100 (xfce).
 
 ### Servidor
 
@@ -177,7 +165,6 @@ Se recomienda trabajar mediante ramas y pull requests en lugar de realizar cambi
 ```bash
 ./churros build              # edición Niri
 ./churros build --edition xfce
-./churros build --edition kde
 ./churros build --arch x86_64     # por defecto / anfitriona
 ./churros build --arch arm64      # ARM de 64 bits (edición pi / Raspberry Pi)
 ./churros build --arch i686       # i686 / Arch Linux 32
@@ -214,7 +201,7 @@ Elimina los artefactos generados (`work/` y `out/`). No toca el código fuente.
 
 | Comando | Qué hace |
 |---|---|
-| `build` | Construye la ISO (`--edition niri\|xfce\|kde\|server`) |
+| `build` | Construye la ISO (`--edition niri\|xfce\|server`) |
 | `run` | Construye si hace falta y lanza QEMU (`--nokvm`, `--fresh`, `--clean`) |
 | `clean` | Elimina los artefactos de construcción |
 | `check` | Ejecuta las comprobaciones estáticas del repositorio |
@@ -283,7 +270,7 @@ ChurrOS utiliza un repositorio local de paquetes durante la construcción (`arch
 
 El objetivo a largo plazo es disponer de un repositorio oficial de paquetes de ChurrOS.
 
-Cada edición de escritorio tiene además su propio perfil en `archiso/`: `packages.x86_64` (206 entradas), `packages.xfce.x86_64` (214), `packages.kde.x86_64` (209) y `packages.server.x86_64` (185). El port de 32 bits usa `packages.i686` (Arch Linux 32) y sigue la lista base del escritorio, pero recortada a lo que archlinux32 empaqueta: el compositor Niri, la shell Noctalia, Bazaar (y webkitgtk-6.0/glycin) y `polkit-qt6` (necesario para Calamares) no están disponibles y quedan pendientes de empaquetar para i686. Sus ediciones (xfce/kde/server) aún no tienen lista propia.
+Cada edición de escritorio tiene además su propio perfil en `archiso/`: `packages.x86_64` (206 entradas) y `packages.xfce.x86_64` (214). El port de 32 bits usa `packages.i686` (Arch Linux 32) y sigue la lista base del escritorio, pero recortada a lo que archlinux32 empaqueta: el compositor Niri, la shell Noctalia, Bazaar (y webkitgtk-6.0/glycin) y `polkit-qt6` (necesario para Calamares) no están disponibles y quedan pendientes de empaquetar para i686. XFCE y servidor aún no tienen lista propia para i686.
 
 ---
 
@@ -463,7 +450,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md).
 
 Versión del proyecto: **1.3** ( [`VERSION`](VERSION) ).
 
-ChurrOS cuenta con ISO personalizada, tres ediciones de escritorio (Niri, XFCE y KDE Plasma), construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
+ChurrOS cuenta con ISO personalizada, las ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
 
 El proyecto está en desarrollo activo y en etapa temprana: no hay soporte fuera de GitHub, el instalador es Calamares con parches propios y los paquetes que no están en Arch se compilan en el host durante cada build.
 

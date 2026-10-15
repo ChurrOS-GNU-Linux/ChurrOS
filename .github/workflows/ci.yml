@@ -32,7 +32,6 @@ jobs:
       - name: Privileged helper tests
         run: |
           python3 scripts/test-privileged-helpers.py
-          python3 scripts/test-kde-integration.py
 
   test:
     name: Tests Rust

@@ -59,9 +59,9 @@ section "Python syntax"
 
 # ast.parse only reads the source: it neither runs it nor writes .pyc files.
 if git ls-files '*.py' | python3 -c '
-import ast, sys
+import ast, os, sys
 
-files = [line.strip() for line in sys.stdin if line.strip()]
+files = [line.strip() for line in sys.stdin if line.strip() and os.path.isfile(line.strip())]
 broken = 0
 for path in files:
     try:
@@ -580,7 +580,7 @@ fi
 section "Niri Xwayland integration"
 
 # packages.${TARGET_ARCH} is the default Niri profile; build.sh substitutes an edition-
-# specific list for XFCE, KDE, and Server builds. Keep the satellite scoped to Niri.
+# specific list for XFCE and Server builds. Keep the satellite scoped to Niri.
 XWAYLAND_SATELLITE="xwayland-satellite"
 if grep -Fxq "$XWAYLAND_SATELLITE" archiso/packages.${TARGET_ARCH}; then
     pass "xwayland-satellite is included in the Niri profile"
@@ -1854,7 +1854,7 @@ if [ -f branding/stamp-os-release.sh ]; then
 
     test_os_rel=$(mktemp)
     stamp_errors=""
-    for test_ed in niri xfce kde server pi; do
+    for test_ed in niri xfce server pi; do
         cat branding/files/os-release > "$test_os_rel"
         bash branding/stamp-os-release.sh "$test_os_rel" "2.0.0" "$test_ed"
         var_id=$(grep '^VARIANT_ID=' "$test_os_rel" | cut -d= -f2 | tr -d '"')

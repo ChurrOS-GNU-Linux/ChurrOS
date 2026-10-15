@@ -40,7 +40,6 @@ HAS_ZSTD = shutil.which("zstd") is not None
 SESSIONS = {
     "niri": "/usr/bin/churros-niri-session",
     "xfce": "/usr/bin/churros-xfce-session",
-    "kde": "/usr/bin/startplasma-wayland",
 }
 
 GREETER = (
@@ -386,7 +385,7 @@ cmp -s "$msg" "{self.signed}"
         manifest.write_text(
             '{"version": "1.3", "editions": {"niri": {"file": "churros-utils-niri-1.3.tar.zst", '
             '"sha256": "%s"}}}' % ("b" * 64))
-        result = update_utils('parse_manifest "$1" kde', manifest)
+        result = update_utils('parse_manifest "$1" niri', manifest)
         self.assertEqual(result.stdout.strip(), f"1.3|churros-utils-niri-1.3.tar.zst|{'b' * 64}")
         manifest.write_text('{"version": "1.3", "file": "../../etc/x.tar.zst", "sha256": "%s"}' % ("b" * 64))
         self.assertNotEqual(update_utils('parse_manifest "$1" niri', manifest).returncode, 0)
@@ -551,12 +550,12 @@ class WriteRootConfig(unittest.TestCase):
         self.assertEqual(self.greetd(), before)
 
     def test_lightdm_autologin(self):
-        self.set_edition("kde")
+        self.set_edition("xfce")
         result = self.run_helper("lightdm-autologin", "on")
         self.assertEqual(result.returncode, 0, result.stderr)
         conf = self.etc / "lightdm/lightdm.conf.d/autologin.conf"
         self.assertEqual(conf.read_text(), "[Seat:*]\nautologin-user=ana\n"
-                                           "autologin-user-timeout=0\nautologin-session=plasma\n")
+                                           "autologin-user-timeout=0\nautologin-session=xfce\n")
         self.assertEqual(mode(conf), 0o644)
         self.assertEqual(self.run_helper("lightdm-autologin", "off").returncode, 0)
         self.assertFalse(conf.exists())

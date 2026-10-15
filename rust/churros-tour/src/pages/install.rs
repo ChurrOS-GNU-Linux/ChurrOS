@@ -55,7 +55,6 @@ pub fn build() -> InstallPage {
 fn detect_terminal() -> (String, Vec<String>) {
     let edition = churros_services::version::edition();
     let candidates: &[&str] = match edition.as_str() {
-        "kde" => &["konsole", "foot", "xfce4-terminal", "xterm"],
         "xfce" => &["xfce4-terminal", "konsole", "xterm"],
         _ => &["foot", "konsole", "xfce4-terminal", "xterm"],
     };

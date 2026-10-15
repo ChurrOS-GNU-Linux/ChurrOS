@@ -5,7 +5,6 @@
 ```bash
 ./churros build              # Build ISO (default: niri edition)
 ./churros build --edition xfce # Build ISO with XFCE edition
-./churros build --edition kde   # Build ISO with KDE Plasma edition
 ./churros build --edition server # Build ISO with the headless server edition
 ./churros build --arch arm64 # Build the aarch64 ISO (default: host architecture, uname -m; same for run)
 ./churros build --arch i686  # Build the 32-bit ISO (Arch Linux 32 repos; same for run)

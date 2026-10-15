@@ -74,7 +74,6 @@ Trabajo integrado en `main`, todavía sin número de versión.
 
 **Ediciones**
 
-- **KDE Plasma**: tercera edición de escritorio, con su propia lista de paquetes (`archiso/packages.kde.x86_64`) y sesión Wayland nativa. Detalle en [`docs/desktop-config.md`](desktop-config.md).
 
 **Seguridad**
 

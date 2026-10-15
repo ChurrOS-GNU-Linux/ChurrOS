@@ -295,21 +295,6 @@ impl WallpaperService {
             }
         }
 
-        // Backend 3: plasma-apply-wallpaperimage (KDE Plasma)
-        if which("plasma-apply-wallpaperimage") {
-            let r = run_with_timeout(
-                &["plasma-apply-wallpaperimage", path],
-                Duration::from_secs(5),
-                &env_refs,
-            );
-            if let Some(out) = r {
-                if out.status.success() {
-                    println!("[wallpaper] plasma-apply-wallpaperimage OK: {path}");
-                    return true;
-                }
-            }
-        }
-
         println!("[wallpaper] NINGUN backend funciono");
         false
     }

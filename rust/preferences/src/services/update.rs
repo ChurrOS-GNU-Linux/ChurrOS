@@ -39,7 +39,7 @@ pub struct Snapshot {
 }
 
 /// Parsea el updates.json del servidor de releases, seleccionando la edición correspondiente
-/// (niri, xfce, kde o server) si está definida en el mapa "editions", o usando los campos globales como fallback.
+/// (niri, xfce o server) si está definida en el mapa "editions", o usando los campos globales como fallback.
 fn parse_updates_json(raw: &str) -> Option<ChurrosUpdate> {
     let v: serde_json::Value = serde_json::from_str(raw).ok()?;
     let version = v.get("version")?.as_str()?.to_string();

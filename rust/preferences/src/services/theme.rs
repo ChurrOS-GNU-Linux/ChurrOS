@@ -212,20 +212,6 @@ fn persist_desktop(dark: bool) {
             .output();
     }
 
-    // Sincronizar tema con KDE Plasma (color-scheme)
-    if churros_services::version::edition().contains("kde")
-        || churros_services::which("startplasma-wayland")
-        || churros_services::which("plasma-apply-colorscheme")
-    {
-        let scheme = if dark { "ChurroOSDark" } else { "BreezeLight" };
-        let _ = Command::new("plasma-apply-colorscheme")
-            .arg(scheme)
-            .output();
-        let _ = Command::new("kwriteconfig6")
-            .args(["--file", "kdeglobals", "--group", "General", "--key", "ColorScheme", scheme])
-            .output();
-    }
-
     let env = build_env();
     let env_refs: Vec<(&str, &str)> = env
         .iter()

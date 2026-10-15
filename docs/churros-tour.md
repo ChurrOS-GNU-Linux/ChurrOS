@@ -12,7 +12,6 @@ instalado.
 | --- | --- | --- |
 | Niri | El `spawn-sh-at-startup` de su configuración comprueba `~/.config/autostart/churros-tour.desktop` antes de lanzar el binario. | Atajos de Niri; foot. |
 | XFCE | Autostart XDG mediante el mismo `.desktop`, heredado de `/etc/skel`. | Atajos de XFCE; xfce4-terminal. |
-| KDE Plasma | Autostart XDG mediante el mismo `.desktop`, heredado de `/etc/skel`. | Atajos de KDE; Konsole. |
 | Server | Sin Tour después de `configure-server`: retira el binario, el autostart y el escritorio del destino. La ISO lleva XFCE para ejecutar Calamares. | No hay recorrido gráfico en el servidor instalado. |
 
 `main.rs` bloquea el Tour cuando existe `/run/archiso`. La excepción
@@ -107,6 +106,6 @@ arranque de terminal y la conservación del autostart tras el fracaso.
 Estas pruebas verifican selección y manejo de resultados; no prueban descargas,
 resolución de dependencias o instalación real de los 37 paquetes. No se construyó
 una ISO ni se probó el primer login en VM. Sigue pendiente comprobar Niri, XFCE y
-KDE en una ISO nueva con éxito, cancelación y reintento reales, y confirmar la
+Niri y XFCE en una ISO nueva con éxito, cancelación y reintento reales, y confirmar la
 limpieza de server. El arranque y las terminales por edición se auditaron en el
 código; no se declara validación del escritorio instalado.

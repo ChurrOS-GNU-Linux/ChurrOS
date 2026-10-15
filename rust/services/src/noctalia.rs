@@ -416,7 +416,7 @@ spawn-at-startup \"/usr/bin/noctalia\" // barra
     }
 
     #[test]
-    fn kde_without_niri_config_hides_both() {
+    fn session_without_niri_config_hides_optional_shells() {
         let idle = RunningShells::default();
         assert!(!noctalia_is_shell(idle, ""));
         assert!(!session_uses(OptionalShell::Waybar, idle, ""));
@@ -480,8 +480,8 @@ path = \"/tmp/viejo.png\"
     #[test]
     fn without_noctalia_only_settings_json_counts() {
         let config = "[wallpaper.default]\npath = \"/usr/share/churros/wallpapers/default.png\"\n";
-        let candidates = wallpaper_candidates("/home/kde/fondo.png", None, Some(config), false);
-        assert_eq!(candidates, vec!["/home/kde/fondo.png".to_string()]);
+        let candidates = wallpaper_candidates("/home/user/fondo.png", None, Some(config), false);
+        assert_eq!(candidates, vec!["/home/user/fondo.png".to_string()]);
         assert!(wallpaper_candidates("", None, Some(config), false).is_empty());
     }
 

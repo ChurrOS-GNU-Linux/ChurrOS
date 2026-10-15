@@ -6,7 +6,7 @@
 #   Backends soportados en orden:
 #     1. Noctalia, si está en marcha. Reintenta el IPC y, si falla, sale
 #        con error: swaybg no puede arrancar encima del shell.
-#     2. swaybg (estatico, simple; KDE/XFCE y sesiones sin Noctalia)
+#     2. swaybg (estatico, simple; XFCE y sesiones sin Noctalia)
 #     3. awww (animations, GIF, multi-output)
 #
 #   Detecta automaticamente WAYLAND_DISPLAY y XDG_RUNTIME_DIR si no
@@ -249,22 +249,6 @@ apply_noctalia() {
     return 1
 }
 
-apply_kde() {
-
-    local path="$1"
-
-    if ! command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then
-        return 1
-    fi
-
-    echo "$LOG_PREFIX aplicando fondo en KDE con plasma-apply-wallpaperimage: $path" >&2
-    if plasma-apply-wallpaperimage "$path" >/dev/null 2>&1; then
-        return 0
-    fi
-
-    return 1
-}
-
 apply_xfce() {
 
     local path="$1"
@@ -298,13 +282,6 @@ apply() {
         return 1
     fi
 
-    # Si estamos en sesión KDE o plasmashell está activo
-    if [ "${XDG_CURRENT_DESKTOP:-}" = "KDE" ] || [ "${XDG_SESSION_DESKTOP:-}" = "plasma" ] || pgrep -x plasmashell >/dev/null 2>&1; then
-        if apply_kde "$path"; then
-            return 0
-        fi
-    fi
-
     # Si estamos en sesión XFCE o xfconf-query está activo
     if [ "${XDG_CURRENT_DESKTOP:-}" = "XFCE" ] || pgrep -x xfce4-session >/dev/null 2>&1; then
         if apply_xfce "$path"; then
@@ -331,13 +308,6 @@ apply() {
     if command -v awww >/dev/null 2>&1; then
 
         if apply_awww "$path"; then
-            return 0
-        fi
-    fi
-
-    # Fallback para KDE si los anteriores no aplicaron
-    if command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then
-        if apply_kde "$path"; then
             return 0
         fi
     fi

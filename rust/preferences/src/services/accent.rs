@@ -195,27 +195,10 @@ impl AccentService {
         }
     }
 
-    fn sync_kde_accent(hex: &str) {
-        if churros_services::version::edition().contains("kde")
-            || churros_services::which("kwriteconfig6")
-        {
-            let hex_clean = hex.trim_start_matches('#');
-            if hex_clean.len() >= 6 {
-                let r = u8::from_str_radix(&hex_clean[0..2], 16).unwrap_or(249);
-                let g = u8::from_str_radix(&hex_clean[2..4], 16).unwrap_or(115);
-                let b = u8::from_str_radix(&hex_clean[4..6], 16).unwrap_or(22);
-                let _ = std::process::Command::new("kwriteconfig6")
-                    .args(["--file", "kdeglobals", "--group", "General", "--key", "AccentColor", &format!("{r},{g},{b}")])
-                    .output();
-            }
-        }
-    }
-
     fn write_accent_css(color_name: &str) {
         crate::logging::log(&format!("[accent] write_accent_css: {color_name}"));
         let path = Self::accent_css_path();
         let base = Self::hex_for(color_name);
-        Self::sync_kde_accent(&base);
         let css = Self::build_accent_css(&base, "churros set-accent");
         Self::write_file_atomic(&path, &css);
         let css_clone = css.clone();
@@ -247,7 +230,6 @@ impl AccentService {
         } else {
             format!("#{hex}")
         };
-        Self::sync_kde_accent(&base);
         let path = Self::accent_css_path();
         let css = Self::build_accent_css(&base, "dynamic colors (pywal)");
         Self::write_file_atomic(&path, &css);

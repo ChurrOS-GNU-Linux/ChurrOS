@@ -283,7 +283,7 @@ impl BackupService {
         // apply() recorre el mismo camino que el interruptor de Apariencia.
         crate::services::theme::ThemeService::apply(true);
         Self::reload_services();
-        // settings.json vuelve a Orange, pero accent.css (y el acento de KDE)
+        // settings.json vuelve a Orange, pero accent.css
         // se quedan con el hex de pywal. El selector de color reescribe ambos.
         crate::services::accent::AccentService::set(
             &crate::services::accent::AccentService::current(),
