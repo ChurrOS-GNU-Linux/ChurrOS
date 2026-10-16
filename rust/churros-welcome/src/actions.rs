@@ -8,10 +8,10 @@ use gtk::prelude::*;
 use std::path::PathBuf;
 use std::process::Command;
 
-const REPOSITORY: &str = "https://github.com/Hoyuse/ChurrOS";
+const REPOSITORY: &str = "https://github.com/ChurrOS-GNU-Linux/ChurrOS";
 const DISCORD: &str = "https://discord.gg/tkzAnsVs3";
-const WIKI: &str = "https://github.com/Hoyuse/ChurrOS/wiki";
-const WEBSITE: &str = "https://github.com/Hoyuse/ChurrOS";
+const WIKI: &str = "https://github.com/ChurrOS-GNU-Linux/ChurrOS/wiki";
+const WEBSITE: &str = "https://github.com/ChurrOS-GNU-Linux/ChurrOS";
 
 fn open_url(url: &str) {
     if let Err(e) = gio::AppInfo::launch_default_for_uri(url, None::<&gio::AppLaunchContext>) {
