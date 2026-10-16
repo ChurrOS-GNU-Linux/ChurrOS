@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentación
-    url: https://github.com/Hoyuse/ChurrOS/tree/main/docs
+    url: https://github.com/ChurrOS-GNU-Linux/ChurrOS/tree/main/docs
     about: Guías del proyecto (build, escritorio, contribución, etc.).
   - name: Discord de ChurrOS
     url: https://discord.gg/4nAJbbzvd
     about: Comunidad y contacto con administradores (para seguridad, usar DM privado).
   - name: Reportar una vulnerabilidad
-    url: https://github.com/Hoyuse/ChurrOS/security/advisories/new
+    url: https://github.com/ChurrOS-GNU-Linux/ChurrOS/security/advisories/new
     about: No uses issues públicos. Preferir advisory privado o DM a un admin en Discord.

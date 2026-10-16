@@ -19,11 +19,11 @@ strings:
   versionedName: ChurrOS 1.3
   shortVersionedName: ChurrOS 1.3
   bootloaderEntryName: ChurrOS
-  productUrl: https://github.com/Hoyuse/ChurrOS
-  supportUrl: https://github.com/Hoyuse/ChurrOS/issues
-  knownIssuesUrl: https://github.com/Hoyuse/ChurrOS/issues
-  releaseNotesUrl: https://github.com/Hoyuse/ChurrOS/releases
-  donateUrl: https://github.com/Hoyuse/ChurrOS
+  productUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS
+  supportUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues
+  knownIssuesUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues
+  releaseNotesUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases
+  donateUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS
 
 images:
   productIcon: "logo.svg"

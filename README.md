@@ -3,7 +3,7 @@
   <h1>ChurrOS</h1>
   <p><strong>Distribución Linux basada en Arch Linux</strong>, construida con archiso, con escritorio Niri y herramientas propias en Rust.</p>
   <p>
-    <a href="actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Hoyuse/ChurrOS/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ChurrOS-GNU-Linux/ChurrOS/actions/workflows/ci.yml/badge.svg"></a>
     <a href="blob/main/LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/licencia-GPL--3.0-blue.svg"></a>
     <img alt="Base" src="https://img.shields.io/badge/base-Arch%20Linux-1793D1.svg">
     <img alt="Build" src="https://img.shields.io/badge/build-archiso-1793D1.svg">
@@ -154,7 +154,7 @@ El comando detecta las dependencias que faltan y, cuando corresponde, ofrece ins
 ### Clonar
 
 ```bash
-git clone https://github.com/Hoyuse/ChurrOS.git
+git clone https://github.com/ChurrOS-GNU-Linux/ChurrOS.git
 cd ChurrOS
 ```
 

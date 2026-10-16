@@ -82,7 +82,7 @@ Comprueba el entorno con:
 # Clonar el proyecto
 
 ```bash
-git clone https://github.com/Hoyuse/ChurrOS.git
+git clone https://github.com/ChurrOS-GNU-Linux/ChurrOS.git
 
 cd ChurrOS
 ```

@@ -212,7 +212,7 @@ Al escribir código intenta mantener estas reglas:
 
 # A quién dirigirse
 
-El fichero [`MAINTAINERS`](https://github.com/Hoyuse/ChurrOS/blob/main/MAINTAINERS) indica qué persona responde por cada área del repositorio, para saber a quién preguntar antes de abrir un issue.
+El fichero [`MAINTAINERS`](https://github.com/ChurrOS-GNU-Linux/ChurrOS/blob/main/MAINTAINERS) indica qué persona responde por cada área del repositorio, para saber a quién preguntar antes de abrir un issue.
 
 Las asignaciones se deducen del historial de commits; si algo está mal, se corrige en un pull request.
 
