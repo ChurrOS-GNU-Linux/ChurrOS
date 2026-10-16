@@ -5,6 +5,7 @@
 *.tmp
 .cache/
 work/
+work-kernel/
 out/
 build/
 __pycache__/

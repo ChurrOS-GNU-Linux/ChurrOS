@@ -40,13 +40,8 @@ if [ ! -d "$PKGBUILD_DIR" ] || [ ! -f "$PKGBUILD_DIR/PKGBUILD" ]; then
 fi
 
 choose_work_dir() {
-    local parent="$PROJECT_DIR/work"
-    if [ -e "$parent" ] && [ ! -w "$parent" ]; then
-        WORK_DIR="$(mktemp -d /tmp/churros-kernel-build.XXXXXX)"
-        return
-    fi
-    mkdir -p "$parent"
-    WORK_DIR="$parent/kernel-vyper-build"
+    WORK_DIR="$PROJECT_DIR/work-kernel"
+    mkdir -p "$WORK_DIR"
 }
 
 choose_work_dir
@@ -61,6 +56,7 @@ echo "      Esto tomará varios minutos dependiendo de tu CPU."
 (
     cd "$WORK_DIR"
     churros_pkgbuild_allow_arch PKGBUILD
+    export MAKEFLAGS="-j$(nproc)"
     makepkg -sf --noconfirm --skipinteg
 )
 
