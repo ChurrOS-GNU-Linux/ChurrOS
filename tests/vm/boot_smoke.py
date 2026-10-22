@@ -422,6 +422,7 @@ def main() -> int:
     started = time.monotonic()
     edition_name = args.edition
     completed = False
+    agent = None
     try:
         vm.start()
         agent = vm.wait_for_agent(timeout, abort_patterns=FATAL_SERIAL)
@@ -447,11 +448,20 @@ def main() -> int:
         agent.close()
         completed = True
     except Exception as exc:  # noqa: BLE001 - cualquier error tiene que acabar en report.json
-        if isinstance(exc, VMError):
-            report.check("la VM arrancó", False, str(exc))
-        else:
-            report.check("el arnés terminó sin excepciones", False, f"{type(exc).__name__}: {exc}")
+        if not isinstance(exc, VMError):
             report.facts["traceback"] = traceback.format_exc()
+        if agent is None:
+            report.check("la VM arrancó", False, f"{type(exc).__name__}: {exc}")
+        else:
+            # qemu-guest-agent ya respondía: falló una comprobación a medias
+            # (un niri colgado, un comando que no termina). El diario sigue
+            # siendo lo que más ayuda a diagnosticarlo.
+            report.check("el arnés terminó (fallo tras arrancar)", False, f"{type(exc).__name__}: {exc}")
+            try:
+                _, journal = guest_sh(agent, "journalctl -b --no-pager -o short-monotonic", timeout=120)
+                (artifacts / "journal.txt").write_text(journal + "\n")
+            except Exception as dump:  # noqa: BLE001
+                report.facts["journal_error"] = f"{type(dump).__name__}: {dump}"
         try:
             capture(vm, artifacts, "screen")
         except Exception as shot:  # noqa: BLE001

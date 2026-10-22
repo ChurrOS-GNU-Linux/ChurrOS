@@ -32,8 +32,9 @@ obligar a instalarlo todo: `./install-deps.sh` instala lo necesario.
 
 `iso.yml` repite la construcción y el arranque en los PR que tocan lo que entra
 en la ISO: siempre la edición niri, más cada edición x86_64 cuyos ficheros toca
-el PR (`tests/iso/pick_editions.py`: la lista de XFCE o server, la sesión X,
-`build.sh`...). Arranca por UEFI; por BIOS (syslinux) solo si el PR toca
+el PR (`tests/iso/pick_editions.py`: por la ruta, como la lista de XFCE o la
+sesión X, o por el contenido, como un script común que decide según la
+edición; `build.sh`, la bienvenida o `known_issues.toml` construyen todas). Arranca por UEFI; por BIOS (syslinux) solo si el PR toca
 `archiso/syslinux`, `profiledef.sh` o `tests/vm`. Cada noche, las tres ediciones
 x86_64 por UEFI y por BIOS.
 
@@ -95,14 +96,17 @@ mutación.
 
 `./churros test --container --mutations` ejecuta las de `requires =
 "container"` dentro del contenedor (semanal en `rust.yml`). Las mutaciones de
-`rust/` compilan en las copias: cada copia (la base y cada worker) usa su
-propio `CARGO_TARGET_DIR`, una copia del compartido. Cargo identifica los
-crates del workspace por su ruta relativa a la raíz y decide por fecha: con un
-target común, un worker ejecutaría el binario que acaba de compilar otro, y el
-`build-rust.sh` del repo original metería en la ISO un binario compilado desde
-una copia mutada. Por eso en el contenedor van 2 workers por defecto. Una
-prueba que agota su plazo recibe SIGTERM (para cerrar lo que abrió) y, 15 s
-después, SIGKILL a todo su grupo.
+`rust/` compilan en las copias: cada copia usa su propio `CARGO_TARGET_DIR`.
+La base parte del compartido y compila en la línea base (con 30 min de plazo,
+por si el target está frío o viejo); cada worker parte de lo que compiló la
+base. Al sembrar un target se olvida lo compilado del workspace (sus binarios
+llevan dentro las rutas de la copia que los compiló) y se quedan las
+dependencias. Cargo identifica los crates del workspace por su ruta relativa
+a la raíz y decide por fecha: con un target común, un worker ejecutaría el
+binario que acaba de compilar otro, y el `build-rust.sh` del repo original
+metería en la ISO un binario compilado desde una copia mutada. En el
+contenedor van 2 workers por defecto. Una prueba que agota su plazo recibe
+SIGTERM (para cerrar lo que abrió) y, 15 s después, SIGKILL a todo su grupo.
 
 ## Apps GTK en Broadway: `./churros test --gui`
 

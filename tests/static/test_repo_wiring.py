@@ -24,9 +24,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import fnmatch
 from functools import lru_cache
+import json
+import os
 from pathlib import Path
 import re
 import shlex
+import tempfile
 import unittest
 
 from tests import testlib
@@ -365,24 +368,69 @@ def edges_from_text(text: str, *, python: bool = False) -> set[str]:
 TEST_SH = "scripts/cli/test.sh"
 
 
+# Una guarda de capa: `[ "$RUN_X" -eq 1 ]`, `[[ $RUN_X == 1 ]]`, `(( RUN_X ))`...
+GUARD_TEST = re.compile(r"""\[\[?\s*"?\$\{?RUN_(\w+)\}?"?\s+(?:-eq|==?)\s+"?1"?\s*\]\]?"""
+                        r"|\(\(\s*\$?RUN_(\w+)\s*(?:==\s*1\s*)?\)\)")
+
+
 @lru_cache(maxsize=None)
-def test_sh_layers() -> tuple[dict[str, int], dict[str, tuple[tuple[str, int], ...]], tuple[tuple[frozenset, str], ...]]:
-    """(RUN_* por defecto, RUN_* que pone cada opción, (RUN_* que guardan la línea, línea))."""
+def test_sh_layers() -> tuple[dict[str, int], dict[str, tuple[tuple[str, int], ...]], tuple[tuple[tuple, str], ...]]:
+    """(RUN_* por defecto, RUN_* que pone cada opción, (guardas que rodean la línea, línea)).
+
+    Cada guarda es el conjunto de RUN_* de un `if` (basta uno); una línea
+    corre si se cumplen todas las guardas que la rodean (un `if` de capa
+    dentro de otro: --container con --mutations). Lo que no sabe leer
+    (`&&`, `else`, un `$RUN_` fuera de un `if` de capa, una capa que una
+    opción activa y ningún bloque usa) es un error, no "sin guarda": si no,
+    una reescritura equivalente haría que cualquier `./churros test` contara
+    como si ejecutara esa capa.
+    """
     text = read(TEST_SH)
     defaults = {var: int(value) for var, value in re.findall(r"^RUN_(\w+)=(\d)\s*$", text, re.M)}
     options: dict[str, tuple[tuple[str, int], ...]] = {}
     for flags, body in re.findall(r"^\s*((?:--[\w-]+)(?:\|--[\w-]+)*)\)(.*?);;", text, re.M | re.S):
-        sets = tuple((var, int(value)) for var, value in re.findall(r"\bRUN_(\w+)=(\d)", body))
+        # [ "$1" = --iso ] && RUN_ISO=1 || RUN_BOOT=1: cada opción pone solo la suya.
+        conditional = re.search(r"\[\s*\"\$1\"\s*=\s*(--[\w-]+)\s*\]\s*&&\s*RUN_(\w+)=(\d)\s*\|\|\s*RUN_(\w+)=(\d)", body)
+        plain = body.replace(conditional.group(0), "") if conditional else body
+        common = [(var, int(value)) for var, value in re.findall(r"\bRUN_(\w+)=(\d)", plain)]
         for flag in flags.split("|"):
-            options[flag] = sets
-    lines, guard = [], frozenset()
-    for raw in text.splitlines():
-        opened = re.match(r"if (\[ \"\$RUN_\w+\" -eq 1 \](?: \|\| )?)+; then$", raw)
-        if opened:
-            guard = frozenset(re.findall(r"\$RUN_(\w+)", raw))
-        elif raw == "fi":
-            guard = frozenset()
-        lines.append((guard, raw))
+            own = []
+            if conditional:
+                yes = flag == conditional.group(1)
+                own = [(conditional.group(2 if yes else 4), int(conditional.group(3 if yes else 5)))]
+            options[flag] = tuple(own + common)
+    lines, stack, guarded = [], [], set()
+    for number, raw in enumerate(text.splitlines(), 1):
+        code = "" if raw.lstrip().startswith("#") else re.sub(r"(?<=\s)#.*$", "", raw).rstrip()
+        indent = len(code) - len(code.lstrip())
+        opened = re.match(r"\s*if\s+(.*?);\s*then$", code)
+        if opened and "RUN_" in opened.group(1):
+            parts = [part.strip() for part in opened.group(1).split("||")]
+            tests = [GUARD_TEST.fullmatch(part) for part in parts]
+            if not all(tests):
+                raise AssertionError(f"{TEST_SH}:{number}: no sé leer la guarda de capa `{code.strip()}` "
+                                     "(usa `if [ \"$RUN_X\" -eq 1 ]; then`, unidas con ||)")
+            guard = frozenset(m.group(1) or m.group(2) for m in tests)
+            guarded |= guard
+            stack.append((indent, guard))
+        elif opened:
+            stack.append((indent, None))
+        elif re.match(r"\s*(?:else|elif)\b", code) and stack and stack[-1][0] == indent and stack[-1][1]:
+            raise AssertionError(f"{TEST_SH}:{number}: `else` en una guarda de capa: no sé qué capas lo ejecutan")
+        elif re.fullmatch(r"\s*fi", code):
+            while stack and stack[-1][0] > indent:
+                stack.pop()
+            if stack:
+                stack.pop()
+        elif re.search(r"\$\{?RUN_|\(\(\s*RUN_", code):
+            raise AssertionError(f"{TEST_SH}:{number}: `{code.strip()}` decide por una capa fuera de un "
+                                 "`if [ \"$RUN_X\" -eq 1 ]; then`: no sé qué opciones la ejecutan")
+        lines.append((tuple(g for _, g in stack if g), raw))
+    unused = sorted({var for sets in options.values() for var, value in sets if value == 1}
+                    - guarded - {var for var, value in defaults.items() if value == 1})
+    if unused:
+        raise AssertionError(f"{TEST_SH}: las opciones activan {unused}, pero ningún `if` de capa las usa: "
+                             "¿cambió la forma de las guardas?")
     return defaults, options, tuple(lines)
 
 
@@ -394,8 +442,9 @@ def test_sh_edges(args: str | None) -> set[str]:
         words = re.split(r"[;&|)`]", args, maxsplit=1)[0].split()
         for flag in (w for w in words if w.startswith("--")):
             enabled.update(options.get(flag, ()))
-    text = "\n".join(raw for guard, raw in lines
-                     if not guard or (args is not None and any(enabled.get(var) for var in guard)))
+    text = "\n".join(raw for guards, raw in lines
+                     if not guards or (args is not None and all(any(enabled.get(var) for var in guard)
+                                                                for guard in guards)))
     return edges_from_text(text)
 
 
@@ -990,32 +1039,56 @@ class AntiWeakeningTest(unittest.TestCase):
         def runs_container_suite(rel: str) -> bool:
             return any(map(suite, code_lines(read(rel))))
 
-        def suite_launchers(rel: str) -> list[str]:
-            """Los container_run de `rel` que lanzan tests/container, directamente
-            o con una variable que lo hace (CONTAINER_CMD=(python3 -m unittest ...)).
-            Que otro container_run del mismo script (el de --gui) pase
-            CHURROS_STRICT no cuenta para este."""
-            lines = code_lines(read(rel))
+        def suite_launchers(text: str) -> list[str]:
+            """Los container_run de `text` que lanzan tests/container, directamente
+            o con una variable que lo hace (CONTAINER_CMD=(python3 -m unittest ...),
+            también con declare/local/readonly). Que otro container_run del mismo
+            script (el de --gui) pase CHURROS_STRICT no cuenta para este."""
+            lines = code_lines(text)
             variables = {m.group(1) for line in lines if suite(line)
-                         for m in [re.match(r"\s*(\w+)=", line)] if m}
+                         for m in [re.match(r"\s*(?:(?:declare|local|readonly|typeset|export)(?:\s+-\w+)*\s+)?(\w+)=",
+                                            line)] if m}
             return [line for line in lines if re.search(r"\bcontainer_run\b", line)
                     and (suite(line) or any(re.search(rf"\$\{{?{var}\b", line) for var in variables))]
+
+        def strict_env(step) -> bool:
+            """CHURROS_STRICT=1 en el env del paso, del job o del workflow."""
+            data = dict(workflows()).get(step.workflow) or {}
+            chain = [data.get("env"), (jobs(data).get(step.job_id) or {}).get("env"), step.data.get("env")]
+            return any(isinstance(env, dict) and str(env.get("CHURROS_STRICT", "")).strip() == "1" for env in chain)
+
+        def from_ci(rel: str) -> bool:
+            """El script pone el modo estricto cuando CI=true (strict=1 si CI)."""
+            return any(re.search(r"\bCI\b", line) and re.search(r"(?:^|[;&|]\s*|\s)\w*strict\w*=1\b", line, re.I)
+                       for line in code_lines(read(rel)))
 
         for step in steps():
             hit = reached(step)
             shells = [rel for rel in hit if is_shell(ROOT / rel)]
-            if "scripts/lib/container.sh" in hit and any(map(runs_container_suite, shells)):
-                launchers = [line for rel in shells for line in suite_launchers(rel)]
-                forwards = any(rel == "scripts/lib/container.sh" and "CHURROS_STRICT" in line
-                               for rel in shells for line in code_lines(read(rel)))
-                if launchers:
-                    forwards = forwards or all("CHURROS_STRICT" in line for line in launchers)
-                else:
-                    forwards = forwards or any(re.search(r"container_run\b.*\bCHURROS_STRICT\b", line)
-                                               for rel in shells for line in code_lines(read(rel)))
-                if not forwards:
+            # Un container_run escrito en el propio paso del workflow.
+            for line in suite_launchers(step.run):
+                if not re.search(r"\bCHURROS_STRICT=1\b|\bCI=true\b", line):
+                    problems.append(f"{step.label}: lanza tests/container con container_run sin "
+                                    f"-e CHURROS_STRICT=1: {line.strip()}")
+            if "scripts/lib/container.sh" not in hit or not any(map(runs_container_suite, shells)):
+                continue
+            if any(rel == "scripts/lib/container.sh" and "CHURROS_STRICT" in line
+                   for rel in shells for line in code_lines(read(rel))):
+                continue  # container.sh lo pasa siempre
+            launchers = [(rel, line) for rel in shells if runs_container_suite(rel) for line in suite_launchers(read(rel))]
+            if not launchers:
+                problems.append(f"{step.label}: no encuentro el container_run que lanza tests/container en "
+                                f"{[rel for rel in shells if runs_container_suite(rel)]}: no puedo comprobar que "
+                                "le pasa CHURROS_STRICT")
+                continue
+            for rel, line in launchers:
+                if "CHURROS_STRICT" not in line:
                     problems.append(f"{step.label}: lanza tests/container en el contenedor sin pasarle CHURROS_STRICT "
                                     "(container_run -e CHURROS_STRICT=1): una herramienta que falte sería un SKIP")
+                elif not re.search(r"\bCHURROS_STRICT=1\b", line) and not (strict_env(step) or from_ci(rel)):
+                    problems.append(f"{step.label}: {rel} pasa CHURROS_STRICT desde una variable, pero ni el paso "
+                                    "pone CHURROS_STRICT=1 ni el script lo deriva de CI=true: en el contenedor "
+                                    "sería un SKIP")
         self.assertFalse(problems, "el modo estricto se desactiva en el CI:\n" + "\n".join(problems))
 
 
@@ -1184,6 +1257,88 @@ FALSE_CLAIMS = (
      lambda: customize_runs_at_build() and "/usr/share/churros/grub-theme" in read("branding/customize_airootfs.sh"),
      "customize_airootfs.sh lo copia a /usr/share/churros/grub-theme/ al construir la ISO, no al arrancar"),
 )
+
+
+class TestShLayersTest(unittest.TestCase):
+    """Lo que ejecuta `./churros test` depende de sus opciones."""
+
+    def test_each_option_reaches_only_its_layer(self):
+        expect = {
+            "": ({CHECK_SH}, {"scripts/test-tour.py", "tests/vm/boot_smoke.py"}),
+            "--container": ({"tests/container/test_arch_repos.py"},
+                            {"scripts/test-tour.py", "tests/mutations/run_mutations.py", CHECK_SH}),
+            "--container --mutations": ({"tests/mutations/run_mutations.py"}, set()),
+            "--gui": ({"scripts/test-tour.py", "scripts/test-gui-smoke.py"}, {"tests/container/test_arch_repos.py"}),
+            # [ "$1" = --iso ] && RUN_ISO=1 || RUN_BOOT=1: cada una, la suya.
+            "--iso": ({"tests/iso/check_iso.py"}, {"tests/vm/boot_smoke.py"}),
+            "--boot": ({"tests/vm/boot_smoke.py"}, {"tests/iso/check_iso.py"}),
+        }
+        for args, (present, absent) in expect.items():
+            with self.subTest(args=args):
+                edges = test_sh_edges(args)
+                self.assertLessEqual(present, edges, f"./churros test {args} no llega a {sorted(present - edges)}")
+                self.assertFalse(absent & edges, f"./churros test {args} cuenta como ejecutados {sorted(absent & edges)}")
+
+
+class IsoMatrixTest(unittest.TestCase):
+    """iso.yml construye y arranca lo que un PR toca (tests/iso/pick_editions.py).
+
+    La función se prueba en test_harness; aquí, que el workflow la use: con
+    `changed=""` o el arranque BIOS de vuelta a `event_name != 'pull_request'`,
+    los PR volverían a construir solo niri por UEFI sin que nada fallara.
+    """
+
+    def setUp(self):
+        testlib.require_module(self, "yaml")
+        found = dict(workflows()).get("iso.yml")
+        if found is None:
+            self.fail("no existe .github/workflows/iso.yml")
+        self.jobs = jobs(found)
+        self.matrix_id = next((job_id for job_id, job in self.jobs.items()
+                               if any(isinstance(step, dict) and step.get("id") == "pick"
+                                      for step in job.get("steps") or [])), None)
+        self.assertIsNotNone(self.matrix_id, "iso.yml: ningún job tiene el paso `pick` que elige las ediciones")
+        self.matrix = self.jobs[self.matrix_id]
+
+    def run_pick(self, event: str, changed: list[str]) -> dict[str, str]:
+        step = next(step for step in self.matrix["steps"] if isinstance(step, dict) and step.get("id") == "pick")
+        with tempfile.TemporaryDirectory() as tmp:
+            stubs, output = Path(tmp) / "bin", Path(tmp) / "output"
+            stubs.mkdir()
+            (stubs / "git").write_text("#!/bin/sh\nprintf '%s\\n' " + " ".join(map(shlex.quote, changed)) + "\n")
+            (stubs / "git").chmod(0o755)
+            output.write_text("")
+            env = testlib.scratch_env(PATH=f"{stubs}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+                                      EVENT=event, EDITION="xfce", GITHUB_OUTPUT=str(output))
+            result = testlib.run(["bash", "-e", "-c", step["run"]], env=env, timeout=60)
+            self.assertEqual(result.returncode, 0, f"el paso pick de iso.yml falla con {event}:\n{result.stdout}")
+            return dict(line.split("=", 1) for line in output.read_text().splitlines() if "=" in line)
+
+    def test_pull_request_feeds_the_diff_to_pick_editions(self):
+        outputs = self.run_pick("pull_request", ["archiso/packages.xfce.x86_64", "archiso/syslinux/archiso_sys-linux.cfg"])
+        self.assertIn("xfce", json.loads(outputs.get("editions", "[]")),
+                      f"un PR que toca la lista de XFCE no construye XFCE (salida del paso pick: {outputs})")
+        self.assertEqual(outputs.get("bios"), "true", f"un PR que toca syslinux no arranca por BIOS: {outputs}")
+        nightly = self.run_pick("schedule", [])
+        self.assertEqual(set(json.loads(nightly.get("editions", "[]"))),
+                         {e.name for e in testlib.EDITIONS if e.arch == "x86_64"}, f"la noche no construye todo: {nightly}")
+        self.assertEqual(nightly.get("bios"), "true")
+        depth = next((step.get("with", {}).get("fetch-depth") for step in self.matrix["steps"]
+                      if isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout")), None)
+        self.assertTrue(depth is not None and (int(depth) == 0 or int(depth) >= 2),
+                        f"el job {self.matrix_id} necesita fetch-depth >= 2 para `git diff HEAD^1 HEAD` (tiene {depth})")
+
+    def test_bios_boot_follows_the_matrix_output(self):
+        outputs = self.matrix.get("outputs") or {}
+        self.assertIn("steps.pick.outputs.bios", str(outputs.get("bios", "")),
+                      f"el job {self.matrix_id} no exporta la salida bios del paso pick")
+        bios_steps = [(job_id, step) for job_id, job in self.jobs.items() for step in job.get("steps") or []
+                      if isinstance(step, dict) and "boot_smoke.py" in str(step.get("run", ""))
+                      and "--firmware bios" in str(step.get("run", ""))]
+        self.assertTrue(bios_steps, "iso.yml ya no arranca la ISO por BIOS")
+        for job_id, step in bios_steps:
+            self.assertIn(f"needs.{self.matrix_id}.outputs.bios", str(step.get("if", "")),
+                          f"{job_id}: el arranque BIOS no depende de lo que elige pick_editions (if: {step.get('if')})")
 
 
 class DocsDriftTest(unittest.TestCase):
@@ -1374,6 +1529,10 @@ class KnownIssuesTest(unittest.TestCase):
 PLACEHOLDER_VALUES = sorted({e.name for e in testlib.EDITIONS} | set(testlib.ARCHES)
                             | {Path(e.package_list).name for e in testlib.EDITIONS} | {"unknown"},
                             key=len, reverse=True)
+# Dos {…} seguidos (iso-{edición}-{arquitectura}, boot-...): solo los pares que
+# existen; boot_smoke usa 'unknown' si no sabe la edición.
+EDITION_ARCH_VALUES = sorted({f"{e.name}-{e.arch}" for e in testlib.EDITIONS}
+                             | {f"unknown-{arch}" for arch in testlib.ARCHES}, key=len, reverse=True)
 STRING_LITERAL = re.compile(r"""(f?)"([^"\n]*)"|(f?)'([^'\n]*)'""")
 
 
@@ -1381,8 +1540,11 @@ def category_regex(literal: str, fstring: bool) -> re.Pattern:
     """Regex de los ids de una categoría; cada {…} de una f-string, un valor conocido."""
     if not fstring:
         return re.compile(re.escape(literal) + ":")
-    values = "(?:" + "|".join(map(re.escape, PLACEHOLDER_VALUES)) + ")"
     parts = re.split(r"\{[^{}]*\}", literal)
+    if len(parts) == 3 and parts[1] == "-":
+        return re.compile(re.escape(parts[0]) + "(?:" + "|".join(map(re.escape, EDITION_ARCH_VALUES)) + ")"
+                          + re.escape(parts[2]) + ":")
+    values = "(?:" + "|".join(map(re.escape, PLACEHOLDER_VALUES)) + ")"
     return re.compile(values.join(map(re.escape, parts)) + ":")
 
 
@@ -1402,11 +1564,14 @@ def category_patterns() -> list[re.Pattern]:
         if not rel.startswith("tests/") or path.suffix != ".py" or path.name == "testlib.py":
             continue
         text = testlib.read_text(path)
+        # Sin comentarios: uno que cite `assert_findings(self, category` no es una llamada.
+        code = re.sub(r"(?m)^\s*#.*$", "", text)
         constants = dict(re.findall(r"^([A-Z][A-Z0-9_]*)\s*=\s*[\"']([^\"'\n]+)[\"']\s*$", text, re.M))
-        # tests/iso y tests/vm comparan con testlib.known_issues() sin assert_findings.
-        uses_variable = "known_issues()" in text
+        # tests/iso y tests/vm comparan con testlib.known_issues() sin
+        # assert_findings: `k.startswith(category + ":")`.
+        uses_variable = re.search(r"startswith\(\s*category\s*\+\s*[\"']:[\"']\s*\)", code) is not None
         # check_each (test_config_syntax) aplica el mismo trinquete por fichero.
-        for arg in re.findall(r"(?:assert_findings|check_each)\(\s*self\s*,\s*(f?\"[^\"\n]*\"|f?'[^'\n]*'|\w+)", text):
+        for arg in re.findall(r"(?:assert_findings|check_each)\(\s*self\s*,\s*(f?\"[^\"\n]*\"|f?'[^'\n]*'|\w+)", code):
             literal = STRING_LITERAL.fullmatch(arg)
             if literal:
                 fstring, value = (literal.group(1), literal.group(2)) if literal.group(2) is not None \
@@ -1418,12 +1583,12 @@ def category_patterns() -> list[re.Pattern]:
                 uses_variable = True
         if not uses_variable:
             continue
-        for rhs in re.findall(r"^\s*category\s*=\s*(.+)$", text, re.M):
+        for rhs in re.findall(r"^\s*category\s*=\s*(.+)$", code, re.M):
             for literal in STRING_LITERAL.finditer(rhs):
                 fstring, value = (literal.group(1), literal.group(2)) if literal.group(2) is not None \
                     else (literal.group(3), literal.group(4))
                 found.add((value, bool(fstring)))
-        for helper in re.findall(r"def (\w+)\(self, category\b", text):
+        for helper in re.findall(r"def (\w+)\(self, category\b", code):
             for literal in re.finditer(rf"\.{helper}\(\s*(f?)\"([^\"\n]*)\"", text):
                 found.add((literal.group(2), bool(literal.group(1))))
     return [category_regex(value, fstring) for value, fstring in sorted(found)]

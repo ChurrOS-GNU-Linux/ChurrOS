@@ -80,6 +80,11 @@ fi
 
 status=0
 
+# El contenedor no hereda CI=true del runner: el modo estricto (una
+# herramienta que falta o una prueba saltada es un fallo) entra explícito.
+strict="${CHURROS_STRICT:-}"
+[ "${CI:-}" = true ] && strict=1
+
 if [ "$RUN_STATIC" -eq 1 ]; then
     bash scripts/cli/check.sh || status=1
 fi
@@ -97,7 +102,7 @@ if [ "$RUN_CONTAINER" -eq 1 ]; then
         source scripts/lib/container.sh
         container_engine_init
         container_ensure_image
-        container_run --upgrade -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- \
+        container_run --upgrade -e "CHURROS_STRICT=$strict" -- \
             "${CONTAINER_CMD[@]}" || status=1
     fi
 fi
@@ -118,8 +123,8 @@ if [ "$RUN_GUI" -eq 1 ]; then
         source scripts/lib/container.sh
         container_engine_init
         container_ensure_image
-        container_run -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- python3 scripts/test-tour.py || status=1
-        container_run -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- python3 scripts/test-gui-smoke.py || status=1
+        container_run -e "CHURROS_STRICT=$strict" -- python3 scripts/test-tour.py || status=1
+        container_run -e "CHURROS_STRICT=$strict" -- python3 scripts/test-gui-smoke.py || status=1
     fi
 fi
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -28,8 +29,15 @@ DEFAULT = "niri"
 # sobre X (startx de xorg-xinit, /etc/X11).
 DESKTOP_WORDS = {"xfce": ("xfce", "x11", "xinit", "xorg", "startx")}
 # build.sh monta cada edición por su lado (lista, sesión, greetd): un cambio
-# ahí puede romper una edición que no se nombra.
-ALL_EDITIONS_PATHS = ("scripts/cli/build.sh", "tests/iso/pick_editions.py")
+# ahí puede romper una edición que no se nombra. La bienvenida corre en todos
+# los escritorios (y tiene fallos conocidos solo en XFCE/server), y
+# known_issues.toml lleva las entradas iso-*/boot-* de cada edición: un PR que
+# arregla o apunta una tiene que construir esa edición antes del merge.
+ALL_EDITIONS_PATHS = ("scripts/cli/build.sh", "tests/iso/pick_editions.py", "rust/churros-welcome/",
+                      "tests/known_issues.toml")
+# Un fichero común que decide según la edición (desktop.sh, customize_airootfs.sh,
+# edition-session.sh...) afecta a todas, aunque su ruta no nombre ninguna.
+BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition")
 # Lo que solo se ejecuta arrancando por BIOS (syslinux) o lo cambia todo.
 BIOS_PATHS = ("archiso/syslinux/", "archiso/profiledef.sh", "tests/vm/", ".github/workflows/iso.yml")
 
@@ -44,14 +52,37 @@ def words(item: testlib.Edition) -> set[str]:
     return {word.lower() for word in found}
 
 
-def pick(changed: list[str]) -> tuple[list[str], bool]:
-    """(ediciones, BIOS) para un pull request que cambia `changed`."""
+# Solo se lee el contenido de lo que entra en la ISO (no la documentación).
+CONTENT_PATHS = ("archiso/", "installer/", "branding/", "rust/", "scripts/")
+
+
+def content(root: Path, path: str) -> str:
+    """Texto del fichero tal como queda con el PR ('' si se borra, es binario
+    o no entra en la ISO)."""
+    if not path.startswith(CONTENT_PATHS) or path.endswith(".md"):
+        return ""
+    try:
+        return (root / path).read_text(encoding="utf-8").lower()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def pick(changed: list[str], root: Path = testlib.ROOT) -> tuple[list[str], bool]:
+    """(ediciones, BIOS) para un pull request que cambia `changed`.
+
+    Cuenta la ruta y, para los ficheros que siguen existiendo, su contenido:
+    el autostart de la bienvenida (OnlyShowIn=XFCE) o un script con una rama
+    para XFCE no nombran la edición en la ruta.
+    """
     paths = [path.strip() for path in changed if path.strip()]
-    every = any(path.startswith(ALL_EDITIONS_PATHS) for path in paths)
+    texts = {path: content(root, path) for path in paths}
+    every = any(path.startswith(ALL_EDITIONS_PATHS) or BRANCHES_ON_EDITION.search(texts[path])
+                for path in paths)
     chosen = [DEFAULT]
     for item in editions():
         if item.name != DEFAULT and item.name not in chosen and (
-                every or any(word in path.lower() for path in paths for word in words(item))):
+                every or any(word in path.lower() for path in paths for word in words(item))
+                or any(re.search(rf"\b{re.escape(item.desktop or item.name)}\b", texts[path]) for path in paths)):
             chosen.append(item.name)
     bios = any(path.startswith(BIOS_PATHS) for path in paths)
     return chosen, bios

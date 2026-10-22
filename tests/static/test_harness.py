@@ -106,10 +106,20 @@ class PickEditionsTest(unittest.TestCase):
         self.assertEqual(pick_editions.pick(["archiso/packages.xfce.x86_64"])[0], ["niri", "xfce", "server"])
         self.assertEqual(pick_editions.pick(["archiso/airootfs/etc/X11/Xwrapper.config"])[0],
                          ["niri", "xfce", "server"])
-        self.assertEqual(pick_editions.pick(["archiso/airootfs/usr/share/churros/scripts/configure-server"])[0],
+        self.assertEqual(pick_editions.pick(["archiso/packages.server.x86_64"])[0],
                          ["niri", "server"])
         self.assertEqual(pick_editions.pick(["scripts/cli/build.sh"])[0], ["niri", "xfce", "server"])
         self.assertEqual(pick_editions.pick(["archiso/syslinux/archiso_sys-linux.cfg"]), (["niri"], True))
+        # Ficheros comunes que deciden según la edición o que solo usa XFCE,
+        # aunque su ruta no la nombre; y el arreglo de un fallo conocido de
+        # XFCE/server (la bienvenida, known_issues.toml).
+        for path in ("archiso/airootfs/root/scripts/desktop.sh", "branding/customize_airootfs.sh",
+                     "archiso/airootfs/etc/skel/.config/autostart/churros-welcome.desktop",
+                     "rust/churros-welcome/src/main.rs", "tests/known_issues.toml"):
+            with self.subTest(path=path):
+                self.assertEqual(pick_editions.pick([path])[0], ["niri", "xfce", "server"])
+        self.assertEqual(pick_editions.pick(["README.md", "docs/testing.md"])[0], ["niri"],
+                         "la documentación no construye ediciones")
         self.assertEqual(sorted(pick_editions.pick(["x"])[0] + [e.name for e in pick_editions.editions()
                                                                  if e.name != "niri"]),
                          sorted(e.name for e in testlib.EDITIONS if e.arch == "x86_64"))
@@ -198,6 +208,56 @@ class BootSmokeTest(unittest.TestCase):
         self.assertEqual(report["fixed_known_issues"], [],
                          "una prueba que no terminó manda borrar fallos conocidos que no ha comprobado")
         self.assertIn("TCG, espera 2400 s", out.getvalue(), "la espera no sale del acelerador que usa la VM")
+
+    def test_main_keeps_the_journal_when_a_check_hangs(self):
+        # El agente responde, pero un comando del invitado no termina (niri
+        # colgado): el informe tiene que decir que falló tras arrancar y dejar
+        # journal.txt, el artefacto que más ayuda a diagnosticarlo.
+        class Agent:
+            def sh(self, script, timeout=60):
+                if "niri msg" in script or "loginctl" in script:
+                    raise qemu.VMError(f"'{script[:40]}' no terminó en {timeout} s")
+                if script.startswith("journalctl"):
+                    return 0, "[ 1.0] churros niri[1]: congelado\n", ""
+                if "is-system-running" in script:
+                    return 0, "running", ""
+                if script.startswith("cat /etc/churros-edition"):
+                    return 0, "niri", ""
+                return 0, "", ""
+
+            def close(self):
+                pass
+
+        class FakeVM:
+            def __init__(self, **kwargs):
+                self.accel, self.gpu = "kvm", "virgl"
+
+            def start(self):
+                pass
+
+            def wait_for_agent(self, timeout, abort_patterns=()):
+                return Agent()
+
+            def screenshot(self, path):
+                return None
+
+            def stop(self):
+                pass
+
+        argv = ["boot_smoke.py", "ChurrOS-2026.10.22-x86_64.iso", "--edition", "niri", "--artifacts"]
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(boot_smoke, "VM", FakeVM), \
+                mock.patch.object(testlib, "known_issues", return_value={}), \
+                mock.patch.object(boot_smoke, "poll", lambda agent, script, accept, timeout, interval=5:
+                                  (True, agent.sh(script)[1])), \
+                mock.patch.object(sys, "argv", argv + [tmp]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            status = boot_smoke.main()
+            report = json.loads((Path(tmp) / "report.json").read_text())
+            journal = (Path(tmp) / "journal.txt").read_text() if (Path(tmp) / "journal.txt").exists() else None
+        self.assertEqual(status, 1)
+        failed = [c["name"] for c in report["checks"] if not c["ok"]]
+        self.assertNotIn("la VM arrancó", failed, "un fallo tras arrancar se informa como si la VM no arrancara")
+        self.assertIn("congelado", journal or "", "un fallo a medias no deja journal.txt")
 
 
 class QemuTest(unittest.TestCase):
@@ -361,6 +421,34 @@ class MutationsTest(unittest.TestCase):
                 with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": value}):
                     self.assertIsNone(run_mutations.worker_target(tmp, workers[0]),
                                       f"con CARGO_TARGET_DIR={value!r} cada copia ya usa el suyo")
+
+    def test_workers_start_from_the_baseline_build(self):
+        # Un target compartido frío o viejo (rustc nuevo, Cargo.lock cambiado)
+        # se compila en la línea base, con su plazo largo: si cada worker
+        # partiera otra vez del compartido, repetiría esa compilación con el
+        # plazo de una mutación y saldría ✗ MENSAJE por timeout.
+        crate = sorted(testlib.crates(), key=lambda c: c.name)[0].name
+        workspace = f"debug/.fingerprint/{crate}-0123456789abcdef"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            shared = tmp / "shared"
+            shared.mkdir()
+            with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(shared)}):
+                base = run_mutations.worker_target(tmp, tmp / "base")
+                # Lo que compila la línea base: una dependencia y el workspace.
+                (base / "debug/deps").mkdir(parents=True)
+                (base / "debug/deps/libgtk4-0123.rlib").write_text("gtk")
+                (base / workspace).mkdir(parents=True)
+                other = run_mutations.worker_target(tmp, tmp / "worker1", seed=base)
+                first = run_mutations.worker_target(tmp, tmp / "worker0", seed=base, move=True)
+            for target in (other, first):
+                self.assertTrue((target / "debug/deps/libgtk4-0123.rlib").exists(),
+                                "el worker no parte de lo que compiló la línea base")
+                # Los binarios del workspace llevan el CARGO_MANIFEST_DIR de la
+                # base: una prueba del worker leería los ficheros sin mutar.
+                self.assertFalse((target / workspace).exists(),
+                                 "el worker reutiliza el build del workspace compilado en otra copia")
+            self.assertFalse(base.exists(), "el target de la base se queda en disco (una copia de más)")
 
 
 class TestlibTest(unittest.TestCase):

@@ -1400,7 +1400,7 @@ why = "./churros test ignora el resultado de check.sh"
 [[mutation]]
 name = "test_repo_wiring: las pruebas de contenedor dejan de recibir el modo estricto (SKIP en vez de fallo)"
 file = "scripts/cli/test.sh"
-find = "        container_run --upgrade -e \"CHURROS_STRICT=${CHURROS_STRICT:-}\" -- \\"
+find = "        container_run --upgrade -e \"CHURROS_STRICT=$strict\" -- \\"
 replace = "        container_run --upgrade -- \\"
 caught_by = "tests.static.test_repo_wiring"
 expect = "sin pasarle CHURROS_STRICT"
@@ -1882,7 +1882,7 @@ file = "archiso/syslinux/archiso_sys-linux.cfg"
 find_re = '^(APPEND archisobasedir=%INSTALL_DIR%) archisosearchuuid=%ARCHISO_UUID% (copytoram=n cow_spacesize=2G)$'
 replace = '\1 \2'
 caught_by = "tests.static.test_config_syntax"
-expect = "boot-cmdline:archiso/syslinux/archiso_sys-linux.cfg:medium:1"
+expect = "boot-cmdline:archiso/syslinux/archiso_sys-linux.cfg:medium:arch"
 why = "El initramfs no encuentra el medio y acaba en la shell de emergencia; los PR solo arrancaban por UEFI."
 
 [[mutation]]
@@ -2074,3 +2074,131 @@ expect = "llama a CursorService::set_size"
 requires = "container"
 why = "Cases dropped (or a writer that never had any): the cursor size slider would go back to having no niri validate check. The guard derives the writer services from the services/*.rs that name config.kdl and write files, so CursorService counts without being listed anywhere."
 
+
+# ---- Tercera revisión: runner, arranque, pick_editions, cableado y entradas de arranque
+
+[[mutation]]
+name = "test_harness: los workers parten del target compartido y no de lo que compiló la línea base"
+file = "tests/mutations/run_mutations.py"
+find = "    source = seed if seed is not None else Path(shared)"
+replace = "    source = Path(shared)"
+caught_by = "tests.static.test_harness"
+expect = "el worker no parte de lo que compiló la línea base"
+why = "Con un target compartido frío o viejo, cada worker repetiría la compilación de GTK con el plazo de una mutación: ✗ MENSAJE por timeout."
+
+[[mutation]]
+name = "test_harness: el target sembrado conserva el build del workspace de otra copia"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        testlib\.forget_workspace_build\(target\)\n    return target$'
+replace = "    return target"
+caught_by = "tests.static.test_harness"
+expect = "el worker reutiliza el build del workspace compilado en otra copia"
+why = "Los binarios del workspace llevan el CARGO_MANIFEST_DIR de quien los compiló: la prueba de un worker leería el skel sin mutar de la base."
+
+[[mutation]]
+name = "test_harness: un arranque que falla a medias no deja journal.txt"
+file = "tests/vm/boot_smoke.py"
+find_re = '^                \(artifacts / "journal\.txt"\)\.write_text\(journal \+ "\\n"\)\n            except Exception as dump:'
+replace = "                pass\n            except Exception as dump:"
+caught_by = "tests.static.test_harness"
+expect = "un fallo a medias no deja journal.txt"
+why = "Un niri colgado a mitad de prueba: el informe sin diario no deja diagnosticar nada desde el CI."
+
+[[mutation]]
+name = "test_harness: pick_editions deja de leer el contenido de los ficheros cambiados"
+file = "tests/iso/pick_editions.py"
+find = '    if not path.startswith(CONTENT_PATHS) or path.endswith(".md"):'
+replace = "    if True:"
+caught_by = "tests.static.test_harness"
+expect = "desktop.sh"
+why = "desktop.sh y el autostart de la bienvenida solo afectan a XFCE/server pero su ruta no lo dice: el PR construiría solo niri."
+
+[[mutation]]
+name = "test_repo_wiring: el paso pick de iso.yml deja de recibir el diff del PR"
+file = ".github/workflows/iso.yml"
+find = "changed=$(git diff --name-only HEAD^1 HEAD)"
+replace = 'changed=""'
+caught_by = "tests.static.test_repo_wiring"
+expect = "un PR que toca la lista de XFCE no construye XFCE"
+why = "Cada PR volvería a construir solo niri: una rotura de XFCE o server aparecería de madrugada, después del merge."
+
+[[mutation]]
+name = "test_repo_wiring: el arranque BIOS vuelve a saltarse en todos los PR"
+file = ".github/workflows/iso.yml"
+find = "needs.matrix.outputs.bios == 'true'"
+replace = "github.event_name != 'pull_request'"
+caught_by = "tests.static.test_repo_wiring"
+expect = "el arranque BIOS no depende de lo que elige pick_editions"
+why = "Un PR que toca syslinux pasaría sin arrancar nunca por BIOS."
+
+[[mutation]]
+name = "test_repo_wiring: una guarda de capa de test.sh que el análisis no sabe leer"
+file = "scripts/cli/test.sh"
+find = 'if [ "$RUN_GUI" -eq 1 ]; then'
+replace = 'if [ "$RUN_GUI" -eq 1 ] && [ -n "${BROADWAY-x}" ]; then'
+caught_by = "tests.static.test_repo_wiring"
+expect = "no sé leer la guarda de capa"
+why = "Una guarda que el análisis no entiende no puede contar como 'sin guarda': cualquier ./churros test parecería ejecutar el tour y quitarlo del CI pasaría."
+
+[[mutation]]
+name = "test_repo_wiring: el análisis de test.sh ignora las guardas anidadas"
+file = "tests/static/test_repo_wiring.py"
+find = "        lines.append((tuple(g for _, g in stack if g), raw))"
+replace = "        lines.append((tuple(g for _, g in stack[:1] if g), raw))"
+caught_by = "tests.static.test_repo_wiring"
+expect = "cuenta como ejecutados ['tests/mutations/run_mutations.py']"
+why = "./churros test --container contaría como si ejecutara las mutaciones de contenedor, que solo corren con --mutations."
+
+[[mutation]]
+name = "test_repo_wiring: CONTAINER_CMD con declare y el container_run sin CHURROS_STRICT"
+file = "scripts/cli/test.sh"
+find_re = '(?s)^    CONTAINER_CMD=\(python3 -m unittest discover(.*?)container_run --upgrade -e "CHURROS_STRICT=\$strict" -- \\$'
+replace = '    declare -a CONTAINER_CMD=(python3 -m unittest discover\1container_run --upgrade -- \\'
+caught_by = "tests.static.test_repo_wiring"
+expect = "lanza tests/container en el contenedor sin pasarle CHURROS_STRICT"
+why = "Con la variable declarada de otra forma, el container_run de --gui (que sí lo pasa) tapaba que el de tests/container no lo pasa."
+
+[[mutation]]
+name = "test_repo_wiring: un paso de rust.yml lanza tests/container con container_run sin modo estricto"
+file = ".github/workflows/rust.yml"
+find = "        run: ./churros test --container\n"
+replace = "        run: |\n          source scripts/lib/container.sh\n          container_engine_init\n          container_run --upgrade -- python3 -m unittest discover -s tests/container -t . -v\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "lanza tests/container con container_run sin -e CHURROS_STRICT=1"
+why = "El contenedor no hereda CI=true: una herramienta que falte sería un SKIP y el job seguiría verde."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues para una edición y arquitectura que no existen"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"iso-xfce-aarch64:missing-lib:calamares:libfoo.so\"\nnote = \"no hay ISO xfce aarch64\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "iso-xfce-aarch64:missing-lib:calamares:libfoo.so"
+why = "Ninguna auditoría produce iso-xfce-aarch64: la entrada no silencia nada y nadie la borraría."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues con la categoría sin su prefijo wiring:"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"test-script:scripts/test-tour.py\"\nnote = \"falta wiring: delante\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "test-script:scripts/test-tour.py"
+why = "La categoría real es wiring:test-script: la entrada no silencia nada."
+
+[[mutation]]
+name = "test_config_syntax: la entrada BIOS de accesibilidad pierde su APPEND"
+file = "archiso/syslinux/archiso_sys-linux.cfg"
+find_re = '^APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% accessibility=on copytoram=n cow_spacesize=2G\n'
+replace = ""
+caught_by = "tests.static.test_config_syntax"
+expect = "no-cmdline:archspeech"
+why = "Sin APPEND el kernel arranca sin archisobasedir ni archisosearchuuid y la entrada acaba en la shell de emergencia."
+
+[[mutation]]
+name = "check: el unpackfs de i686 copia el kernel de boot/x86_64"
+file = "installer/calamares/modules/i686/unpackfs.conf"
+find = "churros/boot/i686/vmlinuz-linux"
+replace = "churros/boot/x86_64/vmlinuz-linux"
+caught_by = "check"
+expect = "sources outside /run/archiso/bootmnt/churros/{,boot/}i686/"
+why = "Ese fichero no existe en la ISO i686: unpackfs aborta todas las instalaciones."

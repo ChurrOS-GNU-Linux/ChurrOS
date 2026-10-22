@@ -28,9 +28,9 @@ Uso: python3 tests/mutations/run_mutations.py [-k filtro] [-j N] [--container]
 dentro del contenedor de build, como ./churros test --container.)
 
 Cargo: con un CARGO_TARGET_DIR absoluto (el contenedor exporta
-/churros/rust/target/container), cada copia (la base y cada worker) compila
-en su propio target, una copia del compartido (worker_target), nunca en el
-del repo original: cargo reconoce los crates del workspace en cualquier ruta
+/churros/rust/target/container), cada copia compila en su propio target
+(worker_target): la base parte del compartido y cada worker de lo que
+compiló la base; nunca en el del repo original: cargo reconoce los crates del workspace en cualquier ruta
 y decide por fecha, así que el build-rust.sh del original reutilizaría (y
 metería en la ISO) un binario compilado desde una copia mutada, y dos workers
 con un target común se prestarían los binarios mutados. En el contenedor van
@@ -121,8 +121,8 @@ GRACE_SECONDS = 15
 BASELINE_TIMEOUT = 1800
 
 
-def worker_target(tmp: Path, copy: Path) -> Path | None:
-    """CARGO_TARGET_DIR propio de la copia `copy`, sembrado con el compartido.
+def worker_target(tmp: Path, copy: Path, seed: Path | None = None, move: bool = False) -> Path | None:
+    """CARGO_TARGET_DIR propio de la copia `copy`, sembrado con otro target.
 
     cargo identifica los miembros del workspace por su ruta relativa a la
     raíz: todas las copias (base, workerN) comparten artefactos y fingerprints
@@ -131,20 +131,33 @@ def worker_target(tmp: Path, copy: Path) -> Path | None:
     del otro, cargo los da por compilados y ejecuta el binario del otro: la
     mutación sobrevive, o se le cuenta a otra, al azar. Y lo que compila una
     copia mutada lo reutilizaría el build del repo original. Sin
-    CARGO_TARGET_DIR (o relativo) cada copia ya usa el suyo. La primera vez
-    se copia el compartido, sin incremental/ (solo acelera recompilar el
-    workspace), para no recompilar GTK en cada worker. Dentro de un worker,
-    restaurar el fichero mutado le da una fecha nueva: cargo lo recompila.
+    CARGO_TARGET_DIR (o relativo) cada copia ya usa el suyo.
+
+    La base se siembra con el compartido y cada worker con lo que compiló la
+    base (`seed`; `move` se lo lleva sin copiar): un target frío o viejo
+    (rustc nuevo tras --upgrade, Cargo.lock cambiado) se compila una vez, en
+    la línea base con su plazo largo, y no otra vez en cada worker con el de
+    una mutación. Sin incremental/ (solo acelera recompilar el workspace).
+    Después se olvida lo compilado del workspace: sus binarios llevan dentro
+    el CARGO_MANIFEST_DIR y las rutas absolutas de los include_str! de quien
+    los compiló, y una prueba de una copia leería los ficheros sin mutar de
+    otra. Las dependencias se quedan. Dentro de un worker, restaurar el
+    fichero mutado le da una fecha nueva: cargo lo recompila.
     """
     shared = os.environ.get("CARGO_TARGET_DIR", "")
     if not os.path.isabs(shared):
         return None
+    source = seed if seed is not None else Path(shared)
     target = tmp / f"target-{copy.name}"
     if not target.exists():
-        if Path(shared).is_dir():
-            shutil.copytree(shared, target, symlinks=True, ignore=shutil.ignore_patterns("incremental"))
+        if move and source.is_dir():
+            shutil.move(source, target)
+            shutil.rmtree(target / "incremental", ignore_errors=True)
+        elif source.is_dir():
+            shutil.copytree(source, target, symlinks=True, ignore=shutil.ignore_patterns("incremental"))
         else:
             target.mkdir()
+        testlib.forget_workspace_build(target)
     return target
 
 
@@ -285,15 +298,19 @@ def main() -> int:
             return 1
 
         workers = queue.Queue()
-        for index in range(max(1, args.jobs)):
+        targets: dict[Path, Path | None] = {}
+        # El worker0 se lleva el target de la base (ya no se usa); los demás,
+        # una copia: así no quedan dos copias de más en disco.
+        for index in reversed(range(max(1, args.jobs))):
             copy = Path(tmp) / f"worker{index}"
             shutil.copytree(base, copy, symlinks=True)
+            targets[copy] = worker_target(Path(tmp), copy, seed=base_target, move=index == 0)
             workers.put(copy)
 
         def in_worker(mutation: dict) -> dict:
             copy = workers.get()
             try:
-                return evaluate(mutation, copy, args.timeout, worker_target(Path(tmp), copy))
+                return evaluate(mutation, copy, args.timeout, targets[copy])
             finally:
                 # Siempre de vuelta a la cola: una copia perdida bloquea a
                 # las mutaciones que esperan en workers.get().

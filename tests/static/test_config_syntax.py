@@ -911,34 +911,50 @@ class BootConfigs(unittest.TestCase):
         files = sorted((ROOT / "archiso/grub").glob("*.cfg")) + sorted((ROOT / "archiso/syslinux").glob("*.cfg"))
         files += sorted((ROOT / "archiso/efiboot/loader/entries").glob("*.conf"))
 
-        def cmdlines(path):
+        def entries(path):
+            """(entrada, línea de comandos o None) de cada entrada que arranca la Live.
+
+            Por bloque (LABEL de syslinux, menuentry de GRUB, fichero de
+            systemd-boot): una entrada que ha perdido su APPEND u options
+            arranca el kernel sin parámetros y también es un fallo.
+            """
             text = testlib.read_text(path)
+            live = re.compile(r"^\s*(?:linux|LINUX|KERNEL|kernel)\s+(?:::)?/%INSTALL_DIR%/")
             if path.suffix == ".conf":
-                # systemd-boot: options de una entrada cuyo linux es el de la Live.
                 if re.search(r"^\s*linux\s+/%INSTALL_DIR%/", text, re.M):
-                    yield from re.findall(r"^\s*options\s+(.*)$", text, re.M)
+                    options = re.findall(r"^\s*options\s+(.*)$", text, re.M)
+                    yield path.stem, options[0] if options else None
                 return
-            for raw in text.splitlines():
-                grub = re.match(r"\s*linux\s+/%INSTALL_DIR%/\S+\s*(.*)$", raw)
-                if grub:
-                    yield grub.group(1)
-                elif path.parent.name == "syslinux" and path.stem.endswith("-linux"):
-                    append = re.match(r"\s*APPEND\s+(.*)$", raw, re.IGNORECASE)
-                    if append:
-                        yield append.group(1)
+            if path.parent.name == "syslinux":
+                for block in re.split(r"(?m)^(?=\s*LABEL\s)", text):
+                    label = re.match(r"\s*LABEL\s+(\S+)", block)
+                    if label and any(live.match(line) for line in block.splitlines()):
+                        append = re.findall(r"^\s*APPEND\s+(.*)$", block, re.M | re.I)
+                        yield label.group(1), append[0] if append else None
+                return
+            for match in re.finditer(r"^\s*menuentry\s+([\"'])(.*?)\1[^\n]*\{\n(.*?)^\s*\}", text, re.M | re.S):
+                body = match.group(3)
+                if "%INSTALL_DIR%" not in body:
+                    continue  # memtest, shell EFI...
+                linux = re.search(r"^\s*linux\s+/%INSTALL_DIR%/\S+\s*(.*)$", body, re.M)
+                yield match.group(2), linux.group(1) if linux else None
 
         def check(path):
             findings = {}
-            for number, line in enumerate(cmdlines(path), 1):
+            for name, line in entries(path):
+                if line is None:
+                    findings[f"no-cmdline:{name}"] = (f"la entrada {name!r} arranca el kernel de la Live sin "
+                                                      "línea de comandos (APPEND/options/linux)")
+                    continue
                 if "archisobasedir=%INSTALL_DIR%" not in line.split():
-                    findings[f"basedir:{number}"] = f"entrada {number} sin archisobasedir=%INSTALL_DIR%: {line}"
+                    findings[f"basedir:{name}"] = f"la entrada {name!r} no lleva archisobasedir=%INSTALL_DIR%: {line}"
                 if not medium.search(line):
-                    findings[f"medium:{number}"] = (f"entrada {number} sin forma de encontrar el medio "
-                                                    f"(archisosearchuuid=%ARCHISO_UUID%...): {line}")
+                    findings[f"medium:{name}"] = (f"la entrada {name!r} no sabe encontrar el medio "
+                                                  f"(archisosearchuuid=%ARCHISO_UUID%...): {line}")
             return findings
         check_each(self, "boot-cmdline", files, check)
-        found = sum(1 for path in files for _ in cmdlines(path))
-        self.assertGreaterEqual(found, 4, f"solo {found} líneas de arranque de la Live: ¿cambió el formato de los cfg?")
+        found = sum(1 for path in files for _ in entries(path))
+        self.assertGreaterEqual(found, 8, f"solo {found} líneas de arranque de la Live: ¿cambió el formato de los cfg?")
 
     def test_syslinux_references(self):
         """INCLUDE/CONFIG/MENU BACKGROUND apuntan a ficheros que mkarchiso copia.

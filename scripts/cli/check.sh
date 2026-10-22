@@ -170,8 +170,11 @@ for target in x86_64 aarch64 i686; do
         fail "$target: $unpackfs does not unpack $p_dir/$target/airootfs.sfs (install_dir=\"$p_dir\" in profiledef.sh)"
         profile_ok=0
     fi
-    if other=$(grep -E '^[[:space:]]*-?[[:space:]]*source:' "$unpackfs" | grep -v "\"/run/archiso/bootmnt/$p_dir/"); then
-        fail "$target: $unpackfs sources outside /run/archiso/bootmnt/$p_dir/: $other"
+    # Y cada fuente de su propia arquitectura: un kernel copiado de
+    # boot/x86_64 no existe en la ISO i686 y unpackfs aborta la instalación.
+    if other=$(grep -E '^[[:space:]]*-?[[:space:]]*source:' "$unpackfs" |
+        grep -vE "\"/run/archiso/bootmnt/$p_dir/(boot/)?$target/"); then
+        fail "$target: $unpackfs sources outside /run/archiso/bootmnt/$p_dir/{,boot/}$target/: $other"
         profile_ok=0
     fi
     # pacstrap usa este conf. Bajo qemu-user, pacman 7 falla en seccomp si
