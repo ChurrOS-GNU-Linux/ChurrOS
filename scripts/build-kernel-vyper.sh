@@ -16,10 +16,12 @@ PKGBUILD_DIR="$PROJECT_DIR/pkgs/linux-churrosvyper"
 
 FORCE=0
 USE_CLUSTER=0
+BUILD_FROM_SOURCE=0
 for arg in "$@"; do
     case "$arg" in
         --force|-f) FORCE=1 ;;
         --cluster|-c) USE_CLUSTER=1 ;;
+        --source|-s|--build|-b) BUILD_FROM_SOURCE=1 ;;
     esac
 done
 
@@ -27,9 +29,71 @@ done
 existing_kernel="$(churros_first_pkg "$PACKAGE_DIR" 'linux-churrosvyper-[0-9]*' || true)"
 existing_headers="$(churros_first_pkg "$PACKAGE_DIR" 'linux-churrosvyper-headers-[0-9]*' || true)"
 if [ -n "$existing_kernel" ] && [ -n "$existing_headers" ] && [ "$FORCE" -eq 0 ]; then
-    echo "[skip] linux-churrosvyper ya compilado ($(basename "$existing_kernel"))"
+    echo "[skip] linux-churrosvyper ya disponible ($(basename "$existing_kernel"))"
     echo "       (usa --force para forzar la recompilación)"
     exit 0
+fi
+
+KERNEL_RELEASE_TAG="kernel-vyper-7.2.9"
+REPO_OWNER="ChurrOS-GNU-Linux"
+REPO_NAME="ChurrOS"
+
+download_precompiled_kernel() {
+    echo "=============================================="
+    echo "  Descargando Kernel ChurrOSvyper precompilado"
+    echo "  (GitHub Release: $KERNEL_RELEASE_TAG)"
+    echo "=============================================="
+    mkdir -p "$PACKAGE_DIR"
+
+    local base_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$KERNEL_RELEASE_TAG"
+    local files=(
+        "linux-churrosvyper-7.2.9-2-x86_64.pkg.tar.zst"
+        "linux-churrosvyper-headers-7.2.9-2-x86_64.pkg.tar.zst"
+    )
+
+    local downloaded=0
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+        echo "  Descargando vía GitHub CLI..."
+        if gh release download "$KERNEL_RELEASE_TAG" \
+            -R "$REPO_OWNER/$REPO_NAME" \
+            -D "$PACKAGE_DIR" \
+            -p "linux-churrosvyper-*.pkg.tar.zst" --clobber 2>/dev/null; then
+            downloaded=1
+        fi
+    fi
+
+    if [ "$downloaded" -eq 0 ]; then
+        echo "  Descargando vía curl..."
+        for file in "${files[@]}"; do
+            local url="$base_url/$file"
+            local target="$PACKAGE_DIR/$file"
+            echo "  -> $file"
+            if ! curl -fL -C - --retry 3 --retry-delay 2 -o "$target" "$url"; then
+                echo "Aviso: no se pudo descargar $file desde $url" >&2
+                return 1
+            fi
+        done
+        downloaded=1
+    fi
+
+    if [ "$downloaded" -eq 1 ]; then
+        echo "  Indexando paquetes en el repositorio local [churros]..."
+        churros_repo_add "$PACKAGE_DIR"
+        echo "✓ Kernel ChurrOSvyper descargado y listo en $PACKAGE_DIR"
+        return 0
+    fi
+
+    return 1
+}
+
+# Si no existen los paquetes y no se solicita explícitamente compilar desde fuente:
+if [ "$BUILD_FROM_SOURCE" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
+    if download_precompiled_kernel; then
+        exit 0
+    else
+        echo "Aviso: la descarga del kernel precompilado falló o no está disponible."
+        echo "       Iniciando compilación desde código fuente con makepkg..."
+    fi
 fi
 
 echo "=============================================="
