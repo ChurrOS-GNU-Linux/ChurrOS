@@ -22,6 +22,7 @@
 #                  provee (pacman -Si: Provides).
 
 [units]
+"ananicy-cpp.service" = "ananicy-cpp"
 "ModemManager.service" = "modemmanager"
 "NetworkManager.service" = "networkmanager"
 "NetworkManager-wait-online.service" = "networkmanager"

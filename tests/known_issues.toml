@@ -459,3 +459,35 @@ note = "Confirmado arrancando la ISO server en QEMU: la sesión XFCE del Live ll
 [[issue]]
 id = "boot-xfce-x86_64:process:churros-welcome"
 note = "Misma causa que boot-server:process:churros-welcome (mismo autostart OnlyShowIn=XFCE y misma sesión churros-xfce-session): en el Live XFCE la bienvenida no se abre. Arreglo: app.run_with_args(&[] as &[&str]) en rust/churros-welcome/src/main.rs."
+
+[[issue]]
+id = "unit-enable:niri/aarch64:ananicy-cpp.service"
+note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en niri/aarch64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
+
+[[issue]]
+id = "unit-enable:niri/i686:ananicy-cpp.service"
+note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en niri/i686 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
+
+[[issue]]
+id = "unit-enable:pi/aarch64:ananicy-cpp.service"
+note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en pi/aarch64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
+
+[[issue]]
+id = "unit-enable:server/x86_64:ananicy-cpp.service"
+note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en server/x86_64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
+
+[[issue]]
+id = "unit-enable:xfce/x86_64:ananicy-cpp.service"
+note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en xfce/x86_64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
+
+[[issue]]
+id = "kernel:packages.i686:linux-churrosvyper"
+note = "archiso/airootfs/etc/mkinitcpio.d/linux-churrosvyper.preset está en el airootfs común, pero archiso/packages.i686 no instala linux-churrosvyper (solo packages.x86_64 lo trae). initcpio.conf usa kernel: all (mkinitcpio -P), que recorre todos los presets: el de linux-churrosvyper apunta a /boot/vmlinuz-linux-churrosvyper, que no existe, y mkinitcpio -P falla, con él la instalación. Decidir dónde vive el preset (solo con el paquete, o que build.sh lo quite en las ediciones sin ese kernel)."
+
+[[issue]]
+id = "kernel:packages.xfce.x86_64:linux-churrosvyper"
+note = "archiso/airootfs/etc/mkinitcpio.d/linux-churrosvyper.preset está en el airootfs común, pero archiso/packages.xfce.x86_64 no instala linux-churrosvyper (solo packages.x86_64 lo trae). initcpio.conf usa kernel: all (mkinitcpio -P), que recorre todos los presets: el de linux-churrosvyper apunta a /boot/vmlinuz-linux-churrosvyper, que no existe, y mkinitcpio -P falla, con él la instalación. Decidir dónde vive el preset (solo con el paquete, o que build.sh lo quite en las ediciones sin ese kernel)."
+
+[[issue]]
+id = "kernel:packages.server.x86_64:linux-churrosvyper"
+note = "archiso/airootfs/etc/mkinitcpio.d/linux-churrosvyper.preset está en el airootfs común, pero archiso/packages.server.x86_64 no instala linux-churrosvyper (solo packages.x86_64 lo trae). initcpio.conf usa kernel: all (mkinitcpio -P), que recorre todos los presets: el de linux-churrosvyper apunta a /boot/vmlinuz-linux-churrosvyper, que no existe, y mkinitcpio -P falla, con él la instalación. Decidir dónde vive el preset (solo con el paquete, o que build.sh lo quite en las ediciones sin ese kernel)."

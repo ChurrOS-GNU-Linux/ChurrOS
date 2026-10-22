@@ -247,6 +247,26 @@ Muestra el logotipo oficial de ChurrOS en la terminal.
 ./churros logo
 ```
 
+## cluster
+
+Gestiona el cluster de compilación distribuida (distcc por SSH) que acelera la
+compilación del kernel ChurrOSvyper. La configuración local va en
+`cluster.conf` (plantilla: `cluster.conf.example`; no se versiona).
+
+```bash
+./churros cluster init      # crea cluster.conf desde la plantilla
+./churros cluster scan      # detecta los nodos de la red
+./churros cluster auth      # copia las llaves SSH a cada nodo
+./churros cluster probe     # comprueba SSH, hardware y software de cada nodo
+./churros cluster start     # arranca distccd en los nodos (stop para pararlo)
+./churros cluster status    # estado de los workers e hilos totales
+./churros cluster build     # compila el kernel con el cluster
+./churros cluster monitor   # monitor de la compilación (distccmon)
+```
+
+`./churros build --cluster` usa el cluster para compilar el kernel cuando no
+puede descargar el paquete precompilado.
+
 ---
 
 # Flujo recomendado

@@ -245,15 +245,29 @@ def request(item: testlib.Edition) -> list[str]:
     return list(dict.fromkeys(name for name in testlib.parse_package_list(item.list_path) if name not in local))
 
 
+def assumed(item: testlib.Edition) -> list[str]:
+    """--assume-installed por lo que dan los paquetes locales de la lista.
+
+    pacstrap ve el repo [churros]: lo que provee un paquete local (el kernel
+    propio provee VIRTUALBOX-GUEST-MODULES) no hace falta pedirlo a los repos.
+    """
+    listed = set(testlib.parse_package_list(item.list_path))
+    provides = testlib.local_provides()
+    names = sorted({name for name in listed & testlib.local_packages()}
+                   | {p for name in listed if name in provides for p in provides[name]})
+    return [arg for name in names for arg in ("--assume-installed", name)]
+
+
 @lru_cache(maxsize=None)
 def closure(item: testlib.Edition) -> Closure:
     source = repos(item.arch)
     targets = request(item)
     # --noconfirm acepta todos los miembros de un grupo, como pacstrap.
-    result = source.pacman("-Sp", "--print-format", "PKG %n %r", *targets)
+    result = source.pacman("-Sp", "--print-format", "PKG %n %r", *assumed(item), *targets)
     missing = tuple(re.findall(r"^error: target not found: (\S+)$", result.stderr, re.MULTILINE))
     if missing:
-        result = source.pacman("-Sp", "--print-format", "PKG %n %r", *[t for t in targets if t not in missing])
+        result = source.pacman("-Sp", "--print-format", "PKG %n %r", *assumed(item),
+                               *[t for t in targets if t not in missing])
     packages = {}
     for line in result.stdout.splitlines():
         fields = line.split()
@@ -518,11 +532,21 @@ class KernelTest(unittest.TestCase):
     def test_kernel_matches_boot_configs(self):
         for item in editions():
             with self.subTest(lista=item.package_list):
-                packages = closure(item).packages
+                # Los paquetes locales de la lista (el kernel propio) también se instalan.
+                local = set(testlib.parse_package_list(item.list_path)) & testlib.local_packages()
+                packages = {**closure(item).packages, **{name: "churros" for name in local}}
                 kernels, initramfs = boot_references(item)
                 self.assertTrue(kernels, f"no se encontró ningún vmlinuz-<k> en los arranques de {item.arch}")
+                # vmlinuz-linux / initramfs-linux.img pueden ser enlaces que
+                # customize_airootfs.sh crea hacia el kernel propio (si la lista lo trae).
+                aliases = {name: target for name, target in testlib.kernel_aliases().items() if target in packages}
+                for alias, target in aliases.items():
+                    if alias in kernels:
+                        kernels.setdefault(target, set()).update(kernels.pop(alias))
+                    if alias in initramfs:
+                        initramfs.setdefault(target, set()).update(initramfs.pop(alias))
                 native = item.arch == HOST_ARCH
-                files = package_files(item.arch, tuple(sorted(kernels))) if native else {}
+                files = package_files(item.arch, tuple(sorted(set(kernels) - local))) if native else {}
                 findings = {}
                 for kernel, where in sorted(kernels.items()):
                     if kernel not in packages:
@@ -531,7 +555,8 @@ class KernelTest(unittest.TestCase):
                             f"{', '.join(sorted(where))} arrancan vmlinuz-{kernel}, pero {item.package_list} no "
                             f"instala el paquete '{kernel}' (linux* en la lista: {', '.join(listed) or 'ninguno'})"
                         )
-                    elif native and not any(KERNEL_IMAGE.fullmatch(path) for path in files.get(kernel, ())):
+                    elif native and kernel not in local and not any(KERNEL_IMAGE.fullmatch(path)
+                                                                    for path in files.get(kernel, ())):
                         findings[f"kernel:{list_name(item)}:{kernel}"] = (
                             f"{', '.join(sorted(where))} usan '{kernel}' como kernel, pero ese paquete no instala "
                             f"/usr/lib/modules/*/vmlinuz ni /boot/Image"

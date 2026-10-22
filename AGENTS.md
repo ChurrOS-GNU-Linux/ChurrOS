@@ -22,6 +22,7 @@
 ./churros info               # Project information
 ./churros version            # CLI version
 ./churros logo               # Print the ChurrOS logo
+./churros cluster            # distcc build cluster over SSH for the ChurrOSvyper kernel (init/scan/auth/probe/start/status/stop/build/monitor)
 ./install-deps.sh            # Install dev deps with pacman, apt or dnf
 ./scripts/build-calamares.sh # Build Calamares into archiso/packages/ (.pkg.tar.zst, or .xz)
 ./scripts/build-aur.sh       # Build python-pywal + yay + wlogout AUR packages

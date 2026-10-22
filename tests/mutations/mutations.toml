@@ -1545,17 +1545,17 @@ why = "A typo in a package name makes pacstrap abort with 'target not found'. ch
 [[mutation]]
 name = "test_arch_repos: An AI guesses the upstream/AUR name instead of the [extra] package name"
 file = "archiso/packages.x86_64"
-find_re = "^noctalia$"
-replace = "noctalia-shell"
+find_re = "^networkmanager$"
+replace = "network-manager"
 caught_by = "tests.container.test_arch_repos"
-expect = "repo-pkg:packages.x86_64:noctalia-shell"
+expect = "repo-pkg:packages.x86_64:network-manager"
 requires = "container"
-why = "An AI guesses the upstream/AUR name instead of the [extra] package name."
+why = "An AI guesses the Debian/upstream name instead of the Arch package name. (noctalia-shell used to be the example, but the [cachyos] repo now packages it.)"
 
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
 file = "archiso/packages.x86_64"
-find_re = "^linux$"
+find_re = "^linux-churrosvyper$"
 replace = "linux-zen"
 caught_by = "tests.container.test_arch_repos"
 expect = "kernel:packages.x86_64:linux]"
@@ -1598,9 +1598,9 @@ file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
 find = "archiso_image=\"/boot/initramfs-linux.img\""
 replace = "archiso_image=\"/boot/initramfs-linux-archiso.img\""
 caught_by = "tests.container.test_arch_repos"
-expect = "kernel:packages.x86_64:initramfs-linux.img"
+expect = "kernel:packages.xfce.x86_64:initramfs-linux.img"
 requires = "container"
-why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img."
+why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img. (niri x86_64 boots linux-churrosvyper through its own preset; XFCE and server still use linux.preset.)"
 
 [[mutation]]
 name = "test_arch_repos: A wrong command->package mapping would make the static resolver accept a command that the"
@@ -2243,3 +2243,21 @@ replace = 'BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition")'
 caught_by = "tests.static.test_harness"
 expect = "un script que decide por $EDITION no construye todas las ediciones"
 why = "content() pasa el texto a minúsculas: sin IGNORECASE, un script común que solo decide por $EDITION no construye XFCE ni server en el PR."
+
+[[mutation]]
+name = "test_calamares_config: fix-boot recorre los presets con una variable de shell"
+file = "installer/calamares/modules/shellprocess-fixboot.conf"
+find_re = '^  - "sed -i -e .*/etc/mkinitcpio\.d/linux\*\.preset"$'
+replace = "  - \"for p in /etc/mkinitcpio.d/linux*.preset; do sed -i \\\"s/PRESETS=('archiso')/PRESETS=('default')/\\\" \\\"$p\\\"; done\""
+caught_by = "tests.static.test_calamares_config"
+expect = "undefined-variable:p"
+why = "Calamares expande todo `$` de un comando de shellprocess: `$p` es 'Missing variables', fix-boot aborta y con él la instalación (el bucle que llegó en main)."
+
+[[mutation]]
+name = "test_editions: el kernel propio sale de la lista y vmlinuz-linux deja de tener de dónde salir"
+file = "archiso/packages.x86_64"
+find_re = '^linux-churrosvyper\n'
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/x86_64:linux]"
+why = "GRUB, syslinux y unpackfs arrancan vmlinuz-linux, que customize_airootfs.sh enlaza al kernel propio solo si está instalado: sin él, la ISO no tiene kernel."

@@ -262,13 +262,62 @@ def packages(item: Edition) -> frozenset[str]:
 
 @lru_cache(maxsize=None)
 def local_packages() -> frozenset[str]:
-    """Paquetes del repo local [churros] que compilan los scripts de build."""
+    """Paquetes del repo local [churros] que compilan (o descargan) los scripts de build."""
     names = {"calamares"}
     text = read_text(ROOT / "scripts/build-aur.sh")
     names.update(re.findall(r"^\s*build_aur\s+(\S+)", text, re.MULTILINE))
     if (ROOT / "scripts/build-bazaar.sh").exists():
         names.update({"bazaar", "libdex"})
+    # build-kernel-vyper.sh: el kernel propio y sus headers ("ya existe" por nombre).
+    kernel = ROOT / "scripts/build-kernel-vyper.sh"
+    if kernel.exists():
+        names.update(re.findall(r"churros_first_pkg\s+\"\$PACKAGE_DIR\"\s+'([a-z0-9][\w.+-]*?)-\[0-9\]\*'",
+                                read_text(kernel)))
     return frozenset(names)
+
+
+def local_provides() -> dict[str, frozenset[str]]:
+    """{paquete local: lo que provee} de las recetas pkgs/<pkgbase>/PKGBUILD.
+
+    pacstrap ve el repo [churros]: linux-churrosvyper provee
+    VIRTUALBOX-GUEST-MODULES, así que virtualbox-guest-utils-nox no arrastra
+    otro kernel. Sin esto, resolver la lista sin el repo local escogería un
+    proveedor cualquiera (linux-cachyos del repo [cachyos]).
+    """
+    found: dict[str, frozenset[str]] = {}
+    for recipe in sorted((ROOT / "pkgs").glob("*/PKGBUILD")):
+        pkgbase, text = recipe.parent.name, read_text(recipe)
+        functions = re.finditer(r"^(_package(?:-([\w-]+))?|package_([\w.+-]+)|package)\s*\(\)\s*\{(.*?)^\}", text,
+                                re.MULTILINE | re.DOTALL)
+        for match in functions:
+            name = match.group(3) or (f"{pkgbase}-{match.group(2)}" if match.group(2) else pkgbase)
+            provides = set()
+            for body in re.findall(r"\bprovides\+?=\(([^)]*)\)", match.group(4)):
+                for token in body.split():
+                    token = token.strip("'\"")
+                    if token and "$" not in token:
+                        provides.add(re.split(r"[<>=]", token, maxsplit=1)[0])
+            if name in local_packages():
+                found[name] = frozenset(provides)
+    return found
+
+
+def kernel_aliases() -> dict[str, str]:
+    """{nombre que arrancan los cargadores: kernel que lo provee} de customize_airootfs.sh.
+
+    `ln -sfn /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux` hace que
+    GRUB, syslinux y unpackfs (que nombran vmlinuz-linux) arranquen otro
+    kernel; mkarchiso copia el destino del enlace a la ISO. Solo vale si la
+    lista instala ese kernel (el enlace está dentro de un `if -f`).
+    """
+    text = read_text(ROOT / "branding/customize_airootfs.sh")
+    aliases = {}
+    for target, link in re.findall(r"\bln\s+-\w+\s+/boot/vmlinuz-([\w.+-]+)\s+/boot/vmlinuz-([\w.+-]+)", text):
+        aliases[link] = target
+    for target, link in re.findall(r"\bln\s+-\w+\s+/boot/initramfs-([\w.+-]+?)\.img\s+/boot/initramfs-([\w.+-]+?)\.img",
+                                   text):
+        aliases.setdefault(link, target)
+    return aliases
 
 
 # Dependencias del metapaquete `base` de Arch: están en toda ISO que liste

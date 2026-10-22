@@ -794,7 +794,11 @@ def rust_invocations() -> list[Invocation]:
         for item in files:
             for match in re.finditer(r"\[\s*" + LIT, item.code):
                 head = item.strings[int(match.group(1))]
-                if deploy_binary(head) and not item.in_test(match.start()):
+                # const PROTECTED_PACKAGES: &[&str] = &["churros-settings", ...]
+                # es una lista de nombres, no la línea de órdenes de un lanzador.
+                listed = re.search(r"\b(?:const|static)\s+\w+\s*:[^=;{}]*=\s*&?\s*$",
+                                   item.code[max(0, match.start() - 200):match.start()])
+                if deploy_binary(head) and not listed and not item.in_test(match.start()):
                     found += resolve_args(files, item, match.start(), head, call_args(item.code, match.start())[1:])
             for match in re.finditer(r"Command::new\(\s*" + LIT + r"\s*\)", item.code):
                 head = item.strings[int(match.group(1))]
@@ -1185,7 +1189,8 @@ class RustAssets(unittest.TestCase):
                     before = item.code[max(0, offset - 200):offset]
                     call = re.search(r"\b([A-Z]\w*::\w+|\w+)\s*\([^()]*$", before)
                     problem = None
-                    if re.fullmatch(r"[\w.-]+", value) and value.lower().endswith(IMAGE_EXT):
+                    # ".png" a secas es un sufijo (strip_suffix(".png")), no un fichero.
+                    if re.fullmatch(r"[\w-][\w.-]*", value) and value.lower().endswith(IMAGE_EXT):
                         direct = re.search(r"\b(icon_path|icons_path|icon_image|image_path)\(\s*$", before)
                         if direct:
                             sub = "" if direct.group(1) == "image_path" else "icons/"

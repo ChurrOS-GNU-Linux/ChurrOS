@@ -51,7 +51,8 @@ except ImportError:  # Python < 3.11
     tomllib = None
 
 STUBS = Path(__file__).resolve().parent / "build_stubs"
-SUB_BUILDERS = ("scripts/build-calamares.sh", "scripts/build-aur.sh", "scripts/build-bazaar.sh")
+SUB_BUILDERS = ("scripts/build-calamares.sh", "scripts/build-aur.sh", "scripts/build-bazaar.sh",
+                "scripts/build-kernel-vyper.sh")
 NOOP_TOOLS = ("mksquashfs", "xorriso", "grub-mkstandalone", "mkfs.fat", "mcopy", "mmd")
 FORBIDDEN_TOOLS = (
     "git", "curl", "wget", "makepkg", "pacman", "pacstrap", "arch-chroot", "repo-remove",

@@ -225,8 +225,15 @@ def requirements(item: testlib.Edition) -> dict[str, list[str]]:
         if scope == "installer" and not item.installer:
             continue
         need(package, f"{path}: {why}" if path else why)
+    aliases = testlib.kernel_aliases()
+    listed = set(testlib.packages(item))
     for package, source in kernels(item.arch).items():
-        need(package, f"{source} arranca /boot/vmlinuz-{package}")
+        # vmlinuz-linux puede ser un enlace (customize_airootfs.sh) al kernel propio.
+        provider = aliases.get(package)
+        if provider and provider in listed:
+            need(provider, f"{source} arranca /boot/vmlinuz-{package}, enlace a vmlinuz-{provider}")
+        else:
+            need(package, f"{source} arranca /boot/vmlinuz-{package}")
     if item.desktop is not None:
         for package in SESSIONS.get(item.session_cmd, ("", ()))[1]:
             need(package, f"la sesión Live ejecuta {item.session_cmd} (build.sh SESSION_CMD)")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sustituye en la copia de prueba a scripts/build-calamares.sh,
-# scripts/build-aur.sh y scripts/build-bazaar.sh (los reales clonan de AUR y
-# compilan con makepkg). Deja en el repo local, con los mismos nombres y la
+# scripts/build-aur.sh, scripts/build-bazaar.sh y scripts/build-kernel-vyper.sh
+# (los reales clonan de AUR, descargan de GitHub o compilan con makepkg). Deja en el repo local, con los mismos nombres y la
 # misma lógica de "ya existe, no se rehace", los paquetes que dejarían ellos.
 # Cada paquete falso es solo su .PKGINFO: el bsdtar de la prueba lo lee.
 #
@@ -39,6 +39,11 @@ case "$name" in
         fake_pkg wlogout 1.2.2-1 "$arch"
         ;;
     build-bazaar.sh) fake_pkg bazaar 0.9.7-1 "$arch" 'depend = libdex>=1.2.0' ;;
+    # El real lo descarga de las releases de GitHub (curl/gh) o lo compila.
+    build-kernel-vyper.sh)
+        fake_pkg linux-churrosvyper 7.2.9-2 "$arch"
+        fake_pkg linux-churrosvyper-headers 7.2.9-2 "$arch"
+        ;;
     *)
         echo "fake-builder: nombre desconocido: $name" >&2
         exit 1

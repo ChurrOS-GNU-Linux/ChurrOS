@@ -265,4 +265,6 @@ os-prober
 udisks2
 zenity
 qt6-translations
+
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
 zram-generator
