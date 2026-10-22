@@ -38,6 +38,7 @@ jobs:
   apps:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
 
     strategy:
       fail-fast: false
@@ -100,3 +101,21 @@ jobs:
       # el workspace arrastra avisos previos.
       - name: ./churros rust
         run: ./churros rust
+
+      # La prueba GTK del recorrido está marcada #[ignore] en cargo test:
+      # scripts/test-tour.py la ejecuta en Broadway (gtk4-broadwayd), con
+      # sockets privados y HOME temporal. Reutiliza lo que compiló el paso
+      # anterior.
+      - name: Tour GTK test (Broadway)
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -- python3 scripts/test-tour.py
+
+      # tests/container: las listas de paquetes contra los repos reales de
+      # esta arquitectura (pacman), la tabla comando -> paquete (pacman -F) y
+      # `niri validate` sobre la configuración que se instala.
+      - name: ./churros test --container
+        env:
+          CHURROS_STRICT: 1
+        run: ./churros test --container

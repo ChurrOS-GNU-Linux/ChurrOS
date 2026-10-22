@@ -1,0 +1,142 @@
+name: ISO x86_64
+
+# Prueba end-to-end de la ISO x86_64: se construye como en local
+# (./churros build --container), se audita su contenido sin arrancarla
+# (tests/iso/check_iso.py) y se arranca en QEMU con KVM hasta el escritorio
+# Live (tests/vm/boot_smoke.py: systemd sin unidades fallidas, sesión gráfica
+# de churros, procesos del escritorio, ventana de bienvenida, captura).
+#
+# Es la única capa que ve el producto final: las pruebas de ci.yml modelan el
+# sistema a partir del repo, pero un paquete renombrado en Arch, un permiso
+# que mkarchiso no aplica o un escritorio que se cae al arrancar solo
+# aparecen aquí.
+#
+# Cuándo corre:
+#   - en los pull requests que tocan lo que acaba dentro de la ISO
+#     (solo la edición niri, la que más cambia);
+#   - cada noche, las tres ediciones x86_64: Arch es rolling y la ISO se
+#     puede romper sin ningún commit nuestro;
+#   - a mano (workflow_dispatch), eligiendo edición.
+
+on:
+  pull_request:
+    paths:
+      - archiso/**
+      - installer/**
+      - branding/**
+      - rust/**
+      - Containerfile
+      - scripts/cli/build.sh
+      - scripts/build-*.sh
+      - scripts/lib/**
+      - scripts/container-entrypoint.sh
+      - tests/iso/**
+      - tests/vm/**
+      - tests/known_issues.toml
+      - .github/workflows/iso.yml
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      edition:
+        description: Edición
+        type: choice
+        options: [niri, xfce, server]
+        default: niri
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iso-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    name: Editions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      editions: ${{ steps.pick.outputs.editions }}
+    steps:
+      - id: pick
+        run: |
+          case "${{ github.event_name }}" in
+            schedule)          echo 'editions=["niri","xfce","server"]' >> "$GITHUB_OUTPUT" ;;
+            workflow_dispatch) echo 'editions=["${{ inputs.edition }}"]' >> "$GITHUB_OUTPUT" ;;
+            *)                 echo 'editions=["niri"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  iso:
+    name: Build, audit and boot (${{ matrix.edition }})
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: ${{ fromJSON(needs.matrix.outputs.editions) }}
+    env:
+      CHURROS_CONTAINER_ENGINE: docker
+      CHURROS_STRICT: 1
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # El build (caché de pacman, work/ de mkarchiso, Rust, Calamares) no
+      # cabe en los ~14 GB libres del runner.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Install QEMU and ISO tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools
+
+      # Los runners Linux de GitHub tienen /dev/kvm, pero solo root puede
+      # abrirlo hasta que se añade esta regla.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - name: Build ISO
+        run: ./churros build --container --edition ${{ matrix.edition }}
+
+      - name: Audit ISO content
+        run: |
+          mkdir -p out/reports
+          python3 tests/iso/check_iso.py out/*.iso --edition ${{ matrix.edition }} --report out/reports/iso-content.json
+
+      - name: Boot ISO in QEMU (UEFI)
+        run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --artifacts out/reports/boot-uefi
+
+      - name: Boot ISO in QEMU (BIOS)
+        if: github.event_name != 'pull_request'
+        run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --firmware bios --artifacts out/reports/boot-bios
+
+      # Consola serie, diario, captura de pantalla e informe JSON: con esto se
+      # diagnostica un fallo de arranque sin reproducirlo en local.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: churros-${{ matrix.edition }}-reports
+          path: out/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload ISO
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: churros-${{ matrix.edition }}-x86_64-iso
+          path: out/*.iso
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

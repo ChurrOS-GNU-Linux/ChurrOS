@@ -14,6 +14,9 @@ on:
     paths:
       - Containerfile.aarch64
       - archiso/packages.aarch64
+      - archiso/packages.pi.aarch64
+      - archiso/bootstrap_packages
+      - archiso/mkinitcpio/**
       - archiso/pacman.aarch64.conf
       - archiso/profiledef.sh
       - archiso/grub/**
@@ -33,7 +36,15 @@ on:
       - scripts/build-bazaar.sh
       - scripts/build-calamares.sh
       - scripts/build-rust.sh
+      - scripts/apply-aarch64-mkinitcpio.sh
+      - scripts/patch-mkarchiso-grubmodules.sh
+      - installer/apply-calamares.sh
+      - tests/iso/**
       - .github/workflows/iso-arm64.yml
+  # Semanal: el resto del airootfs, rust/ y Arch Linux ARM cambian sin tocar
+  # los ficheros de arriba.
+  schedule:
+    - cron: '41 4 * * 0'
 
 permissions:
   contents: read
@@ -55,6 +66,14 @@ jobs:
 
       - name: Build ISO
         run: ./churros build --container --arch arm64
+
+      # La misma auditoría de contenido que la ISO x86_64 (iso.yml): permisos
+      # reales del squashfs, ELF aarch64 con sus bibliotecas, arranque UEFI.
+      - name: Audit ISO content
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso squashfs-tools
+          python3 tests/iso/check_iso.py out/*.iso
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4

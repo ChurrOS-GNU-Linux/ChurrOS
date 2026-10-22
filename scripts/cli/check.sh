@@ -17,10 +17,26 @@ TARGET_ARCH="${TARGET_ARCH:-aarch64}"
 FAILURES=0
 NOTICES=0
 
+# Modo estricto (CI): una herramienta que falta no puede convertir una
+# comprobación en un aviso y dejar el CI en verde. GitHub Actions exporta
+# CI=true; en local se activa con CHURROS_STRICT=1.
+STRICT=0
+if [ "${CHURROS_STRICT:-}" = 1 ] || [ "${CI:-}" = true ]; then
+    STRICT=1
+fi
+
 section() { printf '\n== %s\n' "$1"; }
 pass()    { printf '  ✓ %s\n' "$1"; }
 fail()    { printf '  ✗ %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
 notice()  { printf '  ! %s\n' "$1"; NOTICES=$((NOTICES + 1)); }
+# Falta una herramienta: aviso en local, fallo en modo estricto.
+missing_tool() {
+    if [ "$STRICT" -eq 1 ]; then
+        fail "$1 (modo estricto)"
+    else
+        notice "$1"
+    fi
+}
 
 mapfile -t SCRIPTS < <(git ls-files '*.sh' 'churros')
 
@@ -50,7 +66,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     warnings=$(shellcheck -S warning -f gcc "${SCRIPTS[@]}" 2>/dev/null | grep -c warning || true)
     [ "$warnings" -gt 0 ] && notice "$warnings style warnings (non-blocking)"
 else
-    notice "shellcheck not installed"
+    missing_tool "shellcheck not installed"
 fi
 
 # ----------------------------------------------------------- Python syntax
@@ -1810,7 +1826,7 @@ if command -v msgfmt >/dev/null 2>&1; then
         fi
     done
 else
-    notice "msgfmt not available (gettext package)"
+    missing_tool "msgfmt not available (gettext package)"
 fi
 
 # ---------------------------------------------------------- Distro version
@@ -1906,13 +1922,17 @@ if command -v node >/dev/null 2>&1; then
         fail "scripts/test-polkit-rules.js"
     fi
 else
-    notice "node no está instalado: no se prueban las decisiones de la regla polkit"
+    missing_tool "node no está instalado: no se prueban las decisiones de la regla polkit"
 fi
 
 # churros-update-utils sobre un root falso, churros-write-root-config y la
 # tabla edición -> sesión. Sin root y sin tocar /.
 if helpers_out=$(python3 scripts/test-privileged-helpers.py 2>&1); then
     pass "helpers privilegiados en un root falso (scripts/test-privileged-helpers.py)"
+    # Sin zstd las pruebas de tarballs salen como SKIP y el script termina en 0.
+    if skipped=$(printf '%s\n' "$helpers_out" | grep -oE 'skipped=[0-9]+'); then
+        missing_tool "scripts/test-privileged-helpers.py: ${skipped#skipped=} pruebas saltadas (¿falta zstd?)"
+    fi
 else
     printf '%s\n' "$helpers_out" | tail -n 40
     fail "scripts/test-privileged-helpers.py"
@@ -1923,6 +1943,28 @@ if network_out=$(python3 scripts/test-network-services.py 2>&1); then
 else
     printf '%s\n' "$network_out" | tail -n 40
     fail "scripts/test-network-services.py"
+fi
+
+# ---------------------------------------------------------- Test suite
+
+section "Test suite (tests/static)"
+
+# Las pruebas de tests/static (docs/testing.md) modelan el sistema entero sin
+# construir la ISO: scripts por shebang, file_permissions, comandos de cada
+# edición, Calamares, unidades, sintaxis de configs, contrato Rust y un build
+# en seco con herramientas falsas. Los fallos reales ya conocidos están en
+# tests/known_issues.toml.
+if suite_out=$(python3 -m unittest discover -s tests/static -t . 2>&1); then
+    summary=$(printf '%s\n' "$suite_out" | grep -E '^Ran [0-9]+ tests?' | tail -n1)
+    pass "${summary:-tests/static}"
+    if skipped=$(printf '%s\n' "$suite_out" | grep -oE 'skipped=[0-9]+'); then
+        printf '%s\n' "$suite_out" | grep -E "skipped '" | sed 's/^/      /' | head -n 20
+        missing_tool "tests/static: ${skipped#skipped=} pruebas saltadas"
+    fi
+else
+    report=$(printf '%s\n' "$suite_out" | sed -n '/^\(FAIL\|ERROR\):/,$p')
+    printf '%s\n' "${report:-$(printf '%s\n' "$suite_out" | tail -n 40)}" | head -n 200
+    fail "tests/static (python3 -m unittest discover -s tests/static -t . -v)"
 fi
 
 # --------------------------------------------------------------- Hygiene
