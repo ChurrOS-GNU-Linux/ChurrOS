@@ -13,6 +13,16 @@ desechable) niri, noctalia, desktop-file-utils y python-yaml, y comprueba:
     copia. niri rechaza nodos desconocidos y binds sin acción, cosas que un
     parser de KDL da por buenas, y el niri de Arch cambia de sintaxis sin que
     cambie el repo.
+  - `niri validate` sobre lo que escribe churros-settings en config.kdl
+    (rust/preferences: niri_config.rs, keyboard.rs, window_rules_service.rs).
+    El test de cargo services::niri_writers aplica cada llamada que hacen
+    las páginas (pages/), con los extremos de sus controles, a una copia del
+    config del skel y deja cada resultado en CHURROS_NIRI_WRITERS_OUT; aquí
+    se compila y ejecuta (cargo --offline --locked, el CARGO_TARGET_DIR del
+    contenedor: después de ./churros rust ya está compilado) y niri valida
+    cada fichero. Una regex de app-id escrita sin escapar, una opacidad
+    entera o un atajo repetido hacen que niri rechace el config entero. Cada
+    escritor que llama una página tiene que tener al menos un caso.
   - `noctalia config validate` sobre cada config de Noctalia del airootfs y
     sobre el del Live: el del skel más los .toml que root/scripts/*.sh
     escriben en ~/.config/noctalia (live.toml de desktop.sh). Cuentan los
@@ -21,15 +31,12 @@ desechable) niri, noctalia, desktop-file-utils y python-yaml, y comprueba:
   - `desktop-file-validate` (errores, no avisos ni pistas) sobre cada
     .desktop del repo: una clave mal escrita o un booleano inválido hacen
     que GLib/garcon ignoren la entrada.
-
-Lo que escribe churros-settings (rust/preferences: niri_config.rs,
-window_rules_service.rs, keyboard.rs) no se valida aquí: compilar
-preferences necesita GTK y es trabajo de ./churros rust.
 """
 from __future__ import annotations
 
 from functools import lru_cache
 import importlib
+import json
 import os
 from pathlib import Path
 import re
@@ -160,6 +167,32 @@ def apply_installer_commands(commands: list[tuple[str, str]], target: Path) -> l
     return errors
 
 
+# ------------------------------------------------------------- churros-settings
+
+SETTINGS_CRATE = "churros-settings"
+SETTINGS_PAGES = testlib.ROOT / "rust/preferences/src/pages"
+WRITERS_TEST = "services::niri_writers::"
+SETTINGS_SERVICES = ("NiriConfig", "KeyboardService", "WindowRulesService")
+
+
+def settings_writers_in_pages() -> set[str]:
+    """`Servicio::función` que escriben config.kdl y que llama alguna página."""
+    call = re.compile(rf"\b({'|'.join(SETTINGS_SERVICES)})::(\w+)\s*\(")
+    found = set()
+    for path in sorted(SETTINGS_PAGES.glob("*.rs")):
+        for service, function in call.findall(testlib.read_text(path)):
+            if not function.startswith(("get_", "list_")) and function != "reload":
+                found.add(f"{service}::{function}")
+    return found
+
+
+def run_settings_writers(cargo: str, out: Path):
+    """Ejecuta el test de cargo que deja en `out` un config.kdl por llamada."""
+    env = dict(os.environ, CHURROS_NIRI_WRITERS_OUT=str(out))
+    return testlib.run([cargo, "test", "--offline", "--locked", "--manifest-path", str(testlib.ROOT / "rust/Cargo.toml"),
+                        "-p", SETTINGS_CRATE, "--", WRITERS_TEST], env=env, timeout=1800)
+
+
 # ------------------------------------------------------------- noctalia
 
 def live_noctalia_files() -> dict[str, str]:
@@ -226,6 +259,35 @@ class NiriConfigTest(unittest.TestCase):
                     f"config de niri del sistema instalado ({arch}), skel más:\n{applied}\n" + "\n".join(errors)
                 )
         testlib.assert_findings(self, "niri-installed", findings)
+
+    def test_niri_validate_settings_writers(self):
+        """Lo que churros-settings escribe en config.kdl (cada llamada de pages/ sobre el skel) lo acepta niri."""
+        require_packages(self)
+        cargo = testlib.require_tool(self, "cargo")
+        out = scratch("settings-writers") / "out"
+        result = run_settings_writers(cargo, out)
+        manifest = out / "cases.json"
+        if result.returncode != 0 or not manifest.exists():
+            tail = "\n".join(result.stdout.splitlines()[-60:])
+            self.fail(f"cargo test -p {SETTINGS_CRATE} -- {WRITERS_TEST} falló o no dejó {manifest.name} "
+                      f"(--offline usa el registro que deja ./churros rust):\n{tail}")
+        cases = json.loads(manifest.read_text())["cases"]
+
+        pages = settings_writers_in_pages()
+        self.assertIn("WindowRulesService::update_rule", pages, f"no se encontraron las llamadas de {testlib.rel(SETTINGS_PAGES)}")
+        covered = {writer for case in cases for writer in case["writers"]}
+        missing = sorted(pages - covered)
+        self.assertFalse(missing, f"{testlib.rel(SETTINGS_PAGES)} llama a {', '.join(missing)} y "
+                                  "rust/preferences/src/services/niri_writers.rs no tiene ningún caso que lo pruebe")
+
+        findings = {}
+        for case in cases:
+            error = niri_validate(out / case["file"])
+            if error:
+                findings[f"niri-writers:{case['name']}"] = (
+                    f"niri validate rechaza config.kdl tras {case['name']} (sobre el skel; "
+                    f"rust/preferences/src/services/niri_writers.rs):\n{error}")
+        testlib.assert_findings(self, "niri-writers", findings)
 
 
 class NoctaliaConfigTest(unittest.TestCase):

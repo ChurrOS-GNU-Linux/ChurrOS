@@ -18,7 +18,7 @@ const ACTION_TYPES: [(&str, &str); 3] = [
     ("builtin", "Accion de Niri"),
 ];
 
-const BUILTIN_ACTIONS: [&str; 19] = [
+pub(crate) const BUILTIN_ACTIONS: [&str; 19] = [
     "close-window",
     "quit",
     "maximize-column",
@@ -328,8 +328,10 @@ fn edit_bind_dialog(parent: Option<gtk::Window>, bind: Bind, weak: Weak<Page>) {
             }
 
             let ok = if new_key != bind.key {
-                KeyboardService::remove_keybind(&bind.key)
-                    && KeyboardService::add_keybind(&new_key, &bind_type_new, &new_cmd, &new_args)
+                // Primero el nuevo: si la tecla ya tiene atajo, add_keybind
+                // no escribe nada y el atajo de antes sigue ahí.
+                KeyboardService::add_keybind(&new_key, &bind_type_new, &new_cmd, &new_args)
+                    && KeyboardService::remove_keybind(&bind.key)
             } else {
                 KeyboardService::set_keybind(&bind.key, &bind_type_new, &new_cmd, &new_args)
             };

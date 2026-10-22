@@ -138,6 +138,17 @@ fn line_matches_key(stripped: &str, key: &str) -> bool {
     }
 }
 
+/// ¿Es la misma tecla para niri? No distingue mayúsculas ni el orden de
+/// los modificadores (Mod+w y Shift+Mod+X son Mod+W y Mod+Shift+X).
+fn same_key(a: &str, b: &str) -> bool {
+    let parts = |key: &str| {
+        let mut parts: Vec<String> = key.split('+').map(|p| p.to_lowercase()).collect();
+        parts.sort();
+        parts
+    };
+    parts(a) == parts(b)
+}
+
 /// Conserva `hotkey-overlay-title="…"` o `=null` al reescribir un atajo
 /// desde Ajustes. Sin esto, el overlay de Niri perdería el título.
 fn hotkey_overlay_property(head: &str) -> Option<String> {
@@ -305,13 +316,22 @@ impl KeyboardService {
         for line in content.lines() {
             out_lines.push(line.to_string());
             let stripped = line.trim();
-            if stripped.starts_with("binds") {
+            if stripped.starts_with("binds") && insert_pos.is_none() {
                 in_binds = true;
                 continue;
             }
             if in_binds && stripped == "}" {
+                // Sin `break`: lo que va detrás de binds (spawn-at-startup
+                // de Noctalia, portales, polkit...) también se copia.
                 insert_pos = Some(out_lines.len() - 1);
-                break;
+                in_binds = false;
+                continue;
+            }
+            // niri rechaza el config entero si la tecla ya tiene atajo
+            // ("duplicate keybind").
+            let bound = stripped.split(|c: char| c.is_whitespace() || c == '{').next().unwrap_or("");
+            if in_binds && same_key(bound, key) {
+                return false;
             }
         }
 
@@ -392,6 +412,7 @@ impl KeyboardService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::test_support::TempHome;
 
     #[test]
     fn split_quote_keeps_first_char() {
@@ -462,19 +483,12 @@ mod tests {
     #[test]
     fn write_path_roundtrip() {
         // HOME temporal para no tocar la config real del usuario.
-        let tmp = std::env::temp_dir().join(format!("churros-kbd-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&tmp);
-        let niri_dir = tmp.join(".config").join("niri");
-        fs::create_dir_all(&niri_dir).unwrap();
-        let config = niri_dir.join("config.kdl");
-        fs::write(
-            &config,
+        let home = TempHome::new(
+            "kbd-test",
             "layout {\n    gaps 8\n}\n\nbinds {\n    Mod+Return { spawn \"foot\"; }\n}\n",
-        )
-        .unwrap();
-        // Solo este test toca HOME (los demás no leen config_path), así que
-        // no hace falta serializar.
-        unsafe { std::env::set_var("HOME", &tmp) };
+        );
+        let config = home.niri_config();
+        let niri_dir = config.parent().unwrap().to_path_buf();
 
         // add: debe insertarse dentro de binds con indent correcto
         assert!(KeyboardService::add_keybind("Mod+W", "spawn", "churros-welcome", ""));
@@ -521,7 +535,34 @@ mod tests {
             ),
             "set conserva el título del overlay: {content}"
         );
+    }
 
-        let _ = fs::remove_dir_all(&tmp);
+    #[test]
+    fn add_keybind_refuses_a_key_already_bound() {
+        // niri rechaza el config entero con dos binds de la misma tecla
+        // ("duplicate keybind"), y para niri Mod+w y Shift+Mod+X son
+        // Mod+W y Mod+Shift+X.
+        let original = "binds {\n    Mod+W { spawn \"churros-welcome\"; }\n    Mod+Shift+X { close-window; }\n}\n";
+        let home = TempHome::new("kbd-dup", original);
+        for key in ["Mod+W", "Mod+w", "Shift+Mod+X"] {
+            assert!(!KeyboardService::add_keybind(key, "spawn", "foot", ""), "add_keybind({key}) duplica un atajo");
+            assert_eq!(home.read(), original, "add_keybind({key}) cambió el config");
+        }
+        assert!(KeyboardService::add_keybind("Mod+Shift+W", "spawn", "foot", ""));
+    }
+
+    #[test]
+    fn add_keybind_keeps_what_follows_binds() {
+        // En el skel, binds no es lo último: detrás van los spawn-at-startup
+        // (Noctalia, portales, polkit). add_keybind los cortaba y la sesión
+        // siguiente arrancaba sin barra ni portales.
+        let original = "binds {\n    Mod+W { spawn \"churros-welcome\"; }\n}\n\nspawn-at-startup \"noctalia\"\n";
+        let home = TempHome::new("kbd-tail", original);
+        assert!(KeyboardService::add_keybind("Mod+Shift+W", "spawn", "foot", ""));
+        assert_eq!(
+            home.read(),
+            "binds {\n    Mod+W { spawn \"churros-welcome\"; }\n    Mod+Shift+W { spawn \"foot\"; }\n}\n\nspawn-at-startup \"noctalia\"\n",
+            "add_keybind perdió lo que va detrás del bloque binds"
+        );
     }
 }
