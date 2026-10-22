@@ -1,0 +1,49 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pregunta aquí dudas de instalación y uso. Si es un error que puedes reproducir, ábrelo como issue con el formulario de error.
+        Las vulnerabilidades no se publican aquí: sigue [SECURITY.md](https://github.com/ChurrOS-GNU-Linux/ChurrOS/blob/main/SECURITY.md).
+  - type: textarea
+    id: question
+    attributes:
+      label: Pregunta
+      description: Qué quieres hacer y qué ocurre.
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edición
+      description: En el sistema, `VARIANT_ID` de `/etc/os-release`.
+      options:
+        - niri (por defecto)
+        - xfce
+        - server (sin escritorio)
+        - pi (Raspberry Pi, aarch64)
+        - No lo sé / no aplica
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Arquitectura
+      description: En el sistema, `uname -m`.
+      options:
+        - x86_64
+        - aarch64 (arm64)
+        - i686 (32 bits)
+        - No lo sé / no aplica
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: Qué has probado
+      description: Pasos, comandos o documentos que ya has seguido.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Registros
+      description: Salida relevante de terminal o de `journalctl -b`.
+      render: shell

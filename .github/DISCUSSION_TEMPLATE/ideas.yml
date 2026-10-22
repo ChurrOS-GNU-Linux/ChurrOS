@@ -1,0 +1,25 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas pequeñas o sin concretar. Si la idea madura y hay acuerdo, se pasa a un issue con el formulario de propuesta de mejora.
+        Antes de proponer un programa, una edición o una arquitectura nuevos, lee [docs/principios.md](https://github.com/ChurrOS-GNU-Linux/ChurrOS/blob/main/docs/principios.md).
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: Qué propones.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema que resuelve
+      description: A quién afecta y qué pasa hoy sin esta idea.
+    validations:
+      required: true
+  - type: textarea
+    id: principle
+    attributes:
+      label: Principio
+      description: Qué principio de docs/principios.md sirve, y qué sustituye o qué se deja de mantener a cambio.
