@@ -230,8 +230,9 @@ validpgpkeys=(
 if _is_lto_kernel; then
     makedepends+=(clang llvm lld)
     source+=("${_patchsource}/misc/dkms-clang.patch")
+    : "${_kernel_cc:=clang}"
     BUILD_FLAGS=(
-        CC=clang
+        CC="${_kernel_cc}"
         LD=ld.lld
         LLVM=1
         LLVM_IAS=1
@@ -548,7 +549,8 @@ _sign_modules() {
 
 build() {
     cd "$_srcname"
-    make "${BUILD_FLAGS[@]}" -j"$(nproc)" all
+    local jobs="${NUMJOBS:-$(nproc)}"
+    make "${BUILD_FLAGS[@]}" -j"${jobs}" all
 
     if ! _is_ci_build; then
         make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
@@ -564,7 +566,7 @@ build() {
     if [ "$_build_nvidia_open" = "yes" ]; then
         cd "${srcdir}/${_nv_open_pkg}"
         MODULE_FLAGS+=(IGNORE_CC_MISMATCH=yes)
-        CFLAGS= CXXFLAGS= LDFLAGS= make "${BUILD_FLAGS[@]}" "${MODULE_FLAGS[@]}" -j"$(nproc)" modules
+        CFLAGS= CXXFLAGS= LDFLAGS= make "${BUILD_FLAGS[@]}" "${MODULE_FLAGS[@]}" -j"${jobs}" modules
     fi
 
     if [ "$_build_zfs" = "yes" ]; then

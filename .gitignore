@@ -12,6 +12,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Cluster local configuration
+cluster.conf
+
 # Editor / IDE
 .vscode/
 

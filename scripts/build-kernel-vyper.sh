@@ -15,9 +15,11 @@ PACKAGE_DIR="$(churros_local_repo_dir)"
 PKGBUILD_DIR="$PROJECT_DIR/pkgs/linux-churrosvyper"
 
 FORCE=0
+USE_CLUSTER=0
 for arg in "$@"; do
     case "$arg" in
         --force|-f) FORCE=1 ;;
+        --cluster|-c) USE_CLUSTER=1 ;;
     esac
 done
 
@@ -52,11 +54,42 @@ echo "[1/3] Preparando entorno de compilación en $WORK_DIR..."
 cp -r "$PKGBUILD_DIR"/* "$WORK_DIR/"
 
 echo "[2/3] Compilando kernel con makepkg (BORE + Clang ThinLTO + O3)..."
-echo "      Esto tomará varios minutos dependiendo de tu CPU."
 (
     cd "$WORK_DIR"
     churros_pkgbuild_allow_arch PKGBUILD
-    export MAKEFLAGS="-j$(nproc)"
+
+    if [ "$USE_CLUSTER" -eq 1 ]; then
+        # shellcheck source=scripts/lib/cluster.sh
+        source "$PROJECT_DIR/scripts/lib/cluster.sh"
+        if churros_cluster_is_configured; then
+            churros_cluster_load_config
+            if ! command -v distcc >/dev/null 2>&1; then
+                echo "Aviso: distcc no está instalado en el host local. Instálalo con: sudo pacman -S distcc"
+                echo "       Compilando localmente..."
+                export MAKEFLAGS="-j$(nproc)"
+            else
+                export DISTCC_HOSTS
+                DISTCC_HOSTS="$(churros_cluster_distcc_hosts)"
+                export DISTCC_FALLBACK=1
+                export NUMJOBS
+                NUMJOBS="$(churros_cluster_total_threads)"
+                export MAKEFLAGS="-j$NUMJOBS"
+                export _kernel_cc="distcc clang"
+                if [ -d "/usr/lib/distcc/bin" ]; then
+                    export PATH="/usr/lib/distcc/bin:$PATH"
+                fi
+                echo "      [cluster] Compilación distribuida distcc ACTIVADA"
+                echo "      [cluster] Potencia: $NUMJOBS hilos paralelos"
+                echo "      [cluster] Nodos: $DISTCC_HOSTS"
+            fi
+        else
+            echo "Aviso: cluster.conf no configurado. Compilando localmente..."
+            export MAKEFLAGS="-j$(nproc)"
+        fi
+    else
+        export MAKEFLAGS="-j$(nproc)"
+    fi
+
     makepkg -sf --noconfirm --skipinteg
 )
 

@@ -17,6 +17,7 @@ PUBLIC_COMMANDS=(
     version
     logo
     apps
+    cluster
 )
 
 run_script() {
@@ -69,6 +70,7 @@ show_help() {
     printf "  %-12s %s\n" "info"    "Display project information"
     printf "  %-12s %s\n" "version" "Display CLI version"
     printf "  %-12s %s\n" "logo"    "Print ChurrOS logo"
+    printf "  %-12s %s\n" "cluster" "Manage distributed compilation cluster (distcc/workers)"
 
     echo
 

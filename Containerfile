@@ -36,6 +36,10 @@ RUN pacman-key --init \
     && if pacman -Si archiso >/dev/null 2>&1; then pacman -S --noconfirm --needed archiso; fi \
     && pacman -S --noconfirm --needed \
         base-devel \
+        distcc \
+        clang \
+        llvm \
+        bc \
         git \
         grub \
         gtk4 \

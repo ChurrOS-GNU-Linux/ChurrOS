@@ -12,12 +12,18 @@ EDITION="niri"
 # Sin --arch se usa la arquitectura del equipo (uname -m).
 TARGET_ARCH=""
 USE_CONTAINER=0
+USE_CLUSTER=0
 # Argumentos que se reenvían al build dentro del contenedor (sin --container).
 BUILD_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --container)
             USE_CONTAINER=1
+            shift
+            continue
+            ;;
+        --cluster|-c)
+            USE_CLUSTER=1
             shift
             continue
             ;;
@@ -399,7 +405,9 @@ else
 fi
 
 if [ "$TARGET_ARCH" = "x86_64" ]; then
-    bash scripts/build-kernel-vyper.sh
+    kernel_build_opts=()
+    [ "$USE_CLUSTER" -eq 1 ] && kernel_build_opts+=("--cluster")
+    bash scripts/build-kernel-vyper.sh ${kernel_build_opts[@]+"${kernel_build_opts[@]}"}
 fi
 CALAMARES_PKG="$(churros_first_pkg "$LOCAL_REPO" 'calamares-[0-9]*' || true)"
 PYWAL_PKG="$(churros_first_pkg "$LOCAL_REPO" 'python-pywal-*' || true)"
