@@ -18,10 +18,19 @@ STARTUP_SECONDS (con cualquier código o señal, SIGABRT incluido) o si su
 salida o sus logs de /tmp/churros contienen "panicked at". Un Gtk-CRITICAL
 solo se avisa.
 
-nmcli, wpctl, bluetoothctl, upower, brightnessctl, niri o noctalia no existen
-en el contenedor: una app que entra en pánico porque falta uno de ellos tiene
-un fallo de verdad (en la ISO puede faltar el servicio, el hardware o la
-sesión), no un fallo de la prueba.
+Cada arranque se hace dos veces, porque en la ISO los programas externos
+(nmcli, wpctl, bluetoothctl, upower, brightnessctl, niri, noctalia...)
+pueden faltar o fallar (wpctl antes de que arranque PipeWire, un portátil sin
+batería, una sesión sin niri):
+  - tal cual: en el contenedor casi todos faltan y la app ve un error al
+    lanzarlos;
+  - "[herramientas fallan]": cada programa que lanzan las apps (el escaneo de
+    Command::new de tests/static/test_references.py) existe en el PATH, no
+    escribe nada en stdout y sale con 1 tras un mensaje de error. Así se
+    ejecuta el código que mira su salida y su código de salida, que con el
+    programa ausente nunca corre.
+Una app que entra en pánico en cualquiera de los dos casos tiene un fallo de
+verdad, no un fallo de la prueba.
 
 churros-popup y los logs de settings y control-center escriben en
 /tmp/churros, una ruta fija: la prueba nunca usa la del equipo. Con
@@ -30,20 +39,17 @@ lectura y sin red; sin él solo corre dentro del contenedor de build
 (scripts/lib/container.sh), cuyo /tmp es desechable.
 
 Uso: python3 scripts/test-gui-smoke.py [-k filtro] [-v]
+En local (en el contenedor, con la prueba del tour): ./churros test --gui
 CI: rust.yml, en el contenedor (container_run), tras la prueba del tour.
-En local, igual que en el CI:
-  source scripts/lib/container.sh; container_engine_init
-  container_run -- python3 scripts/test-gui-smoke.py
 """
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterator
-from contextlib import contextmanager, nullcontext
-import fcntl
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -72,6 +78,16 @@ SESSION_VARS = ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "NIRI_SOCKET", "
                 "DBUS_SESSION_BUS_ADDRESS", "XDG_SESSION_ID", "XDG_SESSION_TYPE",
                 "XDG_CURRENT_DESKTOP", "XDG_SEAT", "XDG_VTNR", "XAUTHORITY", "GDK_BACKEND",
                 "GTK_THEME", "PULSE_SERVER", "PIPEWIRE_REMOTE")
+# Sufijo de la etiqueta de la segunda pasada (programas externos que fallan).
+FAILING_TOOLS = "[herramientas fallan]"
+# Programas que están en cualquier sistema y no fallan: un stub que falla
+# probaría un caso imposible.
+ALWAYS_PRESENT = frozenset({"sh", "bash", "id", "date", "getent"})
+STUB = """#!/bin/sh
+printf '%s\\n' "${{0##*/}} $*" >> {log}
+echo "${{0##*/}}: Could not connect to service (stub de test-gui-smoke)" >&2
+exit 1
+"""
 
 
 def die(message: str) -> NoReturn:
@@ -103,69 +119,58 @@ def launches() -> list[tuple[str, str, list[str]]]:
     return found
 
 
-@contextmanager
-def exclusive(lock_path: Path) -> Iterator[None]:
-    """Cerrojo entre procesos (flock). tests/mutations ejecuta varias copias
-    del repo a la vez con esta misma prueba."""
-    with lock_path.open("a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        yield
+def external_tools() -> list[str]:
+    """Programas que lanzan las apps Rust: Command::new("x") y los helpers que
+    lo envuelven, con el mismo escaneo que comprueba que existen en la ISO."""
+    from tests.static import test_references
+    names = {command for _, command in test_references.rust_commands() if "/" not in command}
+    names -= ALWAYS_PRESENT
+    if not names:
+        die("el escaneo de tests/static/test_references.py no encuentra ningún programa que "
+            "lancen las apps Rust: actualiza esta prueba")
+    return sorted(names)
 
 
-def forget_workspace_build(target: Path) -> None:
-    """Borra las huellas de cargo (release/.fingerprint) de los crates del
-    workspace: el siguiente cargo build los recompila desde sus fuentes. Las
-    dependencias de crates.io siguen en caché."""
-    names = {crate.name for crate in testlib.crates()}
-    fingerprints = target / "release/.fingerprint"
-    if not fingerprints.is_dir():
-        return
-    for entry in fingerprints.iterdir():
-        name, _, digest = entry.name.rpartition("-")
-        if name in names and re.fullmatch(r"[0-9a-f]{16}", digest):
-            shutil.rmtree(entry)
+def make_stubs(directory: Path, log: Path) -> int:
+    """Un programa que falla por cada herramienta externa; devuelve cuántos."""
+    directory.mkdir()
+    tools = external_tools()
+    for name in tools:
+        stub = directory / name
+        stub.write_text(STUB.format(log=shlex.quote(str(log))), encoding="utf-8")
+        stub.chmod(0o755)
+    return len(tools)
 
 
 def build(binaries: set[str], destination: Path) -> None:
     """cargo build del workspace como scripts/build-rust.sh (release, mismas
     flags) y copia de los binarios a `destination`.
 
-    tests/mutations ejecuta esta prueba en copias del repo con el
-    CARGO_TARGET_DIR del repo original. Cargo da a los crates del workspace el
-    mismo hash en cualquier ruta y decide por fecha de modificación: la copia
-    (fechas viejas) reutilizaría el binario mutado de otra copia, y el
-    build-rust.sh del repo original metería en la ISO un binario compilado
-    desde una copia mutada. Con un target ajeno, la prueba olvida antes y
-    después lo que compiló del workspace; el cerrojo cubre compilar y copiar.
+    En las copias de tests/mutations el target es ajeno al árbol y lo
+    comparten varias copias: testlib.workspace_build toma su cerrojo y olvida
+    lo compilado del workspace antes y después, para no reutilizar el binario
+    de otra copia mutada. El cerrojo cubre compilar y copiar.
     """
     env = os.environ.copy()
     env.setdefault("RUST_MIN_STACK", "268435456")
     if shutil.which("ld.lld"):
         env["RUSTFLAGS"] = env.get("RUSTFLAGS", "") + " -C link-arg=-fuse-ld=lld"
-    target = Path(os.environ.get("CARGO_TARGET_DIR") or ROOT / "rust/target")
-    target = target if target.is_absolute() else ROOT / target
-    foreign = not target.resolve().is_relative_to(ROOT.resolve())
-    target.mkdir(parents=True, exist_ok=True)
+    target = testlib.cargo_target(ROOT)
     destination.mkdir()
-    with exclusive(target / "churros-gui-smoke.lock"):
+    with testlib.workspace_build(target, ROOT) as foreign:
         if foreign:
             print(f"== {target} no es de este árbol: se recompilan los crates del workspace", flush=True)
-            forget_workspace_build(target)
-        try:
-            print("== cargo build --release (perfil de la ISO)", flush=True)
-            result = subprocess.run(["cargo", "build", "--release", "--offline", "--locked",
-                                     "--manifest-path", str(ROOT / "rust/Cargo.toml")],
-                                    cwd=ROOT, env=env, timeout=3600)
-            if result.returncode != 0:
-                die(f"cargo build --release falló (código {result.returncode})")
-            for name in sorted(binaries):
-                built = target / "release" / name
-                if not built.is_file():
-                    die(f"cargo build no dejó {built}")
-                shutil.copy2(built, destination / name)
-        finally:
-            if foreign:
-                forget_workspace_build(target)
+        print("== cargo build --release (perfil de la ISO)", flush=True)
+        result = subprocess.run(["cargo", "build", "--release", "--offline", "--locked",
+                                 "--manifest-path", str(ROOT / "rust/Cargo.toml")],
+                                cwd=ROOT, env=env, timeout=3600)
+        if result.returncode != 0:
+            die(f"cargo build --release falló (código {result.returncode})")
+        for name in sorted(binaries):
+            built = target / "release" / name
+            if not built.is_file():
+                die(f"cargo build no dejó {built}")
+            shutil.copy2(built, destination / name)
 
 
 def bwrap_works() -> bool:
@@ -194,9 +199,7 @@ def sandbox(root: Path) -> tuple[list[str], Path]:
         return [], CHURROS_TMP
     die("sin bubblewrap (bwrap con user namespaces) no puedo darle a las apps un /tmp/churros "
         "propio, y fuera del contenedor de build churros-popup usaría el del equipo (y mataría "
-        "el popup abierto). Instala bubblewrap o ejecútala en el contenedor:\n"
-        "  source scripts/lib/container.sh; container_engine_init; "
-        "container_run -- python3 scripts/test-gui-smoke.py")
+        "el popup abierto). Instala bubblewrap o ejecútala en el contenedor: ./churros test --gui")
 
 
 def snapshot(directory: Path) -> dict[Path, int]:
@@ -213,6 +216,14 @@ def new_log_text(directory: Path, before: dict[Path, int]) -> str:
                 text = handle.read().decode("utf-8", "replace")
             parts.append(f"--- {CHURROS_TMP / path.name}\n{text}")
     return "\n".join(parts)
+
+
+def read_from(path: Path, offset: int) -> str:
+    if not path.is_file():
+        return ""
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        return handle.read().decode("utf-8", "replace")
 
 
 def describe_exit(code: int, wrapped: bool) -> str:
@@ -246,9 +257,11 @@ def make_home(base: Path) -> Path:
 
 
 def run_one(label: str, binary: Path, args: list[str], root: Path, runtime: Path,
-            prefix: list[str], churros_tmp: Path, dbus: str | None, verbose: bool) -> list[str]:
-    """Arranca una app; devuelve sus fallos (vacío = arrancó y siguió viva)."""
-    base = root / "apps" / label.replace(" ", "-")
+            prefix: list[str], churros_tmp: Path, dbus: str | None, stubs: Path | None,
+            calls_log: Path, verbose: bool) -> list[str]:
+    """Arranca una app; devuelve sus fallos (vacío = arrancó y siguió viva).
+    Con `stubs`, ese directorio va delante en el PATH."""
+    base = root / "apps" / re.sub(r"[^\w.-]+", "-", label).strip("-")
     base.mkdir(parents=True)
     home = make_home(base)
     env = {key: value for key, value in os.environ.items() if key not in SESSION_VARS}
@@ -268,9 +281,12 @@ def run_one(label: str, binary: Path, args: list[str], root: Path, runtime: Path
         "GDK_DEBUG": "no-portals",
         "RUST_BACKTRACE": "1",
     })
+    if stubs is not None:
+        env["PATH"] = f"{stubs}{os.pathsep}{env.get('PATH', os.defpath)}"
     command = prefix + ([dbus, "--"] if dbus else []) + [str(binary)] + args
     output_path = base / "output.txt"
     before = snapshot(churros_tmp)
+    calls_before = calls_log.stat().st_size if calls_log.is_file() else 0
     with output_path.open("w+b") as output:
         started = time.monotonic()
         process = subprocess.Popen(command, cwd=home, env=env, stdin=subprocess.DEVNULL,
@@ -312,6 +328,10 @@ def run_one(label: str, binary: Path, args: list[str], root: Path, runtime: Path
         if logs:
             print("  logs (últimas 40 líneas):")
             print("\n".join("    " + line for line in logs.splitlines()[-40:]))
+        calls = list(dict.fromkeys(read_from(calls_log, calls_before).splitlines()))
+        if stubs is not None and calls:
+            print(f"  programas externos (stubs que fallan) a los que llamó ({len(calls)} distintos):")
+            print("\n".join("    " + line for line in calls[:30]))
     return problems
 
 
@@ -332,11 +352,19 @@ def start_broadway(runtime: Path, log_path: Path) -> subprocess.Popen:
     return server
 
 
+def on_terminate(signum, _frame) -> NoReturn:
+    # tests/mutations termina con SIGTERM la prueba que agota su plazo: así
+    # corren los finally (cerrar las apps, que viven en su propia sesión, y
+    # gtk4-broadwayd; soltar el cerrojo del target de cargo).
+    raise SystemExit(128 + signum)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-k", dest="filter", default="", help="solo los arranques cuyo nombre contenga esto")
     parser.add_argument("-v", dest="verbose", action="store_true", help="muestra la salida de cada app")
     options = parser.parse_args()
+    signal.signal(signal.SIGTERM, on_terminate)
 
     for command in ("cargo", "gtk4-broadwayd"):
         if not shutil.which(command):
@@ -347,7 +375,10 @@ def main() -> int:
             die("falta dbus-run-session (modo estricto)")
         print("aviso: sin dbus-run-session, las apps arrancan sin bus de sesión")
 
-    selected = [item for item in launches() if options.filter in item[0]]
+    # Cada arranque, primero tal cual y luego con los programas externos fallando.
+    selected = [(f"{label} {FAILING_TOOLS}" if failing else label, binary, args, failing)
+                for label, binary, args in launches() for failing in (False, True)]
+    selected = [item for item in selected if options.filter in item[0]]
     if not selected:
         die(f"ningún arranque casa con -k {options.filter!r}")
 
@@ -355,26 +386,36 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="churros-gui-smoke-") as tmp:
         root = Path(tmp)
         prefix, churros_tmp = sandbox(root)
+        calls_log = root / "stub-calls.log"
+        stubs = root / "fake-bin"
+        count = make_stubs(stubs, calls_log)
         release = root / "bin"
-        build({binary for _, binary, _ in selected}, release)
+        build({binary for _, binary, _, _ in selected}, release)
         runtime = root / "runtime"
         runtime.mkdir(mode=0o700)
         where = ("bwrap: /tmp y /run propios, /sys de solo lectura, sin red" if prefix
                  else f"contenedor de build, {CHURROS_TMP} desechable")
         # Sin bwrap, todas las ejecuciones del contenedor comparten /tmp/churros:
         # el popup de una mataría el de otra (pidfile) y leerían sus logs.
-        shared = nullcontext() if prefix else exclusive(CHURROS_TMP.parent / "churros-gui-smoke.lock")
+        shared = nullcontext() if prefix else testlib.file_lock(CHURROS_TMP.parent / "churros-gui-smoke.lock")
         with shared:
+            if not prefix:
+                # El pidfile de un popup que sobrevivió a una ejecución abortada
+                # (SIGKILL): el popup del mismo nombre lo apagaría (toggle) y
+                # saldría con 0 en vez de abrirse.
+                for name in ("popup.pid", "popup.name"):
+                    (CHURROS_TMP / name).unlink(missing_ok=True)
             print(f"== {len(selected)} arranques en Broadway {BROADWAY_DISPLAY} ({where}), "
-                  f"{STARTUP_SECONDS:.0f} s cada uno", flush=True)
+                  f"{STARTUP_SECONDS:.0f} s cada uno; {FAILING_TOOLS}: {count} programas externos "
+                  f"que fallan en {stubs}", flush=True)
             server = start_broadway(runtime, root / "broadway.log")
             try:
-                for label, binary, args in selected:
+                for label, binary, args, failing in selected:
                     if server.poll() is not None:
                         die("gtk4-broadwayd murió durante la prueba:\n"
                             + (root / "broadway.log").read_text(errors="replace"))
                     problems = run_one(label, release / binary, args, root, runtime, prefix, churros_tmp,
-                                       dbus, options.verbose)
+                                       dbus, stubs if failing else None, calls_log, options.verbose)
                     if problems:
                         failures[label] = problems
                     sys.stdout.flush()

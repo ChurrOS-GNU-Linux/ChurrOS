@@ -15,7 +15,10 @@ En local se salta con un aviso para no obligar a instalarlo todo.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+import fcntl
 from functools import lru_cache
 import os
 from pathlib import Path
@@ -501,6 +504,65 @@ def crates() -> tuple[Crate, ...]:
 @lru_cache(maxsize=None)
 def deploy_crate_names() -> frozenset[str]:
     return frozenset(crate.name for crate in crates() if crate.deploy)
+
+
+@contextmanager
+def file_lock(path: Path) -> Iterator[None]:
+    """Cerrojo exclusivo entre procesos (flock) sobre `path`."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+CARGO_LOCK = ".churros-tests.lock"
+
+
+def cargo_target(root: Path = ROOT) -> Path:
+    """El target de cargo de un build del workspace de `root`: CARGO_TARGET_DIR
+    (relativo: a `root`, el cwd de quien compila) o rust/target."""
+    value = os.environ.get("CARGO_TARGET_DIR")
+    target = Path(value) if value else root / "rust/target"
+    return target if target.is_absolute() else root / target
+
+
+def forget_workspace_build(target: Path) -> list[str]:
+    """Borra las huellas de cargo (<perfil>/.fingerprint/<paquete>-<hash>) de
+    los crates del workspace en `target`, de todos los perfiles (debug,
+    release, <triple>/...): el siguiente cargo build o test los recompila
+    desde sus fuentes. Las dependencias de crates.io siguen en caché.
+    Devuelve lo que borra."""
+    names = {crate.name for crate in crates()}
+    removed = []
+    for fingerprints in (*target.glob("*/.fingerprint"), *target.glob("*/*/.fingerprint")):
+        for entry in sorted(fingerprints.iterdir()):
+            name, _, digest = entry.name.rpartition("-")
+            if name in names and re.fullmatch(r"[0-9a-f]{16}", digest):
+                shutil.rmtree(entry, ignore_errors=True)
+                removed.append(str(entry.relative_to(target)))
+    return removed
+
+
+@contextmanager
+def workspace_build(target: Path, root: Path = ROOT) -> Iterator[bool]:
+    """Envuelve un cargo build/test del workspace de `root` en `target`.
+
+    tests/mutations ejecuta las pruebas en copias del repo que comparten un
+    target fuera de la copia. Cargo da a los crates del workspace el mismo
+    hash en cualquier ruta y decide si están al día por fecha: una copia
+    (fechas viejas) reutilizaría el binario compilado desde otra copia
+    mutada. Con un target ajeno a `root`, toma su cerrojo (el mismo que el
+    runner de mutaciones) y olvida lo compilado del workspace antes y
+    después. Devuelve si el target es ajeno."""
+    if target.resolve().is_relative_to(root.resolve()):
+        yield False
+        return
+    with file_lock(target / CARGO_LOCK):
+        forget_workspace_build(target)
+        try:
+            yield True
+        finally:
+            forget_workspace_build(target)
 
 
 @lru_cache(maxsize=None)

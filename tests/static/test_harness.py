@@ -257,13 +257,27 @@ class MutationsTest(unittest.TestCase):
 
     def test_timeout_kills_the_group_and_keeps_output(self):
         # El hijo deja un nieto con la salida abierta: si solo se mata al
-        # hijo, communicate() espera al nieto y el plazo no sirve de nada.
+        # hijo, communicate() espera al nieto y el plazo no sirve de nada. El
+        # nieto ignora SIGTERM (como un cargo que no llega a atenderlo): solo
+        # el SIGKILL al grupo lo para.
         started = time.monotonic()
-        code, output = run_mutations.run(["bash", "-c", "echo parcial; sleep 20 & wait"], Path.cwd(), 1)
+        with mock.patch.object(run_mutations, "GRACE_SECONDS", 1):
+            code, output = run_mutations.run(["bash", "-c", "echo parcial; trap '' TERM; sleep 20 & wait"],
+                                             Path.cwd(), 1)
         self.assertLess(time.monotonic() - started, 10, "el timeout no mata a los nietos del comando")
         self.assertEqual(code, 124)
         self.assertIn("parcial", output)
         self.assertIn("timeout", output)
+
+    def test_timeout_lets_the_test_clean_up_first(self):
+        # SIGTERM antes que SIGKILL: scripts/test-gui-smoke.py cierra en sus
+        # finally las apps (en su propia sesión, fuera del grupo) y
+        # gtk4-broadwayd, y suelta el cerrojo del target de cargo.
+        with mock.patch.object(run_mutations, "GRACE_SECONDS", 5):
+            code, output = run_mutations.run(
+                ["bash", "-c", "trap 'echo limpio; exit 1' TERM; echo parcial; sleep 20 & wait"], Path.cwd(), 1)
+        self.assertEqual(code, 124)
+        self.assertIn("limpio", output, "el timeout no deja a la prueba cerrar lo que abrió (SIGTERM antes de SIGKILL)")
 
     def test_stale_file_is_reported_not_raised(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -280,6 +294,39 @@ class MutationsTest(unittest.TestCase):
             self.assertEqual(run_mutations.evaluate(killed, root, 5)["status"], "killed")
             self.assertEqual((root / "a").read_text(), "x\n", "la copia no vuelve a su estado tras la mutación")
 
+    def test_copies_never_leave_workspace_builds_in_a_shared_target(self):
+        # En el contenedor, CARGO_TARGET_DIR es el target del repo original.
+        # Cargo reconoce los crates del workspace en cualquier ruta y decide
+        # por fecha: lo que compila una copia mutada lo reutilizaría el
+        # build-rust.sh del original (y lo metería en la ISO), y la copia
+        # siguiente también.
+        crate = sorted(testlib.crates(), key=lambda c: c.name)[0].name
+        workspace = f"release/.fingerprint/{crate}-0123456789abcdef"
+        dependency = "release/.fingerprint/glib-0123456789abcdef"
+        with tempfile.TemporaryDirectory() as tmp:
+            root, original = Path(tmp) / "copia", Path(tmp) / "target"
+            root.mkdir()
+            (root / "a").write_text("x\n")
+            env = testlib.scratch_env()
+            for cmd in (["init", "-q"], ["add", "a"],
+                        ["-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-q", "-m", "base"]):
+                subprocess.run(["git", *cmd], cwd=root, check=True, env=env, stdout=subprocess.DEVNULL)
+            # La "prueba" de la mutación compila (deja huellas) donde le dice
+            # CARGO_TARGET_DIR y falla.
+            mutation = {"name": "n", "file": "a", "find": "x", "replace": "y", "expect": "roto",
+                        "caught_by": f'printf "%s" "$CARGO_TARGET_DIR" > visto; '
+                                     f'mkdir -p "$CARGO_TARGET_DIR/{workspace}" "$CARGO_TARGET_DIR/{dependency}"; '
+                                     'echo roto; false'}
+            with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(original)}):
+                self.assertEqual(run_mutations.evaluate(mutation, root, 30)["status"], "killed")
+            seen = Path((root / "visto").read_text())
+            self.assertFalse(seen.resolve().is_relative_to(original.resolve()),
+                             f"las copias compilan en el CARGO_TARGET_DIR del repo original ({seen})")
+            self.assertFalse((original / workspace).exists(), "una copia mutada dejó su build en el target original")
+            self.assertFalse((seen / workspace).exists(),
+                             "el runner deja en el target de las copias lo que compiló una copia mutada")
+            self.assertTrue((seen / dependency).exists(), "el runner borra también las dependencias (caché)")
+
     def test_validate_rejects_entries_that_would_never_run(self):
         base = {"name": "n", "file": "f", "find": "x", "caught_by": "check", "expect": "e"}
         run_mutations.validate([dict(base), dict(base, name="m", requires="container")])
@@ -291,6 +338,32 @@ class MutationsTest(unittest.TestCase):
 
 
 class TestlibTest(unittest.TestCase):
+    def test_workspace_build_in_a_foreign_target_starts_and_ends_clean(self):
+        # scripts/test-gui-smoke.py y scripts/test-tour.py en una copia de
+        # tests/mutations: el target es ajeno y lo comparten otras copias.
+        crate = sorted(testlib.crates(), key=lambda c: c.name)[0].name
+        workspace = [f"debug/.fingerprint/{crate}-0123456789abcdef",
+                     f"release/.fingerprint/{crate}-fedcba9876543210",
+                     f"aarch64-unknown-linux-gnu/release/.fingerprint/{crate}-00112233445566aa"]
+        dependency = "release/.fingerprint/glib-0123456789abcdef"
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            for entry in (*workspace, dependency):
+                (target / entry).mkdir(parents=True)
+            with testlib.workspace_build(target) as foreign:
+                self.assertTrue(foreign)
+                left = [entry for entry in workspace if (target / entry).exists()]
+                self.assertFalse(left, f"una copia compilaría reutilizando el build de otra copia: {left}")
+                (target / workspace[1]).mkdir()  # lo que compila esta copia
+            self.assertFalse((target / workspace[1]).exists(), "el build de esta copia se queda para la siguiente")
+            self.assertTrue((target / dependency).exists(), "borra también las dependencias (caché)")
+            # El target del propio árbol no se toca: es la caché incremental.
+            own = testlib.ROOT / "rust/target"
+            with mock.patch.object(testlib, "forget_workspace_build") as forget:
+                with testlib.workspace_build(own) as foreign:
+                    self.assertFalse(foreign)
+            forget.assert_not_called()
+
     def test_shell_commands(self):
         self.assertEqual(testlib.shell_commands("env A=1 foo --x && bar | baz; exec sudo -u churros qux"),
                          ["foo", "bar", "baz", "qux"])

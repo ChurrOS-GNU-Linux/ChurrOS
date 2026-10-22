@@ -5,6 +5,8 @@
 #   ./churros test                  capa estática: ./churros check (incluye tests/static)
 #   ./churros test --container      tests/container en el contenedor Arch (pacman, niri validate)
 #   ./churros test --rust           ./churros rust (build, test y clippy del workspace)
+#   ./churros test --gui            apps GTK en Broadway, en el contenedor: los tests de widgets del
+#                                   tour (test-tour.py) y el arranque de cada app (test-gui-smoke.py)
 #   ./churros test --iso [ISO]      auditoría del contenido de una ISO ya construida
 #   ./churros test --boot [ISO]     arranque de la ISO en QEMU y comprobaciones en la sesión Live
 #   ./churros test --mutations      autoprueba: cada regresión sembrada tiene que hacer fallar la batería
@@ -23,6 +25,7 @@ source scripts/lib/host.sh
 RUN_STATIC=1
 RUN_CONTAINER=0
 RUN_RUST=0
+RUN_GUI=0
 RUN_ISO=0
 RUN_BOOT=0
 RUN_MUTATIONS=0
@@ -30,13 +33,14 @@ ISO=""
 BOOT_ARGS=()
 
 show_help() {
-    sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --container) RUN_CONTAINER=1; RUN_STATIC=0 ;;
         --rust) RUN_RUST=1; RUN_STATIC=0 ;;
+        --gui) RUN_GUI=1; RUN_STATIC=0 ;;
         --iso|--boot)
             [ "$1" = --iso ] && RUN_ISO=1 || RUN_BOOT=1
             RUN_STATIC=0
@@ -100,6 +104,23 @@ fi
 
 if [ "$RUN_RUST" -eq 1 ]; then
     bash scripts/cli/rust.sh || status=1
+fi
+
+# Como los pasos de Broadway de rust.yml: gtk4-broadwayd y el GTK/libadwaita
+# que piden gtk4-rs y libadwaita-rs están en el contenedor. Una prueba que
+# falla no impide que corra la otra.
+if [ "$RUN_GUI" -eq 1 ]; then
+    if churros_in_container; then
+        python3 scripts/test-tour.py || status=1
+        python3 scripts/test-gui-smoke.py || status=1
+    else
+        # shellcheck source=scripts/lib/container.sh
+        source scripts/lib/container.sh
+        container_engine_init
+        container_ensure_image
+        container_run -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- python3 scripts/test-tour.py || status=1
+        container_run -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- python3 scripts/test-gui-smoke.py || status=1
+    fi
 fi
 
 if [ "$RUN_ISO" -eq 1 ]; then

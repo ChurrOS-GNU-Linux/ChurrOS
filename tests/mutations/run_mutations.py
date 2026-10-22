@@ -26,6 +26,15 @@ Formato de cada entrada:
 Uso: python3 tests/mutations/run_mutations.py [-k filtro] [-j N] [--container]
 (--container ejecuta solo las mutaciones de tests/container; tiene que correr
 dentro del contenedor de build, como ./churros test --container.)
+
+Cargo: con un CARGO_TARGET_DIR absoluto (el contenedor exporta
+/churros/rust/target/container), las copias compilan en otro target,
+<CARGO_TARGET_DIR>-mutations, nunca en el del repo original: cargo reconoce
+los crates del workspace en cualquier ruta y decide por fecha, así que el
+build-rust.sh del original reutilizaría (y metería en la ISO) un binario
+compilado desde una copia mutada, aunque el runner muera a medias. Antes de
+la línea base y después de cada mutación se olvida lo que las copias
+compilaron del workspace en ese target (testlib.forget_workspace_build).
 """
 from __future__ import annotations
 
@@ -104,21 +113,63 @@ def make_copy(source: Path, target: Path) -> None:
                     "commit", "-q", "-m", "base"], cwd=target, check=True, **quiet)
 
 
+# Lo que tiene una prueba, tras SIGTERM, para cerrar lo que abrió (las apps
+# de scripts/test-gui-smoke.py viven en su propia sesión) antes del SIGKILL.
+GRACE_SECONDS = 15
+# La línea base compila en frío el target de las copias (copies_target): las
+# dependencias de GTK en release y en debug tardan minutos.
+BASELINE_TIMEOUT = 1800
+
+
+def copies_target() -> Path | None:
+    """CARGO_TARGET_DIR de las copias, o None si cada copia usa el suyo (sin
+    CARGO_TARGET_DIR, o relativo: cargo lo resuelve dentro de la copia)."""
+    value = os.environ.get("CARGO_TARGET_DIR", "")
+    if not value or not os.path.isabs(value):
+        return None
+    return Path(value.rstrip("/") + "-mutations")
+
+
+def forget_copies_build() -> None:
+    """Olvida lo que las copias compilaron del workspace en su target común."""
+    target = copies_target()
+    if target is not None:
+        with testlib.file_lock(target / testlib.CARGO_LOCK):
+            testlib.forget_workspace_build(target)
+
+
 def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
-    """(código, salida). Al vencer el plazo mata el grupo entero: check.sh y
-    el build.sh del dry run dejarían nietos vivos en la copia del worker."""
+    """(código, salida). Al vencer el plazo termina el grupo entero (SIGTERM
+    y, tras GRACE_SECONDS, SIGKILL): check.sh y el build.sh del dry run
+    dejarían nietos vivos en la copia del worker, y un cargo huérfano seguiría
+    compilando la copia mutada."""
     env = testlib.scratch_env(PYTHONDONTWRITEBYTECODE="1")
+    target = copies_target()
+    if target is not None:
+        env["CARGO_TARGET_DIR"] = str(target)
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, text=True, start_new_session=True,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     try:
         output, _ = proc.communicate(timeout=timeout)
         return proc.returncode, output
     except subprocess.TimeoutExpired:
+        # Primero SIGTERM: una prueba que lo atiende cierra lo que abrió fuera
+        # de su grupo (test-gui-smoke.py: las apps y gtk4-broadwayd).
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            output, _ = proc.communicate(timeout=GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            output = None
+        # Después SIGKILL al grupo entero, también si el líder ya salió.
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        output, _ = proc.communicate()
+        if output is None:
+            output, _ = proc.communicate()
         return 124, (output or "") + f"\n[timeout tras {timeout:.0f} s]"
 
 
@@ -172,7 +223,10 @@ def evaluate(mutation: dict, copy: Path, timeout: float) -> dict:
     try:
         code, output = run(command_for(mutation["caught_by"]), copy, timeout)
     finally:
-        restore(mutation, copy)
+        try:
+            restore(mutation, copy)
+        finally:
+            forget_copies_build()
     if code == 0:
         status = "survived"
     elif mutation["expect"] not in output:
@@ -207,9 +261,12 @@ def main() -> int:
 
         # Sin una línea base en verde, que una mutación "falle" no demuestra nada.
         print("== Línea base (repo sin mutar)")
+        if copies_target() is not None:
+            print(f"  (cargo de las copias: {copies_target()})")
+        forget_copies_build()
         broken = False
         for caught_by in sorted({m["caught_by"] for m in mutations}):
-            code, output = run(command_for(caught_by), base, args.timeout)
+            code, output = run(command_for(caught_by), base, max(args.timeout, BASELINE_TIMEOUT))
             print(f"  {'✓' if code == 0 else '✗'} {caught_by}")
             if code != 0:
                 broken = True

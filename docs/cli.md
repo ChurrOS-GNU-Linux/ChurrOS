@@ -149,12 +149,15 @@ Ejecuta las capas de pruebas. Sin opciones es lo mismo que `./churros check`.
 ./churros test                  # capa estática (check.sh + tests/static)
 ./churros test --container      # tests/container en el contenedor Arch
 ./churros test --rust           # ./churros rust
+./churros test --gui            # apps GTK en Broadway, en el contenedor (test-tour.py y test-gui-smoke.py)
 ./churros test --iso [ISO]      # auditoría del contenido de la ISO (por defecto, la última de out/)
 ./churros test --boot [ISO]     # arranque en QEMU y comprobaciones dentro de la sesión Live
 ./churros test --mutations      # autoprueba de la batería
 ```
 
 Las capas se pueden combinar (`./churros test --iso --boot`). Detalle de cada una en [Pruebas](testing.md).
+
+`--gui` es lo que `./churros rust` no ve: `cargo test` no abre ninguna ventana. Arranca cada app desplegada y cada popup compilados en release, como en la ISO, y ejecuta los tests de widgets del recorrido, sobre un `gtk4-broadwayd` privado. Si tocas `rust/`, ejecuta las dos.
 
 Es el mismo comando que ejecuta el CI en cada Pull Request (ver `.github/workflows/ci.yml`).
 

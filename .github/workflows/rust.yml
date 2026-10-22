@@ -8,16 +8,20 @@ name: Rust
 # Compilar no es arrancar. cargo test no abre ninguna ventana: los fallos en
 # tiempo de ejecución solo se ven en las pruebas que ejecutan las apps en
 # Broadway (gtk4-broadwayd), dentro del contenedor:
-#   - scripts/test-tour.py: los tests #[ignore] de widgets del recorrido;
-#   - scripts/test-gui-smoke.py: arranca cada binario desplegado (y
-#     churros-popup con cada popup) en release y falla si muere o entra en
-#     pánico en los primeros segundos.
-# Ninguna de las dos pulsa botones ni recorre páginas: un pánico al usar
-# la app, después del arranque, sigue sin verse hasta probarla a mano.
+#   - scripts/test-tour.py: los tests #[ignore] del recorrido, que manejan
+#     por API sus páginas de personalización e instalación;
+#   - scripts/test-gui-smoke.py: solo arranca cada binario desplegado (y
+#     churros-popup con cada popup) en release, con los programas externos
+#     ausentes y fallando, y falla si muere o entra en pánico en los
+#     primeros segundos.
+# Un pánico al usar la bienvenida, los ajustes, el centro de control o los
+# popups después del arranque sigue sin verse hasta probarlos a mano.
 #
 # gtk4-rs 0.11 pide GTK >= 4.22 y libadwaita-rs 0.9 pide libadwaita >= 1.9.
 # Ubuntu no llega a esas versiones, así que el job usa la imagen del
-# Containerfile (Arch) y el mismo comando que en local: ./churros rust.
+# Containerfile (Arch) y los mismos comandos que en local: ./churros rust y,
+# para las dos pruebas de Broadway, ./churros test --gui (aquí en pasos
+# separados, para ver cuál falla).
 #
 # La imagen se construye en cada ejecución, sin caché de capas, y además una
 # vez por semana: Arch es rolling, y si un cambio de paquetes rompe el
@@ -79,12 +83,14 @@ jobs:
       - uses: actions/checkout@v7
 
       # ./churros rust compila en rust/target/container (lo monta en el
-      # contenedor con el UID del runner).
+      # contenedor con el UID del runner); test-gui-smoke.py añade release/.
+      # actions/cache no vuelve a guardar si la clave coincide: el prefijo
+      # v2- fuerza una caché nueva que incluya release/.
       - name: Cache cargo target
         uses: actions/cache@v4
         with:
           path: rust/target/container
-          key: ${{ matrix.cache }}${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
+          key: ${{ matrix.cache }}v2-${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
           restore-keys: ${{ matrix.cache }}
 
       - name: Build container image
@@ -124,9 +130,10 @@ jobs:
 
       # Arranque de cada app GTK desplegada (deploy = true) y de churros-popup
       # con cada nombre de POPUPS, compiladas en release como en la ISO
-      # (panic = "abort"): falla si una muere o entra en pánico en sus
-      # primeros segundos. Ni cargo test ni el arranque de la ISO en QEMU (que
-      # solo mira la bienvenida) ejecutan settings, control center o popups.
+      # (panic = "abort"), con los programas externos ausentes y fallando:
+      # falla si una muere o entra en pánico en sus primeros segundos. Ni
+      # cargo test ni el arranque de la ISO en QEMU (que solo mira la
+      # bienvenida) ejecutan settings, control center o popups.
       - name: GUI startup smoke test (Broadway)
         # Independiente de la prueba del tour: que esa falle no esconde esta.
         if: ${{ !cancelled() }}

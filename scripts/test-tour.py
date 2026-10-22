@@ -8,12 +8,25 @@ host is modified. The GTK test is excluded from ordinary headless cargo test run
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tests import testlib  # noqa: E402
+
+
+def on_terminate(signum, _frame):
+    # tests/mutations termina con SIGTERM la prueba que agota su plazo: así
+    # corren los finally (gtk4-broadwayd, cerrojo del target de cargo).
+    raise SystemExit(128 + signum)
+
 
 def main():
+    signal.signal(signal.SIGTERM, on_terminate)
     repo = Path(__file__).resolve().parent.parent
     for command in ("cargo", "gtk4-broadwayd"):
         if not shutil.which(command):
@@ -48,11 +61,18 @@ def main():
                         log.seek(0)
                         raise SystemExit("Private GTK display failed:\n" + log.read())
                     time.sleep(0.05)
-                result = subprocess.run([
-                    "cargo", "test", "--offline", "--locked", "--manifest-path",
-                    str(repo / "rust/Cargo.toml"), "-p", "churros-tour", "--",
-                    "--include-ignored", "--test-threads=1"
-                ], cwd=repo, env=env, timeout=180)
+                cargo = ["cargo", "test", "--offline", "--locked", "--manifest-path",
+                         str(repo / "rust/Cargo.toml"), "-p", "churros-tour"]
+                # En las copias de tests/mutations el target es ajeno y compartido:
+                # cerrojo y sin reutilizar lo que compiló otra copia (mutada).
+                with testlib.workspace_build(testlib.cargo_target(repo), repo):
+                    # Compilar puede ir en frío (el target de las copias de
+                    # tests/mutations); el plazo de 180 s es para los tests.
+                    built = subprocess.run(cargo + ["--no-run"], cwd=repo, env=env, timeout=3600)
+                    if built.returncode != 0:
+                        return built.returncode
+                    result = subprocess.run(cargo + ["--", "--include-ignored", "--test-threads=1"],
+                                            cwd=repo, env=env, timeout=180)
                 return result.returncode
             finally:
                 server.terminate()
