@@ -499,3 +499,27 @@ note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_sta
 [[issue]]
 id = "ref:niri/aarch64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
+
+[[issue]]
+id = "iso-niri-aarch64:not-executable:/usr/local/bin/livecd-sound"
+note = "En la ISO aarch64 (iso-arm64.yml), /usr/local/bin/livecd-sound tiene modo 644: mkarchiso no conserva el +x de git y profiledef.sh no lo declara en file_permissions. En la entrada Accessibility, livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC. Mismo fallo que exec-mode:/usr/local/bin/livecd-sound."
+
+[[issue]]
+id = "iso-niri-aarch64:not-executable:/usr/local/bin/Installation_guide"
+note = "En la ISO aarch64 (iso-arm64.yml), /usr/local/bin/Installation_guide tiene modo 644 (sin entrada en file_permissions): 'permission denied' al ejecutarlo en el Live. Mismo fallo que exec-mode:/usr/local/bin/Installation_guide."
+
+[[issue]]
+id = "iso-niri-aarch64:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
+note = "En la ISO aarch64 (iso-arm64.yml), multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, que no existe: modemmanager no está en ninguna lista. Mismo fallo que unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service."
+
+[[issue]]
+id = "iso-niri-aarch64:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
+note = "En la ISO aarch64 (iso-arm64.yml), el alias dbus-org.freedesktop.ModemManager1.service apunta a una unidad que no existe (modemmanager no se instala). Mismo fallo que unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service."
+
+[[issue]]
+id = "boot-server-x86_64:coredump:light-locker"
+note = "En la sesión Live de server (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar la sesión: SIGABRT en dbus_message_append_args (libdbus) con un argumento NULL. light-locker solo funciona con LightDM (pide la sesión por XDG_SESSION_PATH) y ChurrOS usa greetd, así que nunca bloqueó la pantalla. Decidir el bloqueador (xfce4-screensaver, que xflock4 ya usa si está) y quitar light-locker de la lista."
+
+[[issue]]
+id = "boot-xfce-x86_64:coredump:light-locker"
+note = "Misma causa que boot-server-x86_64:coredump:light-locker (misma sesión XFCE con greetd): en la sesión Live de XFCE (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar con SIGABRT en dbus_message_append_args: necesita LightDM. Decidir el bloqueador (xfce4-screensaver) y quitar light-locker de la lista."
