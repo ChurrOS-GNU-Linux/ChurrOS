@@ -2202,3 +2202,35 @@ replace = "churros/boot/x86_64/vmlinuz-linux"
 caught_by = "check"
 expect = "sources outside /run/archiso/bootmnt/churros/{,boot/}i686/"
 why = "Ese fichero no existe en la ISO i686: unpackfs aborta todas las instalaciones."
+
+# ---- churros-settings: atajos equivalentes para niri, reglas con `;` y el formulario de reglas
+
+[[mutation]]
+name = "churros-settings: same_key forgets that Control is Ctrl for niri"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = '^                "control" => "ctrl"\.to_string\(\),$'
+replace = ""
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_refuses_a_key_already_bound"
+expect = "add_keybind(Mod+Control+T) duplica un atajo"
+requires = "container"
+why = "niri parses Ctrl/Control, Super/Win, Mod5/ISO_Level3_Shift, Mod3/ISO_Level5_Shift and Prior/Page_Up as the same key. Without the alias, adding Mod+Control+T (or renaming a shortcut to it) next to an existing Mod+Ctrl+T writes a second bind and niri rejects the whole config.kdl ('duplicate keybind')."
+
+[[mutation]]
+name = "churros-settings: read_rule takes the second token of a window-rule property again"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = '^                if let Some\(parsed\) = property_token\(stripped\)\.and_then\(\|v\| parse_property\(key, v\)\) \{$'
+replace = "                if let Some(parsed) = stripped.split_whitespace().nth(1).and_then(|v| parse_property(key, v)) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings saving_a_rule_unchanged_keeps_the_skel_byte_for_byte"
+expect = "(\"c\") cambia config.kdl"
+requires = "container"
+why = "`opacity 0.9;` is valid for niri, but the second whitespace token is `0.9;`: list_rules reads null, the form sends null and update_block deletes the opacity, open-floating and corner-radius lines just by pressing save on that rule. niri validate accepts the result."
+
+[[mutation]]
+name = "churros-settings: the rule editor opens a rule without opacity at opacity 0"
+file = "rust/preferences/src/pages/window_rules.rs"
+find_re = '^        opacity: rule\["opacity"\]\.as_f64\(\)\.unwrap_or\(1\.0\),$'
+replace = "        opacity: rule[\"opacity\"].as_f64().unwrap_or_default(),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings editing_a_rule_after_another_saves_it_unchanged"
+expect = "el formulario de pavucontrol no es el de un formulario vacío"
+requires = "container"
+why = "form_values must give every control the value of an empty form when the rule does not have it (the old on_edit_rule left the opacity of the rule edited before, so pavucontrol got `opacity 0.8` from foot). unwrap_or_default() gives 0: saving pavucontrol would write `opacity 0.0`, an invisible window. niri validate accepts it."

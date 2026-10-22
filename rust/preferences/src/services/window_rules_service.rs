@@ -333,15 +333,36 @@ fn update_block(block: &[String], rule: &Value) -> Vec<String> {
     out
 }
 
-/// La línea `key valor` con el valor nuevo: igual si no cambia, ninguna si
-/// `new` es None (salvo lo que el formulario ya manda como None).
+/// La línea `key valor` con el valor nuevo: igual (byte a byte, con su `;`
+/// o su comentario) si no cambia, ninguna si `new` es None, salvo lo que el
+/// formulario ya manda como None y lo que no se sabe leer
+/// (`opacity /* … */ 0.9`): eso se queda.
 fn updated_property(line: &str, key: &str, new: Option<String>) -> Option<String> {
-    let old = line.split_whitespace().nth(1).unwrap_or("");
-    match new {
-        Some(new) if same_value(old, &new) => Some(line.to_string()),
-        Some(new) => Some(format!("{}{key} {new}", leading_space(line))),
-        None if form_sends_null(key, old) => Some(line.to_string()),
-        None => None,
+    let old = property_token(line).filter(|old| parse_property(key, old).is_some());
+    match (new, old) {
+        (Some(new), Some(old)) if same_value(old, &new) => Some(line.to_string()),
+        (Some(new), _) => Some(format!("{}{key} {new}", leading_space(line))),
+        (None, Some(old)) if !form_sends_null(key, old) => None,
+        (None, _) => Some(line.to_string()),
+    }
+}
+
+/// El valor de la línea `nombre valor`, sin el `;` que termina el nodo ni
+/// un comentario detrás: `opacity 0.9;` y `blur true // …` son válidos para
+/// niri, y tomar el segundo token a secas leía `0.9;`.
+fn property_token(line: &str) -> Option<&str> {
+    let rest = line.trim_start();
+    let rest = rest[rest.find(char::is_whitespace)?..].trim_start();
+    let end = [";", "//", "/*"].iter().filter_map(|t| rest.find(t)).min().unwrap_or(rest.len());
+    rest[..end].split_whitespace().next()
+}
+
+/// El valor `token` de la propiedad `key` con el tipo que lee niri: decimal
+/// para opacity y geometry-corner-radius, booleano para las demás.
+fn parse_property(key: &str, token: &str) -> Option<Value> {
+    match key {
+        "opacity" | "geometry-corner-radius" => token.parse::<f64>().ok().map(|v| json!(v)),
+        _ => token.parse::<bool>().ok().map(|v| json!(v)),
     }
 }
 
@@ -430,9 +451,7 @@ fn read_rule(index: usize, block: &[String]) -> Value {
 
     while i < last {
         let stripped = block[i].trim();
-        let mut words = stripped.split_whitespace();
-        let name = words.next().unwrap_or("");
-        let value = words.next();
+        let name = stripped.split_whitespace().next().unwrap_or("");
         i += 1;
 
         if depth == 0 {
@@ -447,11 +466,7 @@ fn read_rule(index: usize, block: &[String]) -> Value {
 
             if let Some((key, field)) = PROPERTIES.into_iter().find(|(key, _)| *key == name && !seen.contains(key)) {
                 seen.push(key);
-                let parsed = match field {
-                    "opacity" | "corner_radius" => value.and_then(|v| v.parse::<f64>().ok()).map(|v| json!(v)),
-                    _ => value.map(|v| json!(v == "true")),
-                };
-                if let Some(parsed) = parsed {
+                if let Some(parsed) = property_token(stripped).and_then(|v| parse_property(key, v)) {
                     rule[field] = parsed;
                 }
                 continue;
@@ -464,12 +479,9 @@ fn read_rule(index: usize, block: &[String]) -> Value {
             {
                 // Bloque background-effect { ... blur true ... }
                 seen.push("blur");
-                let blur = block[i..close]
-                    .iter()
-                    .map(|l| l.split_whitespace().collect::<Vec<_>>())
-                    .find(|words| words.first() == Some(&"blur"));
-                if let Some([_, v]) = blur.as_deref() {
-                    rule["blur"] = json!(*v == "true");
+                let blur = block[i..close].iter().find(|l| l.split_whitespace().next() == Some("blur"));
+                if let Some(parsed) = blur.and_then(|l| property_token(l)).and_then(|v| parse_property("blur", v)) {
+                    rule["blur"] = parsed;
                 }
                 i = close + 1;
                 continue;
@@ -608,7 +620,8 @@ mod tests {
     fn saving_a_rule_unchanged_keeps_the_skel_byte_for_byte() {
         // El skel, y detrás una regla escrita a mano con dos match de cada
         // (un O), dos opacidades y dos background-effect: de cada uno se lee
-        // y se edita el primero.
+        // y se edita el primero. Y otra con los nodos terminados en `;`
+        // (válido para niri): se leía `0.9;` y guardarla borraba las líneas.
         let skel = skel_niri_config();
         let extra = [
             "window-rule {",
@@ -625,6 +638,17 @@ mod tests {
             "        blur true",
             "    }",
             "}",
+            "",
+            "window-rule {",
+            "    match app-id=\"c\";",
+            "    opacity 0.9;",
+            "    open-floating true;",
+            "    geometry-corner-radius 12;",
+            "    clip-to-geometry true // recorta las esquinas",
+            "    background-effect {",
+            "        blur true;",
+            "    }",
+            "}",
         ];
         for config in [skel.clone(), format!("{skel}\n\n{}\n", extra.join("\n"))] {
             let home = TempHome::new("rules-noop", &config);
@@ -637,12 +661,36 @@ mod tests {
             }
         }
         let _home = TempHome::new("rules-dup", &format!("{}\n", extra.join("\n")));
-        let rule = &WindowRulesService::list_rules()[0];
+        let rules = WindowRulesService::list_rules();
+        let rule = &rules[0];
         assert_eq!(
             (&rule["app_id"], &rule["title"], &rule["opacity"], &rule["blur"]),
             (&json!("a"), &json!("x"), &json!(0.9), &json!(false)),
             "list_rules no lee la primera aparición, la que edita update_rule"
         );
+        let rule = &rules[1];
+        assert_eq!(
+            [&rule["app_id"], &rule["opacity"], &rule["open_floating"], &rule["corner_radius"], &rule["clip_to_geometry"], &rule["blur"]],
+            [&json!("c"), &json!(0.9), &json!(true), &json!(12.0), &json!(true), &json!(true)],
+            "list_rules no lee los valores terminados en `;` o seguidos de un comentario"
+        );
+    }
+
+    #[test]
+    fn a_property_that_cannot_be_read_is_kept() {
+        // Lo que list_rules no sabe leer llega como null; guardar sin
+        // cambios no puede tomarlo por "el formulario lo quitó" y borrarlo.
+        let config = "window-rule {\n    match app-id=\"d\"\n    opacity /* casi opaca */ 0.9\n    open-floating #true\n}\n";
+        let home = TempHome::new("rules-unreadable", config);
+        let rule = WindowRulesService::list_rules()[0].clone();
+        assert_eq!((&rule["opacity"], &rule["open_floating"]), (&Value::Null, &Value::Null));
+        WindowRulesService::update_rule(0, &rule_form(&rule)).unwrap();
+        assert_eq!(home.read(), config, "guardar sin cambios borró una propiedad que no sabe leer");
+        // Un valor nuevo del formulario sí la reescribe.
+        let mut form = rule_form(&rule);
+        form["opacity"] = json!(0.5);
+        WindowRulesService::update_rule(0, &form).unwrap();
+        assert_eq!(home.read(), config.replace("opacity /* casi opaca */ 0.9", "opacity 0.5"));
     }
 
     #[test]
