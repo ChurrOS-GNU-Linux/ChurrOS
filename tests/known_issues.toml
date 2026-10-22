@@ -364,3 +364,72 @@ note = "En la ISO, multi-user.target.wants/ModemManager.service apunta a /usr/li
 [[issue]]
 id = "iso-niri:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
 note = "En la ISO, el alias dbus-org.freedesktop.ModemManager1.service apunta a una unidad que no existe (modemmanager no se instala). Mismo fallo que unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service."
+
+# --- tests/iso/check_iso.py (confirmado en una ISO server x86_64 construida) ---
+[[issue]]
+id = "iso-server:missing-lib:calamares:libQt6Qml.so.6"
+note = "/usr/bin/calamares necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:calamares:libQt6Quick.so.6"
+note = "/usr/bin/calamares necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:calamares:libQt6QuickWidgets.so.6"
+note = "/usr/bin/calamares necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamares.so.3.4.2:libkpmcore.so.13"
+note = "/usr/lib/libcalamares.so.3.4.2 necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamares.so.3.4.2:libyaml-cpp.so.0.9"
+note = "/usr/lib/libcalamares.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamares_job_fsresizer.so:libkpmcore.so.13"
+note = "/usr/lib/calamares/modules/fsresizer/libcalamares_job_fsresizer.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamares_viewmodule_netinstall.so:libyaml-cpp.so.0.9"
+note = "/usr/lib/calamares/modules/netinstall/libcalamares_viewmodule_netinstall.so necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamares_viewmodule_partition.so:libkpmcore.so.13"
+note = "/usr/lib/calamares/modules/partition/libcalamares_viewmodule_partition.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamaresui.so.3.4.2:libQt6Qml.so.6"
+note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamaresui.so.3.4.2:libQt6Quick.so.6"
+note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamaresui.so.3.4.2:libQt6QuickWidgets.so.6"
+note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamaresui.so.3.4.2:libQt6Svg.so.6"
+note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Svg.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:missing-lib:libcalamaresui.so.3.4.2:libyaml-cpp.so.0.9"
+note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
+
+[[issue]]
+id = "iso-server:not-executable:/usr/local/bin/Installation_guide"
+note = "/usr/local/bin/Installation_guide tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-server:not-executable:/usr/local/bin/livecd-sound"
+note = "/usr/local/bin/livecd-sound tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-server:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
+note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-server:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
+note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
