@@ -422,6 +422,30 @@ class PackageListTest(unittest.TestCase):
         testlib.assert_findings(self, "edition-pkg", findings)
 
 
+class LocalPackagesTest(unittest.TestCase):
+    """Lo que instalan los paquetes locales (pkgs/*/PKGBUILD) no está también en el airootfs."""
+
+    def test_local_packages_do_not_collide_with_airootfs(self):
+        # mkarchiso copia el airootfs antes de pacstrap: si un paquete trae un
+        # fichero que ya está ahí, pacman aborta con "conflicting files ...
+        # exists in filesystem" y no hay ISO (el preset de linux-churrosvyper).
+        findings = {}
+        recipes = sorted((ROOT / "pkgs").glob("*/PKGBUILD"))
+        for recipe in recipes:
+            pkgbase = recipe.parent.name
+            text = testlib.read_text(recipe)
+            for raw in re.findall(r'"\$pkgdir(/[^"\s]+)"', text):
+                path = raw.replace("$pkgbase", pkgbase).replace("${pkgbase}", pkgbase)
+                if "$" in path or "*" in path:
+                    continue  # rutas que dependen de variables del build: no se modelan
+                target = testlib.AIROOTFS / path.lstrip("/")
+                if target.is_file() or target.is_symlink():  # un directorio común no choca
+                    findings[f"pkg-collision:{pkgbase}:{path}"] = (
+                        f"{testlib.rel(recipe)} instala {path}, que también está en archiso/airootfs: mkarchiso "
+                        "lo copia antes de pacstrap y pacman aborta ('exists in filesystem')")
+        testlib.assert_findings(self, "pkg-collision", findings)
+
+
 class PacmanConfTest(unittest.TestCase):
     """pacman.<arch>.conf con el que pacstrap construye cada arquitectura."""
 

@@ -2261,3 +2261,12 @@ replace = ""
 caught_by = "tests.static.test_editions"
 expect = "edition-pkg:niri/x86_64:linux]"
 why = "GRUB, syslinux y unpackfs arrancan vmlinuz-linux, que customize_airootfs.sh enlaza al kernel propio solo si está instalado: sin él, la ISO no tiene kernel."
+
+[[mutation]]
+name = "test_editions: un paquete local instala un fichero que ya trae el airootfs"
+file = "pkgs/linux-churrosvyper/PKGBUILD"
+find = '"$pkgdir/etc/mkinitcpio.d/linux-churrosvyper.preset"'
+replace = '"$pkgdir/etc/mkinitcpio.d/linux.preset"'
+caught_by = "tests.static.test_editions"
+expect = "pkg-collision:linux-churrosvyper:/etc/mkinitcpio.d/linux.preset"
+why = "mkarchiso copia el airootfs antes de pacstrap: pacman aborta con 'exists in filesystem' y no hay ISO (pasó con el preset de linux-churrosvyper)."
