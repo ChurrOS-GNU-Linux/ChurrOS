@@ -8,6 +8,7 @@ work/
 work-kernel/
 out/
 build/
+windows/output/
 __pycache__/
 *.pyc
 *.pyo

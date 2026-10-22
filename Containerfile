@@ -45,6 +45,11 @@ RUN pacman-key --init \
         gtk4 \
         libadwaita \
         rust \
+        rust-bindgen \
+        rust-src \
+        pahole \
+        cpio \
+        kmod \
         lld \
         nodejs \
         python \

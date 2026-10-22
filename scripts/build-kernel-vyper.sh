@@ -42,7 +42,7 @@ if [ ! -d "$PKGBUILD_DIR" ] || [ ! -f "$PKGBUILD_DIR/PKGBUILD" ]; then
 fi
 
 choose_work_dir() {
-    WORK_DIR="$PROJECT_DIR/work-kernel"
+    WORK_DIR="${CHURROS_KERNEL_WORK_DIR:-$PROJECT_DIR/work-kernel}"
     mkdir -p "$WORK_DIR"
 }
 
