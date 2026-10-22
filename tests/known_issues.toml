@@ -330,3 +330,65 @@ note = "El alias etc/systemd/system/dbus-org.freedesktop.ModemManager1.service a
 [[issue]]
 id = "unit-enable:pi/aarch64:ufw.service"
 note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-systemd.conf activan ufw.service, pero archiso/packages.pi.aarch64 no trae ufw: enable_unit solo avisa, Calamares lo salta (no es mandatory) y la Live y el sistema instalado de la pi quedan sin cortafuegos; Ajustes > Privacidad ejecuta ufw y falla. Arreglo: añadir ufw a packages.pi.aarch64."
+
+# --- test_repo_wiring ---
+[[issue]]
+id = "docs:agents-command:info"
+note = "AGENTS.md no lista `./churros info` en Build Commands aunque es un comando público (PUBLIC_COMMANDS en churros); solo aparece info.sh en el árbol de scripts/cli."
+
+[[issue]]
+id = "docs:agents-command:version"
+note = "AGENTS.md no lista `./churros version` en Build Commands aunque es un comando público (PUBLIC_COMMANDS en churros)."
+
+[[issue]]
+id = "docs:agents-command:logo"
+note = "AGENTS.md no lista `./churros logo` en Build Commands aunque es un comando público (PUBLIC_COMMANDS en churros)."
+
+[[issue]]
+id = "docs:edition:docs/cli.md:pi"
+note = "docs/cli.md (sección build) documenta `--edition <niri|xfce|server>` y dice 'En aarch64 solo existe la edición niri', pero build.sh acepta --edition pi (aarch64, labwc, packages.pi.aarch64)."
+
+[[issue]]
+id = "docs:false-claim:customize-live-boot:docs/boot.md"
+note = "docs/boot.md dice 'En el arranque live, customize_airootfs.sh lo despliega en /usr/share/churros/grub-theme/': ocurre al construir la ISO (build.sh lo copia a airootfs/root/ y mkarchiso lo ejecuta en arch-chroot y lo borra)."
+
+[[issue]]
+id = "docs:false-claim:grub-theme-live-boot:AGENTS.md"
+note = "AGENTS.md (Calamares Sequence, shellprocess@grub-theme) dice que branding/grub-theme se despliega en /usr/share/churros/grub-theme/ 'at live boot'; lo copia customize_airootfs.sh al construir la ISO (mkarchiso, arch-chroot), igual que corrige la línea de Project Layout."
+
+[[issue]]
+id = "docs:false-claim:netinstall-check:docs/contributing.md"
+note = "docs/contributing.md dice que ./churros check revisa los 'extras AUR en netinstall.yaml'; esa comprobación se quitó de check.sh (comentario 'Local AUR extras check removed')."
+
+[[issue]]
+id = "docs:installer:instance:installer/README.md:churros-repo"
+note = "installer/README.md describe una secuencia con shellprocess@churros-repo (y '6 hooks shellprocess'); settings.conf solo tiene cinco instancias y churros-repo no existe (AGENTS.md: 'There is no shellprocess@churros-repo')."
+
+[[issue]]
+id = "docs:installer:config:docs/installer.md:shellprocess-repo"
+note = "docs/installer.md lista una instancia shellprocess-repo ('Registra el repo [churros] temporal') que no existe: no hay shellprocess-repo.conf y en esa tabla falta shellprocess-boot-nocow."
+
+[[issue]]
+id = "docs:installer:sequence:installer/README.md:netinstall"
+note = "installer/README.md pone 'netinstall / packages' como paso 6 de la instalación; netinstall no está en sequence: de settings.conf, así que ese paso no se ejecuta."
+
+[[issue]]
+id = "docs:installer:sequence:installer/README.md:packages"
+note = "installer/README.md pone 'netinstall / packages' como paso 6 de la instalación; el módulo packages no está en sequence: de settings.conf."
+
+# --- test_build_dryrun ---
+[[issue]]
+id = "build:edition-list-backup-overwritten"
+note = "scripts/cli/build.sh (paso 0) copia archiso/packages.<arch> a packages.<arch>.orig sin mirar si ya existe, al contrario que el .bak de greetd/config.toml. Si un build --edition xfce|server se interrumpe (SIGKILL, OOM, docker kill) packages.x86_64 se queda con la lista de esa edición; el siguiente build --edition server|xfce la guarda como copia de seguridad y al terminar la restaura: packages.x86_64 queda con la lista XFCE y la de niri se pierde (solo se recupera con git)."
+
+[[issue]]
+id = "build:edition-list-not-restored-for-niri"
+note = "Tras un build --edition xfce|server interrumpido, el build por defecto (niri) no recupera archiso/packages.x86_64 del .orig que quedó: el paso 0 de scripts/cli/build.sh solo corre para ediciones distintas de niri y el trap solo restaura con PACKAGES_BACKED_UP=1. mkarchiso construye la ISO niri con la lista de XFCE (sin niri, foot ni base-devel) y greetd hace autologin a `niri`, que no está instalado. El árbol queda con packages.x86_64 modificado y el .orig."
+
+[[issue]]
+id = "build:aarch64-build-deletes-x86_64-local-packages"
+note = "El bucle de bsdtar del paso 2 de scripts/cli/build.sh recorre siempre archiso/packages/*.pkg.tar.zst, aunque el repo local de aarch64 es archiso/packages/aarch64/. Un build aarch64 (./churros build --container --arch arm64) borra calamares, yay, wlogout y bazaar x86_64 de archiso/packages/ por ser de otra arquitectura, y el siguiente build x86_64 tiene que recompilarlos (Calamares desde el código fuente, con red)."
+
+[[issue]]
+id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
+note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."

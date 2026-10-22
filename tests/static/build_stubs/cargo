@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""cargo de tests/static/test_build_dryrun.py.
+
+Solo entiende `cargo build [--release] [--manifest-path X]`. No compila:
+crea en <target>/<perfil>/ un ejecutable por cada binario que produciría el
+cargo real, con las mismas reglas de nombres (crate con src/main.rs ->
+binario con el nombre del package; [[bin]] -> su `name`; src/bin/*.rs ->
+nombre del fichero). <target> es CARGO_TARGET_DIR o <workspace>/target,
+como en cargo. Cualquier otra orden sale con 97 y se registra.
+"""
+import os
+from pathlib import Path
+import sys
+import tomllib
+
+log_dir = Path(os.environ["DRYRUN_LOG"])
+args = sys.argv[1:]
+with (log_dir / "cargo.log").open("a", encoding="utf-8") as log:
+    log.write(" ".join(args) + f" CARGO_TARGET_DIR={os.environ.get('CARGO_TARGET_DIR', '')}\n")
+
+if not args or args[0] != "build":
+    with (log_dir / "forbidden.log").open("a", encoding="utf-8") as log:
+        log.write("cargo " + " ".join(args) + ": orden no simulada\n")
+    sys.exit(97)
+
+manifest = Path(args[args.index("--manifest-path") + 1]) if "--manifest-path" in args else Path("Cargo.toml")
+workspace = manifest.resolve().parent
+data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+members = data.get("workspace", {}).get("members", [])
+if "package" in data:
+    members = ["."] + list(members)
+target = Path(os.environ.get("CARGO_TARGET_DIR") or workspace / "target")
+out = target / ("release" if "--release" in args else "debug")
+out.mkdir(parents=True, exist_ok=True)
+
+for member in members:
+    crate = (workspace / member).resolve()
+    crate_data = tomllib.loads((crate / "Cargo.toml").read_text(encoding="utf-8"))
+    package = crate_data["package"]["name"]
+    names, explicit_paths = [], set()
+    for entry in crate_data.get("bin", []):
+        name = entry["name"]
+        default = "src/main.rs" if name == package else f"src/bin/{name}.rs"
+        explicit_paths.add(os.path.normpath(entry.get("path", default)))
+        names.append(name)
+    if crate_data["package"].get("autobins", True):
+        if (crate / "src/main.rs").exists() and "src/main.rs" not in explicit_paths and package not in names:
+            names.append(package)
+        for path in sorted((crate / "src/bin").glob("*.rs")):
+            if path.stem not in names and os.path.relpath(path, crate) not in explicit_paths:
+                names.append(path.stem)
+    for name in names:
+        binary = out / name
+        binary.write_text(f"#!/bin/sh\n# churros dry-run: {name} ({package}) en {out}\nexit 0\n", encoding="utf-8")
+        binary.chmod(0o755)
