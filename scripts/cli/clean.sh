@@ -31,6 +31,7 @@ else
 fi
 sudo rm -rf --one-file-system out
 mkdir -p out
+rm -rf work-kernel
 
 echo "Cleaning temporary airootfs artifacts..."
 rm -f archiso/airootfs/etc/churros-edition 2>/dev/null || true

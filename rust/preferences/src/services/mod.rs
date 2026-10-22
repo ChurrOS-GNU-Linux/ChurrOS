@@ -6,6 +6,7 @@ pub mod backup_service;
 pub mod connectivity;
 pub mod cursor;
 pub mod datetime;
+pub mod desktop_apps;
 pub mod display;
 pub mod fonts;
 pub mod foot_config;

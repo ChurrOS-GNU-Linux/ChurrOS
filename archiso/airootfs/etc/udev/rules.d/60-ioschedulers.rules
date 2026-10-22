@@ -1,0 +1,10 @@
+# Planificadores de E/S inteligentes para ChurrOSvyper
+
+# Discos NVMe: none (dejar que las colas de hardware en paralelo trabajen sin contención)
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
+
+# SSDs SATA y eMMC: mq-deadline (baja latencia sin sobrecarga excesiva de CPU en memoria flash)
+ACTION=="add|change", KERNEL=="sd[a-z]*|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+
+# Discos mecánicos HDD: bfq (optimiza movimientos del cabezal magnético y flujo secuencial)
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"

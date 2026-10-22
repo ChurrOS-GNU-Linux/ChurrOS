@@ -26,6 +26,7 @@ pub mod power_profile;
 pub mod privacy;
 pub mod sleep;
 pub mod system;
+pub mod uninstall_apps;
 pub mod update;
 pub mod users;
 pub mod wallpaper;
