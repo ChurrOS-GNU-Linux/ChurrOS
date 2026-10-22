@@ -17,14 +17,14 @@ scripts/build-calamares.sh      →  compila Calamares desde AUR con parches loc
 
 La parte propia son dos cosas:
 
-1. **La configuración**: `settings.conf` ordena la secuencia y añade cinco instancias de `shellprocess` (keyring de pacman, configuración de mkinitcpio, repositorio local temporal, tema de GRUB, limpieza).
+1. **La configuración**: `settings.conf` ordena la secuencia y añade cinco instancias de `shellprocess` (`/boot` sin compresión en btrfs, keyring de pacman, configuración de mkinitcpio, tema de GRUB, limpieza).
 2. **Los scripts de post-instalación**, que son los que hacen que una instalación de ChurrOS no sea la de Arch:
 
 | Script | Qué hace |
 |---|---|
 | `shellprocess-pacman` | Inicializa el keyring en el destino |
 | `shellprocess-fixboot` | Reescribe el preset de mkinitcpio y sus módulos |
-| `shellprocess-repo` | Registra el repo `[churros]` temporal (lo quita `shellprocess-cleanup`) |
+| `shellprocess-boot-nocow` | `chattr +C` en el `/boot` del destino antes de `unpackfs`, para que GRUB lea el kernel en btrfs |
 | `shellprocess-grub-theme` | Aplica el tema de GRUB y deja `/boot` legible en btrfs+zstd |
 | `shellprocess-cleanup` | Quita sudoers NOPASSWD, reglas polkit, config SSH del Live, usuario y artefactos del Live, y lanza los tres scripts siguientes |
 | `configure-greetd-session` | Escribe la sesión del sistema instalado según la edición |

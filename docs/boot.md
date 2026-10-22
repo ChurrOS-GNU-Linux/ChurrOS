@@ -89,7 +89,7 @@ El GRUB del sistema **instalado** (vía Calamares) usa un tema propio con menú 
 **Cómo llega al sistema instalado:**
 
 1. `./churros build` regenera las fuentes si faltan (`build-grub-theme.sh`) y copia `branding/grub-theme` al airootfs.
-2. En el arranque live, `customize_airootfs.sh` lo despliega en `/usr/share/churros/grub-theme/`.
+2. Al construir la ISO, `build.sh` lo copia a `/usr/share/churros/grub-theme/` del airootfs (y `customize_airootfs.sh` lo usa dentro del chroot de mkarchiso).
 3. Calamares (instancia `shellprocess@grub-theme`, tras el módulo `bootloader`) lo copia a `/boot/grub/themes/churros/`, añade `GRUB_THEME` a `/etc/default/grub`, regenera `/boot/grub/grub.cfg` con `grub-mkconfig` y reescribe las imágenes de `/boot` sin compresión Btrfs para que GRUB pueda leer el kernel.
 
 `grubcfg.conf` usa `GRUB_TERMINAL_OUTPUT: "gfxterm"` para que el tema se renderice con gráficos.

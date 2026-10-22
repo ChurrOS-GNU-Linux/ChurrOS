@@ -271,17 +271,27 @@ def providers() -> dict:
 def installed(item: Edition) -> frozenset[str]:
     """Paquetes que cuentan como instalados en una edición.
 
-    La lista de la edición, el repo local, las dependencias de base y los
-    paquetes marcados como implícitos en command_providers.toml (llegan como
-    dependencia de otro; el test de contenedor lo comprueba con pacman).
+    La lista de la edición, las dependencias de base y los paquetes marcados
+    como implícitos en command_providers.toml (llegan como dependencia de
+    otro; el test de contenedor lo comprueba con pacman), hasta un punto fijo.
+    Del repo local [churros] solo cuentan los que la lista nombra (pacstrap
+    no instala el resto) y Calamares en las ediciones con instalador, que
+    customize_airootfs.sh desempaqueta con bsdtar.
     """
-    names = set(packages(item)) | set(local_packages())
+    names = set(packages(item))
+    if item.installer:
+        names.add("calamares")
     if "base" in names:
         names |= BASE_DEPENDS
-    for package, rule in providers()["implicit"].items():
-        pulled_by = rule.get("pulled_by", []) if isinstance(rule, dict) else rule
-        if any(dep in names for dep in pulled_by):
-            names.add(package)
+    implicit = providers()["implicit"]
+    changed = True
+    while changed:
+        changed = False
+        for package, rule in implicit.items():
+            pulled_by = rule.get("pulled_by", []) if isinstance(rule, dict) else rule
+            if package not in names and any(dep in names for dep in pulled_by):
+                names.add(package)
+                changed = True
     return frozenset(names)
 
 

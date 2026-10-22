@@ -34,6 +34,25 @@ def kvm_available() -> bool:
     return os.access("/dev/kvm", os.R_OK | os.W_OK)
 
 
+def render_node() -> str | None:
+    nodes = sorted(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").is_dir() else []
+    return str(nodes[0]) if nodes else None
+
+
+def virgl_available() -> bool:
+    """QEMU puede dar 3D al invitado: con un nodo DRM, o con Mesa en un Xvfb."""
+    return bool(render_node() or (shutil.which("Xvfb") and _qemu_has_display("sdl")))
+
+
+def _qemu_has_display(name: str) -> bool:
+    try:
+        out = subprocess.run(["qemu-system-x86_64", "-display", "help"], text=True,
+                             capture_output=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return name in out.split()
+
+
 def resolve_firmware(arch: str, workdir: Path) -> tuple[str, str]:
     """CODE y una copia escribible de VARS, con la misma tabla que ./churros run."""
     script = 'source scripts/lib/ovmf.sh && churros_resolve_pflash "$1" "$2"'
@@ -166,8 +185,13 @@ class VM:
 
     def __init__(self, *, iso: Path | None = None, disk: Path | None = None, arch: str = "x86_64",
                  firmware: str = "uefi", memory: int = 4096, cpus: int = 4,
-                 artifacts: Path, accel: str | None = None):
+                 artifacts: Path, accel: str | None = None, gpu: str = "auto"):
         self.iso, self.disk, self.arch, self.firmware = iso, disk, arch, firmware
+        # niri (26.04) descarta los renderizadores EGL por software: con una
+        # virtio-vga sin virgl arranca sin ninguna salida y la pantalla queda
+        # negra. 'virgl' da 3D al invitado (llvmpipe en el host si no hay GPU).
+        self.gpu = ("virgl" if virgl_available() else "plain") if gpu == "auto" else gpu
+        self.xvfb: subprocess.Popen | None = None
         self.memory, self.cpus = memory, cpus
         self.artifacts = artifacts
         self.accel = accel or ("kvm" if kvm_available() and arch == os.uname().machine else "tcg")
@@ -187,7 +211,7 @@ class VM:
         cmd = [
             binary, "-machine", machine, "-cpu", cpu,
             "-smp", str(self.cpus), "-m", str(self.memory),
-            "-display", "none", "-device", "virtio-vga" if self.arch != "aarch64" else "virtio-gpu-pci",
+            *self.display_args(),
             "-serial", f"file:{self.serial_log}",
             "-qmp", f"unix:{self.qmp_path},server=on,wait=off",
             "-chardev", f"socket,path={self.qga_path},server=on,wait=off,id=qga0",
@@ -209,6 +233,34 @@ class VM:
             cmd += ["-drive", f"file={self.disk},if=virtio,format=qcow2"]
         return cmd
 
+    def display_args(self) -> list[str]:
+        if self.gpu != "virgl":
+            return ["-display", "none", "-device", "virtio-vga" if self.arch != "aarch64" else "virtio-gpu-pci"]
+        device = "virtio-vga-gl" if self.arch != "aarch64" else "virtio-gpu-gl-pci"
+        node = render_node()
+        if node:
+            return ["-display", f"egl-headless,rendernode={node}", "-device", device]
+        # Sin GPU en el host (runners de CI): la ventana SDL de QEMU vive en un
+        # Xvfb privado y virglrenderer usa el GL de Mesa por software.
+        return ["-display", "sdl,gl=on", "-device", device]
+
+    def _start_xvfb(self) -> dict:
+        env = dict(os.environ)
+        if self.gpu != "virgl" or render_node():
+            return env
+        read_fd, write_fd = os.pipe()
+        self.xvfb = subprocess.Popen(
+            ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "1280x800x24", "-nolisten", "tcp"],
+            pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.close(write_fd)
+        with os.fdopen(read_fd) as handle:
+            number = handle.readline().strip()
+        if not number:
+            raise VMError("Xvfb no arrancó (necesario para dar 3D al invitado sin GPU en el host)")
+        env["DISPLAY"] = f":{number}"
+        env.setdefault("SDL_VIDEODRIVER", "x11")
+        return env
+
     def start(self) -> None:
         self.artifacts.mkdir(parents=True, exist_ok=True)
         for path in (self.serial_log, self.qmp_path, self.qga_path):
@@ -216,7 +268,7 @@ class VM:
         cmd = self.command()
         (self.artifacts / "qemu-cmdline.txt").write_text(" ".join(cmd) + "\n")
         self.log = (self.artifacts / "qemu.log").open("w")
-        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT)
+        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT, env=self._start_xvfb())
         deadline = time.monotonic() + 30
         while not self.qmp_path.exists():
             if self.proc.poll() is not None:
@@ -273,6 +325,14 @@ class VM:
             qmp.close()
 
     def stop(self) -> None:
+        try:
+            self._stop_qemu()
+        finally:
+            if self.xvfb and self.xvfb.poll() is None:
+                self.xvfb.terminate()
+                self.xvfb.wait()
+
+    def _stop_qemu(self) -> None:
         if not self.running():
             return
         try:

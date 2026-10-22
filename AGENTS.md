@@ -19,6 +19,9 @@
 ./churros test               # Same as check; layers: --container, --rust, --iso [ISO], --boot [ISO], --mutations
 ./churros apps               # Open distro apps on the host (GTK preview is dummy; Calamares uses a tmp overlay)
 ./churros doctor             # Check tools per distro (Arch: mkarchiso & co.; elsewhere: podman/docker for --container)
+./churros info               # Project information
+./churros version            # CLI version
+./churros logo               # Print the ChurrOS logo
 ./install-deps.sh            # Install dev deps with pacman, apt or dnf
 ./scripts/build-calamares.sh # Build Calamares into archiso/packages/ (.pkg.tar.zst, or .xz)
 ./scripts/build-aur.sh       # Build python-pywal + yay + wlogout AUR packages
@@ -130,7 +133,7 @@ docs/                         Project documentation
 - `shellprocess@pacman-init` (keyring init) **MUST** come before `shellprocess@fix-boot` (mkinitcpio preset rewrite + kernel modules) — both already ordered this way; do not reorder.
 - There is **no** `shellprocess@churros-repo`. The `[churros]` repo (`Server = file:///root/packages`) is declared in `archiso/pacman.<arch>.conf`, which mkarchiso only uses for pacstrap at build time: it is not in the live `/etc/pacman.conf` (`tests/iso/check_iso.py` records `pacman_conf_has_churros_repo`), so the local packages (calamares, yay, wlogout, python-pywal, bazaar) reach the ISO through pacstrap, not through `netinstall` (not in the sequence). `shellprocess@post-install` still removes a `[churros]` block if one exists (unanchored `sed /churros/d` is forbidden — use the anchored `[churros]` block removal).
 - `shellprocess@post-install` (cleanup: drops `[churros]`, `userdel -r churros`, removes live-only `/root` artifacts) is the last exec step before `umount`.
-- `shellprocess@grub-theme` runs right after `bootloader`: copies `branding/grub-theme` (deployed to `/usr/share/churros/grub-theme/` at live boot) into `/boot/grub/themes/churros/`, appends `GRUB_THEME` to the target's `/etc/default/grub`, reruns `grub-mkconfig -o /boot/grub/grub.cfg`, then `make-boot-grub-readable` so GRUB can read `/boot` on btrfs+zstd.
+- `shellprocess@grub-theme` runs right after `bootloader`: copies `branding/grub-theme` (copied to `/usr/share/churros/grub-theme/` in the airootfs at build time) into `/boot/grub/themes/churros/`, appends `GRUB_THEME` to the target's `/etc/default/grub`, reruns `grub-mkconfig -o /boot/grub/grub.cfg`, then `make-boot-grub-readable` so GRUB can read `/boot` on btrfs+zstd.
 
 Config files per instance: `shellprocess-pacman.conf`, `shellprocess-fixboot.conf`, `shellprocess-grub-theme.conf`, `shellprocess-cleanup.conf`, `shellprocess-boot-nocow.conf`. Module IDs in `instances:` are `pacman-init`, `fix-boot`, `grub-theme`, `post-install`, `boot-nocow` — five, no more.
 
