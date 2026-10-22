@@ -1,0 +1,8 @@
+# Qué paquete instala cada unidad systemd que el perfil activa o enlaza
+# (multi-user.target.wants, services.sh, Calamares services-systemd) y que no
+# está en archiso/airootfs/etc/systemd/system. La unidad de un paquete solo
+# existe en las ediciones cuya lista lo incluye.
+#
+# [units]  nombre de la unidad -> paquete
+
+[units]

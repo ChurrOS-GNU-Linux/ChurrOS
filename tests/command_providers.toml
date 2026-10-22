@@ -1,0 +1,19 @@
+# Qué paquete instala cada comando que ejecuta la configuración de ChurrOS.
+#
+# Lo usa testlib.resolve_command: un comando que lanza niri, un .desktop, una
+# unidad systemd, un hook de pacman o Calamares tiene que salir del airootfs,
+# de un crate Rust desplegado o de un paquete de la lista de la edición.
+# Si el comando se llama igual que su paquete (foot, niri, fuzzel) no hace
+# falta entrada. tests/container comprueba esta tabla contra los repos de Arch
+# (pacman -F), así que una entrada mal puesta también falla.
+#
+# [commands]  nombre del comando -> paquete
+# [paths]     ruta absoluta que no está en el airootfs -> paquete
+# [implicit]  paquete que llega como dependencia de otro de la lista:
+#             paquete = { pulled_by = ["paquete-de-la-lista", ...] }
+
+[commands]
+
+[paths]
+
+[implicit]

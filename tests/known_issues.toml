@@ -1,0 +1,13 @@
+# Problemas reales que las pruebas detectan hoy y todavía no están arreglados.
+#
+# Cada entrada silencia un hallazgo concreto (su `id` lo imprime la prueba
+# entre corchetes). No es un sitio para esconder fallos nuevos:
+#   - Añadir una entrada exige explicar en `note` qué falla y por qué no se
+#     arregla en el mismo cambio. Revisa quién lo añade (CODEOWNERS).
+#   - Cuando se arregla, la prueba falla hasta que se borra su entrada: la
+#     lista solo puede acortarse.
+#
+# Formato:
+#   [[issue]]
+#   id = "categoria:detalle"
+#   note = "qué falla, consecuencia y dónde"
