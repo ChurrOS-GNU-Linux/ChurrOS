@@ -1382,8 +1382,8 @@ why = "fail() deja de contar los fallos"
 [[mutation]]
 name = "test_repo_wiring: la batería tests/static se lanza con || true"
 file = "scripts/cli/check.sh"
-find = "if suite_out=$(python3 -m unittest discover -s tests/static -t . 2>&1); then"
-replace = "if suite_out=$(python3 -m unittest discover -s tests/static -t . 2>&1 || true); then"
+find = "if suite_out=$(python3 -m unittest discover -s tests/static -t . -v 2>&1); then"
+replace = "if suite_out=$(python3 -m unittest discover -s tests/static -t . -v 2>&1 || true); then"
 caught_by = "tests.static.test_repo_wiring"
 expect = "`|| true` tras una prueba"
 why = "la batería tests/static se lanza con || true"
@@ -1691,3 +1691,32 @@ caught_by = "python3 scripts/test-tour.py"
 expect = "panicked"
 requires = "container"
 why = "Regresión de la prueba GTK del tour: churros_services::which() busca PATH/<bin>, así que con una terminal falsa en el PATH start() la lanza en asíncrono y el assert síncrono ve None (fallaba en main antes de que el CI la ejecutara)."
+
+# --- arnés (tests/static/test_harness.py) ---
+
+[[mutation]]
+name = "test_harness: el análisis de coredumpctl deja de ver volcados"
+file = "tests/vm/boot_smoke.py"
+find = "entries = json.loads(text) if text.strip().startswith(\"[\") else []"
+replace = "entries = []"
+caught_by = "tests.static.test_harness"
+expect = "test_parse_coredumps"
+why = "Como el antiguo awk '{print $NF}', que leía la columna SIZE: la comprobación 'sin core dumps' no podía fallar nunca."
+
+[[mutation]]
+name = "test_harness: el listado del squashfs pierde los bits setuid/setgid"
+file = "tests/iso/check_iso.py"
+find = "\"mode\": perm_bits(perms), \"target\": target}"
+replace = "\"mode\": perm_bits(perms) & 0o777, \"target\": target}"
+caught_by = "tests.static.test_harness"
+expect = "setuid"
+why = "La auditoría de file_permissions compararía modos sin los bits especiales y daría por buenos permisos distintos de los declarados."
+
+[[mutation]]
+name = "test_references: una función en segundo plano del wrapper de sesión llama a un programa que no existe"
+file = "archiso/airootfs/usr/bin/churros-pi-session"
+find_re = "^waybar (--config [^\\n]*)&$"
+replace = "keep_waybar() {\n    while true; do\n        waybarr \\1\n        sleep 1\n    done\n}\nkeep_waybar &"
+caught_by = "tests.static.test_references"
+expect = "función keep_waybar) ejecuta 'waybarr'"
+why = "Envolver waybar en una función de reinicio (`f &`) no puede esconder una errata en el programa que lanza la función."

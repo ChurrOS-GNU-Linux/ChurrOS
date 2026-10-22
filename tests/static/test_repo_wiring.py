@@ -515,7 +515,9 @@ class DispatcherTest(unittest.TestCase):
     def test_help_lists_exactly_public_commands(self):
         result = testlib.run(["bash", "churros", "--help"], timeout=30)
         self.assertEqual(result.returncode, 0, f"./churros --help falla:\n{result.stdout}")
-        listed = set(re.findall(r"^  ([a-z][\w-]*) {2,}\S", result.stdout, re.MULTILINE))
+        # printf "  %-12s %s": un nombre de 12 o más caracteres deja un solo espacio.
+        block = result.stdout.split("Available commands:", 1)[-1].split("Examples:", 1)[0]
+        listed = set(re.findall(r"^  ([a-z][\w-]*) +\S", block, re.MULTILINE))
         public = set(public_commands())
         self.assertFalse(public - listed, f"comandos públicos que ./churros --help no lista: {sorted(public - listed)}")
         self.assertFalse(listed - public, f"./churros --help lista comandos que no son públicos: {sorted(listed - public)}")

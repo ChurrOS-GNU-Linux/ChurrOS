@@ -270,11 +270,25 @@ def check_journal(agent, report: Report, artifacts: Path) -> None:
                 hits += 1
     report.check("diario sin errores de ejecución, permisos ni configuración", hits == 0, f"{hits} líneas")
 
-    code, dumps = guest_sh(agent, "coredumpctl list --no-legend --no-pager 2>/dev/null | awk '{print $NF}'")
-    crashed = sorted({Path(line).name for line in dumps.split() if line.startswith("/")})
+    _, dumps = guest_sh(agent, "coredumpctl --json=short --no-pager list 2>/dev/null || true")
+    crashed = parse_coredumps(dumps)
     for exe in crashed:
         report.finding(f"coredump:{exe}", f"core dump de {exe}")
     report.check("sin core dumps", not crashed, ", ".join(crashed))
+
+
+def parse_coredumps(text: str) -> list[str]:
+    """Ejecutables con core dump según `coredumpctl --json=short list`.
+
+    Sin volcados coredumpctl no imprime nada (o un aviso que no es JSON).
+    """
+    try:
+        entries = json.loads(text) if text.strip().startswith("[") else []
+    except json.JSONDecodeError:
+        return []
+    names = {Path(entry.get("exe") or entry.get("comm") or "desconocido").name
+             for entry in entries if isinstance(entry, dict)}
+    return sorted(names)
 
 
 def check_screen(vm: VM, report: Report, artifacts: Path) -> None:

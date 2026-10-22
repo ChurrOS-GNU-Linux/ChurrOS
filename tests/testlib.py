@@ -63,6 +63,31 @@ def require_module(testcase: unittest.TestCase, module: str):
         raise unittest.SkipTest(message)
 
 
+# Variables que git aplica al repositorio en curso (`git rev-parse
+# --local-env-vars`). Un hook de pre-commit exporta GIT_INDEX_FILE: si llegan a
+# un git que trabaja en una copia temporal, esa copia escribe en el índice real.
+GIT_LOCAL_ENV = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+    "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+})
+
+
+def scratch_env(**extra) -> dict:
+    """os.environ sin las variables de repositorio de git, más `extra`.
+
+    Para todo lo que ejecuta git (o pruebas que lo ejecutan) en una copia
+    temporal del repo.
+    """
+    env = {key: value for key, value in os.environ.items()
+           if key not in GIT_LOCAL_ENV and not key.startswith("GIT_CONFIG_KEY_")
+           and not key.startswith("GIT_CONFIG_VALUE_")}
+    env.update(extra)
+    return env
+
+
 def run(cmd, *, cwd=ROOT, env=None, input=None, timeout=120, check=False):
     """subprocess.run con texto y salida capturada (stdout y stderr juntos)."""
     result = subprocess.run(

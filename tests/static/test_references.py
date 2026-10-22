@@ -728,15 +728,29 @@ def wrapper_refs(command: str, item, origin: str) -> list[Ref]:
         return []
     text = read(path)
     guarded = guarded_commands(text)
+    # Funciones del propio script (`f() { ...; }`): lanzar `f &` no ejecuta
+    # un programa llamado f, sino los comandos de su cuerpo.
+    functions = {match.group(1): match.group(2) for match in re.finditer(
+        r"^\s*(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\s*\)\s*\{(.*?)^\s*\}", text, re.M | re.S)}
     refs = []
+
+    def add(line: str, where: str) -> None:
+        for ref in shell_refs(line, rel(path), (item,), where):
+            if ref.command in functions:
+                for body_line in functions.pop(ref.command).splitlines():
+                    body_line = body_line.strip().rstrip("&").strip()
+                    if body_line and not body_line.startswith("#"):
+                        add(body_line, f"{where}, función {ref.command}")
+                continue
+            optional = ref.command in guarded or Path(ref.command).name in guarded
+            refs.append(Ref(ref.source, ref.command, ref.editions, ref.where, optional, ref.args))
+
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
         if stripped.startswith("exec ") or re.search(r"[^&]&\s*$", stripped):
-            for ref in shell_refs(stripped.rstrip("&"), rel(path), (item,), f"línea {number} ({origin})"):
-                optional = ref.command in guarded or Path(ref.command).name in guarded
-                refs.append(Ref(ref.source, ref.command, ref.editions, ref.where, optional, ref.args))
+            add(stripped.rstrip("&"), f"línea {number} ({origin})")
     return refs
 
 
@@ -1020,7 +1034,10 @@ class ReferenceTests(unittest.TestCase):
         for ref in self.refs():
             counts[ref.source.split(":")[0]] = counts.get(ref.source.split(":")[0], 0) + 1
         expected = [f"archiso/airootfs/{name}" for name in NIRI_CONFIGS]
-        expected += [rel(path) for path in sorted((AIROOTFS / "usr/share/applications").glob("*.desktop"))]
+        # Solo los .desktop que ejecutan algo: un Type=Link (URL=) o uno con solo
+        # DBusActivatable no aporta referencias y es válido.
+        expected += [rel(path) for path in sorted((AIROOTFS / "usr/share/applications").glob("*.desktop"))
+                     if re.search(r"^(?:Try)?Exec\s*=\s*\S", read(path), re.M)]
         expected += [rel(path) for path in sorted((AIROOTFS / "etc/pacman.d/hooks").glob("*.hook"))]
         expected += ["archiso/airootfs/etc/xdg/labwc/rc.xml", "archiso/airootfs/etc/greetd/regreet.toml",
                      rel(BUILD_SH), rel(EDITION_SESSION), "archiso/airootfs/usr/bin/churros-niri-session",

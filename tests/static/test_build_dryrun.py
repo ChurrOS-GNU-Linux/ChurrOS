@@ -38,6 +38,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -156,8 +157,10 @@ class Sandbox:
         for directory in (self.repo, self.bin, self.fake_root / "usr/bin", self.home, self.logs):
             directory.mkdir(parents=True)
         self.runs = 0
-        self.git_env = dict(
-            os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+        # scratch_env: sin GIT_INDEX_FILE/GIT_DIR de un hook, este git no
+        # puede tocar el repositorio de verdad.
+        self.git_env = testlib.scratch_env(
+            GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
             GIT_AUTHOR_NAME="dryrun", GIT_AUTHOR_EMAIL="dryrun@invalid",
             GIT_COMMITTER_NAME="dryrun", GIT_COMMITTER_EMAIL="dryrun@invalid",
         )
@@ -239,6 +242,10 @@ class Sandbox:
             ["bash", "churros", "build", *args], cwd=self.repo, env=env, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120,
             start_new_session=True,
+            # Lanzada en segundo plano desde un script, la batería hereda
+            # SIGINT ignorado y bash no puede volver a activarlo: el caso
+            # 'int' (Ctrl-C simulado) no interrumpiría nada.
+            preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),
         )
         return BuildResult(list(args), result.returncode, result.stdout, log, cargo_target)
 

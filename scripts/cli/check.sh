@@ -1931,7 +1931,7 @@ if helpers_out=$(python3 scripts/test-privileged-helpers.py 2>&1); then
     pass "helpers privilegiados en un root falso (scripts/test-privileged-helpers.py)"
     # Sin zstd las pruebas de tarballs salen como SKIP y el script termina en 0.
     if skipped=$(printf '%s\n' "$helpers_out" | grep -oE 'skipped=[0-9]+'); then
-        missing_tool "scripts/test-privileged-helpers.py: ${skipped#skipped=} pruebas saltadas (¿falta zstd?)"
+        missing_tool "scripts/test-privileged-helpers.py: ${skipped#skipped=} pruebas saltadas (python3 scripts/test-privileged-helpers.py -v dice por qué)"
     fi
 else
     printf '%s\n' "$helpers_out" | tail -n 40
@@ -1954,11 +1954,13 @@ section "Test suite (tests/static)"
 # edición, Calamares, unidades, sintaxis de configs, contrato Rust y un build
 # en seco con herramientas falsas. Los fallos reales ya conocidos están en
 # tests/known_issues.toml.
-if suite_out=$(python3 -m unittest discover -s tests/static -t . 2>&1); then
+if suite_out=$(python3 -m unittest discover -s tests/static -t . -v 2>&1); then
     summary=$(printf '%s\n' "$suite_out" | grep -E '^Ran [0-9]+ tests?' | tail -n1)
     pass "${summary:-tests/static}"
     if skipped=$(printf '%s\n' "$suite_out" | grep -oE 'skipped=[0-9]+'); then
-        printf '%s\n' "$suite_out" | grep -E "skipped '" | sed 's/^/      /' | head -n 20
+        # Con -v, unittest pone el id de la prueba en la línea anterior cuando
+        # la prueba tiene docstring: se muestran las dos.
+        printf '%s\n' "$suite_out" | grep -B1 -E "\.\.\. skipped '" | grep -v '^--$' | sed 's/^/      /' | head -n 40
         missing_tool "tests/static: ${skipped#skipped=} pruebas saltadas"
     fi
 else

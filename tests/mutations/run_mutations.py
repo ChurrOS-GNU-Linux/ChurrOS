@@ -82,7 +82,7 @@ def make_copy(source: Path, target: Path) -> None:
             dest.symlink_to(os.readlink(path))
         else:
             shutil.copy2(path, dest)
-    quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "env": testlib.scratch_env()}
     subprocess.run(["git", "init", "-q"], cwd=target, check=True, **quiet)
     subprocess.run(["git", "add", "-A"], cwd=target, check=True, **quiet)
     subprocess.run(["git", "-c", "user.name=mutations", "-c", "user.email=mutations@localhost",
@@ -90,7 +90,7 @@ def make_copy(source: Path, target: Path) -> None:
 
 
 def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    env = testlib.scratch_env(PYTHONDONTWRITEBYTECODE="1")
     try:
         result = subprocess.run(cmd, cwd=cwd, env=env, text=True, timeout=timeout,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -135,7 +135,8 @@ def apply(mutation: dict, copy: Path) -> str | None:
 
 
 def restore(mutation: dict, copy: Path) -> None:
-    subprocess.run(["git", "checkout", "-q", "--", mutation["file"]], cwd=copy, check=True)
+    subprocess.run(["git", "checkout", "-q", "--", mutation["file"]], cwd=copy, check=True,
+                   env=testlib.scratch_env())
 
 
 def main() -> int:

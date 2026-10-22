@@ -81,16 +81,7 @@ class Squash:
         self.entries: dict[str, dict] = {}
         out = subprocess.run(["unsquashfs", "-lln", "-d", "", str(sfs)], text=True,
                              capture_output=True, check=True).stdout
-        line_re = re.compile(r"^(\S{10})\s+(\d+)/(\d+)\s+(\d+(?:,\s*\d+)?)\s+\S+\s+\S+\s+(.*)$")
-        for line in out.splitlines():
-            match = line_re.match(line)
-            if not match:
-                continue
-            perms, uid, gid, size, rest = match.groups()
-            path, target = (rest.split(" -> ", 1) + [None])[:2] if perms[0] == "l" else (rest, None)
-            path = "/" + path.lstrip("/")
-            self.entries[path] = {"type": perms[0], "perms": perms, "uid": int(uid), "gid": int(gid),
-                                  "mode": perm_bits(perms), "target": target}
+        self.entries = parse_listing(out)
 
     def exists(self, path: str) -> bool:
         return self.resolve(path) is not None
@@ -130,6 +121,22 @@ class Squash:
         self.extract(real)
         local = self.root / real.lstrip("/")
         return local.read_text(errors="replace") if local.is_file() else None
+
+
+def parse_listing(out: str) -> dict[str, dict]:
+    """Salida de `unsquashfs -lln -d ''` -> {ruta: tipo, modo, dueño, destino}."""
+    entries = {}
+    line_re = re.compile(r"^(\S{10})\s+(\d+)/(\d+)\s+(\d+(?:,\s*\d+)?)\s+\S+\s+\S+\s+(.*)$")
+    for line in out.splitlines():
+        match = line_re.match(line)
+        if not match:
+            continue
+        perms, uid, gid, _size, rest = match.groups()
+        path, target = (rest.split(" -> ", 1) + [None])[:2] if perms[0] == "l" else (rest, None)
+        path = "/" + path.lstrip("/")
+        entries[path] = {"type": perms[0], "perms": perms, "uid": int(uid), "gid": int(gid),
+                         "mode": perm_bits(perms), "target": target}
+    return entries
 
 
 def perm_bits(perms: str) -> int:
