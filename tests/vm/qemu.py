@@ -27,6 +27,10 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 
 
+# Título de la ventana SDL de QEMU ("QEMU (<nombre>)"): xwd la busca por él.
+WINDOW_NAME = "churros-vm"
+
+
 class VMError(RuntimeError):
     pass
 
@@ -92,6 +96,25 @@ def xwd_to_rgb(data: bytes) -> tuple[int, int, bytes]:
                 out[index] = (value & mask) >> shift
                 index += 1
     return width, height, bytes(out)
+
+
+def crop_to_content(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
+    """Recorta al rectángulo que tiene píxeles no negros (o 1x1 si no hay)."""
+    rows = [y for y in range(height) if any(rgb[y * width * 3:(y + 1) * width * 3])]
+    if not rows:
+        return 1, 1, b"\0\0\0"
+    top, bottom = rows[0], rows[-1]
+    left, right = width, -1
+    for y in range(top, bottom + 1):
+        line = rgb[y * width * 3:(y + 1) * width * 3]
+        first = next((x for x in range(width) if any(line[x * 3:x * 3 + 3])), None)
+        if first is None:
+            continue
+        last = next(x for x in range(width - 1, -1, -1) if any(line[x * 3:x * 3 + 3]))
+        left, right = min(left, first), max(right, last)
+    new_width = right - left + 1
+    out = b"".join(rgb[(y * width + left) * 3:(y * width + right + 1) * 3] for y in range(top, bottom + 1))
+    return new_width, bottom - top + 1, out
 
 
 class _JsonSocket:
@@ -235,7 +258,7 @@ class VM:
             machine = f"q35,accel={self.accel}"
             cpu = "host" if self.accel == "kvm" else "max"
         cmd = [
-            binary, "-machine", machine, "-cpu", cpu,
+            binary, "-name", WINDOW_NAME, "-machine", machine, "-cpu", cpu,
             "-smp", str(self.cpus), "-m", str(self.memory),
             *self.display_args(),
             "-serial", f"file:{self.serial_log}",
@@ -358,13 +381,18 @@ class VM:
         finally:
             qmp.close()
         if self.display and shutil.which("xwd"):
-            for window in (["-name", "QEMU"], ["-root"]):
+            # Con varias consolas SDL abre una ventana por consola y numera el
+            # título: la gráfica es la -0.
+            for window in (["-name", f"QEMU ({WINDOW_NAME}-0)"], ["-name", f"QEMU ({WINDOW_NAME})"], ["-root"]):
                 result = subprocess.run(["xwd", "-silent", "-display", self.display, *window],
                                         capture_output=True, timeout=60)
                 if result.returncode == 0 and len(result.stdout) > 100:
                     break
             if result.returncode == 0 and len(result.stdout) > 100:
                 width, height, rgb = xwd_to_rgb(result.stdout)
+                if window == ["-root"]:
+                    # Sin la ventana, la raíz de Xvfb tiene borde negro alrededor.
+                    width, height, rgb = crop_to_content(width, height, rgb)
                 target.write_bytes(b"P6\n%d %d\n255\n" % (width, height) + rgb)
                 return target
         return None

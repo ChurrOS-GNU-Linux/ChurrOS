@@ -110,8 +110,16 @@ configuración, que no hay core dumps y que la pantalla no está negra. Deja
 python3 tests/vm/boot_smoke.py out/ChurrOS-*.iso --firmware bios --keep
 ```
 
-Sin `/dev/kvm` funciona igual, pero con emulación por software tarda unos 20
-minutos.
+La VM recibe una GPU con 3D (virgl): niri 26.04 descarta el renderizado EGL
+por software, así que con una `virtio-vga` sin 3D arranca sin ninguna salida y
+la pantalla queda negra (lo mismo le pasa a quien prueba ChurrOS en una VM sin
+aceleración 3D). Si el equipo tiene GPU, QEMU usa su nodo DRM
+(`egl-headless`); si no, como en los runners de GitHub, abre su ventana SDL en
+un Xvfb privado y usa el GL de Mesa (`xvfb`, `x11-apps`, `qemu-system-gui`,
+`libgl1-mesa-dri`). La captura de pantalla sale de esa ventana con `xwd`.
+`--gpu plain` reproduce el caso sin 3D.
+
+Con KVM tarda 2-4 minutos; sin `/dev/kvm` (emulación por software) unos 8.
 
 ## Reglas para cambios hechos con ayuda de IA
 
