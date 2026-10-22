@@ -5,7 +5,7 @@
 use adw::prelude::*;
 
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -20,8 +20,30 @@ impl crate::widgets::AsWidget for AppRow {
     }
 }
 
+/// Una app ya construida: los widgets se crean una vez por carga y el
+/// filtro solo cambia su visibilidad.
+struct Entry {
+    app: AppInfo,
+    /// Nombre, comentario, ID y paquete en minúsculas (se calcula una vez).
+    search_key: String,
+    row: gtk::Box,
+    /// Separador que `Group::add` pone delante de la fila (ninguno en la primera).
+    separator: Option<gtk::Widget>,
+    button: gtk::Button,
+}
+
+impl Entry {
+    fn removable(&self) -> bool {
+        removable(&self.app)
+    }
+}
+
+fn removable(app: &AppInfo) -> bool {
+    !app.is_protected && (app.is_flatpak || !app.package_name.is_empty())
+}
+
 struct State {
-    apps: RefCell<Vec<AppInfo>>,
+    entries: RefCell<Vec<Entry>>,
     group: RefCell<Group>,
     search: gtk::SearchEntry,
     status: gtk::Label,
@@ -51,7 +73,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
     page.add(group.widget());
 
     let state = Rc::new(State {
-        apps: RefCell::new(Vec::new()),
+        entries: RefCell::new(Vec::new()),
         group: RefCell::new(group),
         search: search.clone(),
         status,
@@ -59,8 +81,12 @@ pub fn build(navigator: gtk::Stack) -> Page {
     });
 
     {
-        let state = state.clone();
-        search.connect_search_changed(move |_| render(&state));
+        let state = Rc::downgrade(&state);
+        search.connect_search_changed(move |_| {
+            if let Some(state) = state.upgrade() {
+                apply_filter(&state);
+            }
+        });
     }
 
     load(&state, None);
@@ -100,8 +126,7 @@ fn load(state: &Rc<State>, message: Option<String>) {
     }
     let state = state.clone();
     run_in_background(desktop_apps::list_installed_apps, move |apps| {
-        *state.apps.borrow_mut() = apps;
-        render(&state);
+        rebuild(&state, apps);
         if let Some(msg) = message {
             state.status.set_label(&msg);
             state.status.set_visible(true);
@@ -109,43 +134,89 @@ fn load(state: &Rc<State>, message: Option<String>) {
     });
 }
 
-fn matches(app: &AppInfo, query: &str) -> bool {
-    query.is_empty()
-        || app.name.to_lowercase().contains(query)
-        || app.comment.to_lowercase().contains(query)
-        || app.id.to_lowercase().contains(query)
-        || app.package_name.to_lowercase().contains(query)
+fn search_key(app: &AppInfo) -> String {
+    format!("{}\n{}\n{}\n{}", app.name, app.comment, app.id, app.package_name).to_lowercase()
 }
 
-fn render(state: &Rc<State>) {
-    let query = state.search.text().trim().to_lowercase();
-    let apps = state.apps.borrow();
+/// Reconstruye los widgets tras (re)cargar la lista de apps.
+fn rebuild(state: &Rc<State>, apps: Vec<AppInfo>) {
     let mut group = state.group.borrow_mut();
     group.clear();
 
-    let mut shown = 0;
-    for app in apps.iter().filter(|a| matches(a, &query)) {
-        group.add(&AppRow(build_row(state, app)));
-        shown += 1;
-    }
+    let entries = apps
+        .into_iter()
+        .map(|app| {
+            let (row, button) = build_row(state, &app);
+            group.add(&AppRow(row.clone()));
+            Entry {
+                search_key: search_key(&app),
+                separator: row.prev_sibling(),
+                row,
+                button,
+                app,
+            }
+        })
+        .collect();
+    drop(group);
 
-    if !state.busy.get() {
-        if shown == 0 {
-            state.status.set_label(if apps.is_empty() {
-                "No se encontraron aplicaciones instaladas."
-            } else {
-                "Ninguna aplicación coincide con la búsqueda."
-            });
-            state.status.set_visible(true);
-        } else {
-            state.status.set_visible(false);
+    *state.entries.borrow_mut() = entries;
+    apply_filter(state);
+}
+
+/// Muestra solo las filas que coinciden con la búsqueda, sin recrear nada.
+fn apply_filter(state: &State) {
+    let query = state.search.text().trim().to_lowercase();
+    let entries = state.entries.borrow();
+
+    let mut shown = 0;
+    for entry in entries.iter() {
+        let visible = query.is_empty() || entry.search_key.contains(&query);
+        entry.row.set_visible(visible);
+        // El separador solo se ve si hay otra fila visible por encima.
+        if let Some(sep) = &entry.separator {
+            sep.set_visible(visible && shown > 0);
+        }
+        if visible {
+            shown += 1;
         }
     }
-    group.widget().set_visible(shown > 0);
+
+    state.group.borrow().widget().set_visible(shown > 0);
+
+    if state.busy.get() {
+        return;
+    }
+    if shown == 0 {
+        state.status.set_label(if entries.is_empty() {
+            "No se encontraron aplicaciones instaladas."
+        } else {
+            "Ninguna aplicación coincide con la búsqueda."
+        });
+        state.status.set_visible(true);
+    } else {
+        state.status.set_visible(false);
+    }
+}
+
+/// Activa o desactiva los botones mientras hay una desinstalación en curso.
+fn set_busy(state: &State, busy: bool) {
+    state.busy.set(busy);
+    for entry in state.entries.borrow().iter() {
+        entry.button.set_sensitive(!busy && entry.removable());
+    }
 }
 
 fn app_icon(icon_name: &str) -> gtk::Image {
     const FALLBACK: &str = "application-x-executable";
+    // Algunos .desktop ponen "Icon=foo.png": el tema solo conoce "foo".
+    let icon_name = if icon_name.starts_with('/') {
+        icon_name
+    } else {
+        icon_name
+            .strip_suffix(".png")
+            .or_else(|| icon_name.strip_suffix(".svg"))
+            .unwrap_or(icon_name)
+    };
     let image = if icon_name.starts_with('/') {
         gtk::Image::from_file(icon_name)
     } else {
@@ -159,7 +230,7 @@ fn app_icon(icon_name: &str) -> gtk::Image {
     image
 }
 
-fn build_row(state: &Rc<State>, app: &AppInfo) -> gtk::Box {
+fn build_row(state: &Rc<State>, app: &AppInfo) -> (gtk::Box, gtk::Button) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 14);
     row.add_css_class("row");
     row.set_margin_top(10);
@@ -207,20 +278,25 @@ fn build_row(state: &Rc<State>, app: &AppInfo) -> gtk::Box {
     let button = gtk::Button::with_label("Desinstalar");
     button.add_css_class("destructive-action");
     button.set_valign(gtk::Align::Center);
-    let removable = app.is_flatpak || !app.package_name.is_empty();
-    button.set_sensitive(removable && !state.busy.get());
-    if !removable {
+    button.set_sensitive(removable(app) && !state.busy.get());
+    if app.is_protected {
+        button.set_tooltip_text(Some("Componente esencial del sistema"));
+    } else if !removable(app) {
         button.set_tooltip_text(Some("Este lanzador no pertenece a ningún paquete"));
     }
 
     {
-        let state = state.clone();
+        let state: Weak<State> = Rc::downgrade(state);
         let app = app.clone();
-        button.connect_clicked(move |btn| confirm_uninstall(&state, btn, &app));
+        button.connect_clicked(move |btn| {
+            if let Some(state) = state.upgrade() {
+                confirm_uninstall(&state, btn, &app);
+            }
+        });
     }
     row.append(&button);
 
-    row
+    (row, button)
 }
 
 fn confirm_uninstall(state: &Rc<State>, button: &gtk::Button, app: &AppInfo) {
@@ -232,7 +308,7 @@ fn confirm_uninstall(state: &Rc<State>, button: &gtk::Button, app: &AppInfo) {
         format!("Se eliminará la aplicación Flatpak «{}».", app.id)
     } else {
         format!(
-            "Se eliminará el paquete «{}» con pacman. Se pedirá la contraseña de administrador.",
+            "Se eliminará el paquete «{}» con pacman, junto con las dependencias que ya no use nada más. Se pedirá la contraseña de administrador.",
             app.package_name
         )
     };
@@ -255,17 +331,16 @@ fn confirm_uninstall(state: &Rc<State>, button: &gtk::Button, app: &AppInfo) {
 }
 
 fn start_uninstall(state: &Rc<State>, app: AppInfo) {
-    state.busy.set(true);
+    set_busy(state, true);
     state.status.set_label(&format!("Desinstalando {}…", app.name));
     state.status.set_visible(true);
-    render(state); // deshabilita los botones mientras dura
 
     let name = app.name.clone();
     let state = state.clone();
     run_in_background(
         move || desktop_apps::uninstall_app(&app),
         move |result| {
-            state.busy.set(false);
+            set_busy(&state, false);
             let msg = match result {
                 Ok(()) => format!("{name} se desinstaló correctamente."),
                 Err(e) => format!("No se pudo desinstalar {name}: {e}"),

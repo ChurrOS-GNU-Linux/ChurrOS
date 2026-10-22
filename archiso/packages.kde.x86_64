@@ -104,6 +104,7 @@ mesa
 mesa-utils
 mkinitcpio
 mkinitcpio-archiso
+mkinitcpio-nfs-utils
 mmc-utils
 mpv
 mtools

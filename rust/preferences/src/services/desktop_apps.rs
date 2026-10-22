@@ -8,6 +8,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Paquetes (o IDs de .desktop) que la página nunca ofrece desinstalar.
+pub const PROTECTED_PACKAGES: &[&str] = &[
+    "churros-settings",
+    "churros-welcome",
+    "calamares",
+    "niri",
+    "greetd",
+    "foot",
+    "noctalia",
+];
+
 #[derive(Debug, Clone)]
 pub struct AppInfo {
     /// Flatpak: ID de la app (org.foo.Bar). Pacman: ID del .desktop.
@@ -19,6 +30,14 @@ pub struct AppInfo {
     /// Paquete pacman propietario del .desktop (vacío si no hay ninguno).
     pub package_name: String,
     pub is_flatpak: bool,
+    /// Componente esencial de ChurrOS: no se puede desinstalar desde aquí.
+    pub is_protected: bool,
+}
+
+fn is_protected(id: &str, package_name: &str) -> bool {
+    PROTECTED_PACKAGES
+        .iter()
+        .any(|p| *p == package_name || *p == id)
 }
 
 struct Entry {
@@ -168,17 +187,23 @@ pub fn list_installed_apps() -> Vec<AppInfo> {
                 name: e.name,
                 comment: e.comment,
                 icon_name: e.icon,
+                is_protected: is_protected(&fid, &fid),
                 package_name: fid,
                 is_flatpak: true,
             },
-            None => AppInfo {
-                id: desktop_id(&e.path),
-                package_name: owners.get(&e.path).cloned().unwrap_or_default(),
-                name: e.name,
-                comment: e.comment,
-                icon_name: e.icon,
-                is_flatpak: false,
-            },
+            None => {
+                let id = desktop_id(&e.path);
+                let package_name = owners.get(&e.path).cloned().unwrap_or_default();
+                AppInfo {
+                    is_protected: is_protected(&id, &package_name),
+                    id,
+                    package_name,
+                    name: e.name,
+                    comment: e.comment,
+                    icon_name: e.icon,
+                    is_flatpak: false,
+                }
+            }
         })
         .collect();
 
@@ -191,7 +216,58 @@ pub fn list_installed_apps() -> Vec<AppInfo> {
     apps
 }
 
+/// Paquetes que impiden quitar `output` de pacman ("... required by <pkg>").
+fn dependents_from_pacman(output: &str) -> Option<Vec<String>> {
+    if !output.contains("could not satisfy dependencies") {
+        return None;
+    }
+    let mut pkgs: Vec<String> = output
+        .lines()
+        .filter_map(|l| l.rsplit_once(" required by ").map(|(_, p)| p.trim().to_string()))
+        .collect();
+    pkgs.sort();
+    pkgs.dedup();
+    Some(pkgs)
+}
+
+fn dependents_error(pkgs: &[String]) -> String {
+    const MAX: usize = 5;
+    let mut msg = String::from("Otras aplicaciones instaladas dependen de este paquete");
+    if !pkgs.is_empty() {
+        msg.push_str(": ");
+        msg.push_str(&pkgs.iter().take(MAX).cloned().collect::<Vec<_>>().join(", "));
+        if pkgs.len() > MAX {
+            msg.push_str(&format!(" y {} más", pkgs.len() - MAX));
+        }
+    }
+    msg.push('.');
+    msg
+}
+
+/// Simula la eliminación sin root (`pacman -Rsp`) para detectar
+/// dependencias rotas antes de pedir la contraseña.
+fn check_pacman_removal(package: &str) -> Result<(), String> {
+    let Ok(out) = Command::new("pacman")
+        .env("LC_ALL", "C")
+        .args(["-Rsp", package])
+        .output()
+    else {
+        return Ok(()); // sin simulación, decide la eliminación real
+    };
+    if out.status.success() {
+        return Ok(());
+    }
+    let text = String::from_utf8_lossy(&out.stderr);
+    match dependents_from_pacman(&text) {
+        Some(pkgs) => Err(dependents_error(&pkgs)),
+        None => Ok(()),
+    }
+}
+
 pub fn uninstall_app(app: &AppInfo) -> Result<(), String> {
+    if app.is_protected {
+        return Err("Es un componente esencial del sistema".into());
+    }
     let output = if app.is_flatpak {
         if app.id.is_empty() {
             return Err("ID de Flatpak vacío".into());
@@ -203,8 +279,12 @@ pub fn uninstall_app(app: &AppInfo) -> Result<(), String> {
         if app.package_name.is_empty() {
             return Err("La aplicación no pertenece a ningún paquete de pacman".into());
         }
+        check_pacman_removal(&app.package_name)?;
+        // pkexec conserva LC_ALL: los mensajes de pacman llegan en inglés
+        // y se pueden interpretar.
         Command::new("pkexec")
-            .args(["/usr/bin/pacman", "-R", "--noconfirm", &app.package_name])
+            .env("LC_ALL", "C")
+            .args(["/usr/bin/pacman", "-Rns", "--noconfirm", &app.package_name])
             .output()
     }
     .map_err(|e| format!("No se pudo ejecutar el comando: {e}"))?;
@@ -218,6 +298,11 @@ pub fn uninstall_app(app: &AppInfo) -> Result<(), String> {
     }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !app.is_flatpak
+        && let Some(pkgs) = dependents_from_pacman(&format!("{stderr}\n{stdout}"))
+    {
+        return Err(dependents_error(&pkgs));
+    }
     let msg = if !stderr.is_empty() { stderr } else { stdout };
     Err(if msg.is_empty() {
         format!("El comando terminó con {}", output.status)
