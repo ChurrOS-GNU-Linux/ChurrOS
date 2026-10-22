@@ -897,6 +897,49 @@ class BootConfigs(unittest.TestCase):
                     for name in sorted(set(re.findall(r"%([A-Za-z_]+)%", testlib.read_text(path))) - allowed[path])}
         check_each(self, "boot-cfg", list(allowed), check)
 
+    def test_live_cmdlines_find_the_medium(self):
+        """Cada entrada que arranca la Live dice dónde está el medio.
+
+        El initramfs de archiso necesita archisobasedir= y una forma de
+        encontrar el medio (archisosearchuuid=, archisolabel=, archisodevice=,
+        img_dev= desde loopback.cfg o un servidor PXE). Sin ella la entrada
+        se queda en "Waiting for device" y acaba en la shell de emergencia;
+        en un PR solo se arranca por UEFI, así que BIOS no lo vería nadie.
+        """
+        medium = re.compile(r"\b(?:archisosearchuuid=%ARCHISO_UUID%|archisolabel=\S|archisodevice=\S|img_dev=\S"
+                            r"|archiso_(?:nbd|nfs|http)_srv=\S)")
+        files = sorted((ROOT / "archiso/grub").glob("*.cfg")) + sorted((ROOT / "archiso/syslinux").glob("*.cfg"))
+        files += sorted((ROOT / "archiso/efiboot/loader/entries").glob("*.conf"))
+
+        def cmdlines(path):
+            text = testlib.read_text(path)
+            if path.suffix == ".conf":
+                # systemd-boot: options de una entrada cuyo linux es el de la Live.
+                if re.search(r"^\s*linux\s+/%INSTALL_DIR%/", text, re.M):
+                    yield from re.findall(r"^\s*options\s+(.*)$", text, re.M)
+                return
+            for raw in text.splitlines():
+                grub = re.match(r"\s*linux\s+/%INSTALL_DIR%/\S+\s*(.*)$", raw)
+                if grub:
+                    yield grub.group(1)
+                elif path.parent.name == "syslinux" and path.stem.endswith("-linux"):
+                    append = re.match(r"\s*APPEND\s+(.*)$", raw, re.IGNORECASE)
+                    if append:
+                        yield append.group(1)
+
+        def check(path):
+            findings = {}
+            for number, line in enumerate(cmdlines(path), 1):
+                if "archisobasedir=%INSTALL_DIR%" not in line.split():
+                    findings[f"basedir:{number}"] = f"entrada {number} sin archisobasedir=%INSTALL_DIR%: {line}"
+                if not medium.search(line):
+                    findings[f"medium:{number}"] = (f"entrada {number} sin forma de encontrar el medio "
+                                                    f"(archisosearchuuid=%ARCHISO_UUID%...): {line}")
+            return findings
+        check_each(self, "boot-cmdline", files, check)
+        found = sum(1 for path in files for _ in cmdlines(path))
+        self.assertGreaterEqual(found, 4, f"solo {found} líneas de arranque de la Live: ¿cambió el formato de los cfg?")
+
     def test_syslinux_references(self):
         """INCLUDE/CONFIG/MENU BACKGROUND apuntan a ficheros que mkarchiso copia.
 

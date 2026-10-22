@@ -347,6 +347,35 @@ class UnitFilesTest(unittest.TestCase):
                     problem(path, f"seccion:{section}", f"sección [{section}] desconocida en {directory.name} (se espera {sorted(sections)})")
         testlib.assert_findings(self, "unit-syntax", findings)
 
+    def test_timer_values(self):
+        """OnCalendar= y On*Sec= que systemd entiende (systemd-analyze calendar/timespan).
+
+        Un valor que systemd no sabe leer se ignora con un aviso en el diario
+        y el temporizador se queda sin disparo: las actualizaciones
+        automáticas no corren nunca y ninguna otra prueba lo ve.
+        """
+        analyze = testlib.require_tool(self, "systemd-analyze")
+        findings = {}
+        for path, scope, suffix, dropin in self.units():
+            if suffix != ".timer":
+                continue
+            entries, _ = parse_ini(path)
+            for section, key, value in entries:
+                if section != "Timer" or not value:
+                    continue
+                if key == "OnCalendar":
+                    verb = "calendar"
+                elif key in TIMER_TRIGGERS and key.endswith("Sec"):
+                    verb = "timespan"
+                else:
+                    continue
+                result = testlib.run([analyze, verb, value], timeout=30)
+                if result.returncode != 0:
+                    findings[f"timer-value:{rel(path)}:{key}"] = (
+                        f"{rel(path)}: {key}={value} no es válido para systemd "
+                        f"(systemd-analyze {verb}: {result.stdout.strip().splitlines()[-1:]})")
+        testlib.assert_findings(self, "timer-value", findings)
+
     def test_exec_commands_resolve(self):
         """Cada Exec* se puede ejecutar en cada edición (salvo '-' que falle en alguna)."""
         failures: dict[tuple[str, str], dict[str, str]] = {}

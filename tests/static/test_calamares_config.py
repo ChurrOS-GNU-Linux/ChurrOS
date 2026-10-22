@@ -1080,7 +1080,46 @@ class CalamaresConfigTest(unittest.TestCase):
                 findings.update(self.simulate_fixboot(arch, files, fixboot_conf, Path(tmp), category))
             with self.subTest(simulacion="pacman.conf", arch=arch), tempfile.TemporaryDirectory() as tmp:
                 findings.update(self.simulate_pacman_cleanup(arch, files, cleanup_conf, Path(tmp), category))
+            with self.subTest(simulacion="acceso del Live", arch=arch), tempfile.TemporaryDirectory() as tmp:
+                findings.update(self.simulate_live_access_cleanup(arch, files, cleanup_conf, Path(tmp), category))
         testlib.assert_findings(self, category, findings)
+
+    def simulate_live_access_cleanup(self, arch, files, conf_name, root, category):
+        """post-install quita el acceso del Live: el sudoers de churros y la cuenta.
+
+        users.sh deja a churros sin contraseña, en wheel y con NOPASSWD: ALL;
+        unpackfs copia todo eso al disco y settings.conf no tiene removeuser.
+        Si post-install pierde estos comandos, cada instalación trae root sin
+        contraseña y la instalación termina "bien" (verify-install solo avisa).
+        """
+        findings = {}
+        prefix = f"{category}:live-access:{arch}"
+        users_sh = testlib.read_text(testlib.AIROOTFS / "root/scripts/users.sh")
+        dropins = sorted(set(re.findall(r"/etc/sudoers\.d/[\w.-]+", users_sh)))
+        self.assertTrue(dropins, "users.sh ya no escribe en /etc/sudoers.d: actualiza esta prueba")
+        conf = files.get(conf_name)
+        if conf is None:
+            self.fail(f"{arch}: falta {conf_name}")
+        rel = crel(conf)
+        commands = [command for command, _ in command_entries(self.load(conf).get("script")) if command]
+        words = [w for command in commands for w in simple_commands(strip_ignore(command)[0])]
+        removes_user = any(w[:1] == ["userdel"] and "churros" in w[1:] and {"-r", "--remove"} & set(w[1:])
+                           for w in words)
+        if not removes_user:
+            findings[f"{prefix}:userdel"] = (f"{arch}: {rel} ya no ejecuta 'userdel -r churros': el sistema "
+                                             "instalado conserva la cuenta del Live, sin contraseña y en wheel")
+        for dropin in dropins:
+            target = root / dropin.lstrip("/")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("churros ALL=(ALL:ALL) NOPASSWD: ALL\n")
+        touching = [command for command in commands if "/etc/sudoers.d" in command]
+        for program, message in self.run_commands(touching, root, rel).items():
+            findings[f"{prefix}:command-fails:{program}"] = f"{arch}: {rel}: {message}"
+        for dropin in dropins:
+            if (root / dropin.lstrip("/")).exists():
+                findings[f"{prefix}:sudoers:{dropin}"] = (
+                    f"{arch}: tras post-install sigue {dropin} (NOPASSWD: ALL del Live) en el sistema instalado")
+        return findings
 
     def run_commands(self, commands: list[str], root: Path, label: str) -> dict[str, str]:
         """Ejecuta los comandos con la semántica de CommandList en `root`."""

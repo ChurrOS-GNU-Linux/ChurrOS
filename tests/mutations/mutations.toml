@@ -1720,3 +1720,176 @@ replace = "keep_waybar() {\n    while true; do\n        waybarr \\1\n        sle
 caught_by = "tests.static.test_references"
 expect = "función keep_waybar) ejecuta 'waybarr'"
 why = "Envolver waybar en una función de reinicio (`f &`) no puede esconder una errata en el programa que lanza la función."
+
+# ---- Arnés robusto y comprobaciones nuevas tras la revisión adversarial
+
+[[mutation]]
+name = "test_harness: run_mutations acepta un `requires` con errata"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        if mutation\.get\("requires"\) not in LAYERS:$'
+replace = "        if False:"
+caught_by = "tests.static.test_harness"
+expect = "test_validate_rejects_entries_that_would_never_run"
+why = "Una mutación con requires = \"contaner\" no se ejecutaría en ninguna capa y nadie lo notaría."
+
+[[mutation]]
+name = "test_harness: el timeout de run_mutations solo mata al hijo"
+file = "tests/mutations/run_mutations.py"
+find = "os.killpg(proc.pid, signal.SIGKILL)"
+replace = "proc.kill()"
+caught_by = "tests.static.test_harness"
+expect = "el timeout no mata a los nietos"
+why = "check.sh y el dry run de build.sh dejan nietos con la salida abierta: el plazo no corta nada y la copia del worker sigue ocupada."
+
+[[mutation]]
+name = "test_harness: una mutación obsoleta restaura un fichero que ya no existe"
+file = "tests/mutations/run_mutations.py"
+find_re = '^    error = apply\(mutation, copy\)\n    if error:\n'
+replace = "    error = apply(mutation, copy)\n    if error:\n        restore(mutation, copy)\n"
+caught_by = "tests.static.test_harness"
+expect = "CalledProcessError"
+why = "git checkout de un fichero renombrado revienta el runner: ni ✗ OBSOLETA ni el resto de resultados, y la copia del worker se pierde."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues con una subcategoría que no existe"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"release:manfest:files:updates.json\"\nnote = \"errata en la categoría: no silencia nada\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "release:manfest:files:updates.json"
+why = "Con solo la primera palabra ('release') la entrada pasaba aunque ninguna prueba la produzca."
+
+[[mutation]]
+name = "test_repo_wiring: la categoría de la auditoría de ISO pierde la arquitectura"
+file = "tests/iso/check_iso.py"
+find = 'category = f"iso-{edition_name}-{arch}"'
+replace = 'category = f"iso-{edition_name}"'
+caught_by = "tests.static.test_repo_wiring"
+expect = "iso-server-x86_64:missing-lib:libcalamares.so:libkpmcore.so"
+why = "La ISO aarch64 y la x86_64 compartirían la lista: un fallo de una sola arquitectura no se podría apuntar."
+
+[[mutation]]
+name = "test_harness: el id de missing-lib lleva la versión de Calamares"
+file = "tests/iso/check_iso.py"
+find = 'return re.sub(r"(\.so)(\.\d+)+$", r"\1", name)'
+replace = "return name"
+caught_by = "tests.static.test_harness"
+expect = "libcalamares.so.3.4.2"
+why = "Cada versión nueva de Calamares en el AUR cambiaría los ids: la auditoría nocturna de server se pondría roja sin ningún cambio."
+
+[[mutation]]
+name = "test_harness: el patrón exec del diario deja de capturar la ruta"
+file = "tests/vm/boot_smoke.py"
+find = '(?:Failed to execute|Failed at step EXEC spawning) (\S+?):'
+replace = '(?:Failed to execute|Failed at step EXEC spawning) \S+?:'
+caught_by = "tests.static.test_harness"
+expect = "journal:exec:/usr/bin/churros-bar"
+why = "Todos los exec fallidos compartirían un id: apuntar uno en known_issues taparía cualquier otro."
+
+[[mutation]]
+name = "test_harness: boot_smoke da por arreglados los fallos conocidos de una prueba cortada"
+file = "tests/vm/boot_smoke.py"
+find = "fixed = sorted(k for k in known if k not in findings) if completed else []"
+replace = "fixed = sorted(k for k in known if k not in findings)"
+caught_by = "tests.static.test_harness"
+expect = "una prueba que no terminó manda borrar"
+why = "Si qemu-guest-agent no responde, la salida mandaba borrar boot-xfce-x86_64:process:churros-welcome, que sigue fallando."
+
+[[mutation]]
+name = "test_harness: boot_smoke solo recoge VMError"
+file = "tests/vm/boot_smoke.py"
+find = "    except Exception as exc:  # noqa: BLE001 - cualquier error tiene que acabar en report.json"
+replace = "    except VMError as exc:"
+caught_by = "tests.static.test_harness"
+expect = "BrokenPipeError"
+why = "Un BrokenPipeError o un timeout del socket terminaban sin report.json ni captura: el CI no dejaba con qué diagnosticar."
+
+[[mutation]]
+name = "test_harness: la espera del arranque ignora el acelerador de la VM"
+file = "tests/vm/boot_smoke.py"
+find = 'timeout = args.timeout or (420 if vm.accel == "kvm" else 2400)'
+replace = "timeout = args.timeout or 420"
+caught_by = "tests.static.test_harness"
+expect = "la espera no sale del acelerador"
+why = "Una ISO i686 o aarch64 en un equipo x86_64 va por TCG: con la espera de KVM falla por tiempo."
+
+[[mutation]]
+name = "test_harness: un socket de QEMU roto no se convierte en VMError"
+file = "tests/vm/qemu.py"
+find_re = '^        except OSError as exc:\n            raise VMError\(f"socket \{self\.path\.name\}: \{exc!r\}"\) from exc\n\n    def recv'
+replace = "        except ValueError as exc:\n            raise VMError(f\"socket {self.path.name}: {exc!r}\") from exc\n\n    def recv"
+caught_by = "tests.static.test_harness"
+expect = "BrokenPipeError"
+why = "QEMU muerto a mitad de prueba: BrokenPipeError salta por encima del informe."
+
+[[mutation]]
+name = "test_harness: las unidades de usuario mal escritas no cuentan"
+file = "tests/vm/boot_smoke.py"
+find = 'if load in ("error", "bad-setting") or active == "failed":'
+replace = 'if active == "failed":'
+caught_by = "tests.static.test_harness"
+expect = "bad-setting"
+why = "Un churros-update.timer que systemd rechaza no está 'failed', está 'bad-setting': las actualizaciones automáticas no correrían nunca."
+
+[[mutation]]
+name = "test_systemd_units: OnCalendar que systemd no entiende"
+file = "archiso/airootfs/etc/systemd/system/churros-update.timer"
+find = "OnCalendar=*-*-* 04:00:00"
+replace = "OnCalendar=every day at 4"
+caught_by = "tests.static.test_systemd_units"
+expect = "OnCalendar=every day at 4 no es válido"
+why = "systemd ignora la línea y rechaza el temporizador: las actualizaciones automáticas no corren y ninguna otra prueba lo ve."
+
+[[mutation]]
+name = "test_calamares_config: post-install deja el sudoers NOPASSWD del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find_re = '^  - command: "rm -f /etc/sudoers\.d/churros"\n    timeout: 5\n'
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "NOPASSWD: ALL del Live"
+why = "Una limpieza de comandos 'que sobran' dejaría sudo sin contraseña en cada sistema instalado."
+
+[[mutation]]
+name = "test_calamares_config: post-install deja la cuenta churros del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find_re = '^  - command: "-userdel -r churros"\n    timeout: 10\n'
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "userdel -r churros"
+why = "La cuenta del Live no tiene contraseña y está en wheel: root sin contraseña en cada instalación."
+
+[[mutation]]
+name = "check: install_dir cambia y unpackfs sigue en bootmnt/churros"
+file = "archiso/profiledef.sh"
+find = 'install_dir="churros"'
+replace = 'install_dir="chos"'
+caught_by = "check"
+expect = "does not unpack chos/x86_64/airootfs.sfs"
+why = "La Live arranca (GRUB y syslinux usan %INSTALL_DIR%) pero cada instalación falla en unpackfs."
+
+[[mutation]]
+name = "test_editions: la lista de XFCE pierde xorg-server"
+file = "archiso/packages.xfce.x86_64"
+find_re = '^xorg-server\n'
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "xfce/x86_64:xorg-server"
+why = "Nada nombra Xorg, pero churros-xfce-session hace startx: la Live de XFCE se queda en negro."
+
+[[mutation]]
+name = "test_config_syntax: la entrada BIOS de la Live pierde archisosearchuuid"
+file = "archiso/syslinux/archiso_sys-linux.cfg"
+find_re = '^(APPEND archisobasedir=%INSTALL_DIR%) archisosearchuuid=%ARCHISO_UUID% (copytoram=n cow_spacesize=2G)$'
+replace = '\1 \2'
+caught_by = "tests.static.test_config_syntax"
+expect = "boot-cmdline:archiso/syslinux/archiso_sys-linux.cfg:medium:1"
+why = "El initramfs no encuentra el medio y acaba en la shell de emergencia; los PR solo arrancaban por UEFI."
+
+[[mutation]]
+name = "test_harness: pick_editions deja de ver los cambios de X11"
+file = "tests/iso/pick_editions.py"
+find = 'DESKTOP_WORDS = {"xfce": ("xfce", "x11", "xinit", "xorg", "startx")}'
+replace = "DESKTOP_WORDS = {}"
+caught_by = "tests.static.test_harness"
+expect = "Xwrapper"
+why = "Un PR que toca /etc/X11 construiría solo niri y la rotura de XFCE aparecería de madrugada."

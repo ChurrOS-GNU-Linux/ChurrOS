@@ -36,6 +36,7 @@ from pathlib import Path
 import queue
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -46,11 +47,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tests import testlib  # noqa: E402
 
 MUTATIONS_FILE = testlib.ROOT / "tests/mutations/mutations.toml"
+KEYS = {"name", "file", "find", "find_re", "replace", "delete", "caught_by", "expect", "requires", "why"}
+# None: el host (./churros test --mutations); "container": --container.
+LAYERS = (None, "container")
 
 
-def load_mutations() -> list[dict]:
-    data = testlib.tomllib.loads(testlib.read_text(MUTATIONS_FILE))
-    mutations = data.get("mutation", [])
+def validate(mutations: list[dict]) -> list[dict]:
+    """Rechaza entradas que no se ejecutarían nunca o no como dicen."""
     names = [m.get("name") for m in mutations]
     duplicated = {n for n in names if names.count(n) > 1}
     if duplicated:
@@ -59,9 +62,21 @@ def load_mutations() -> list[dict]:
         for key in ("name", "file", "caught_by", "expect"):
             if not mutation.get(key):
                 raise SystemExit(f"mutación sin '{key}': {mutation}")
+        unknown = sorted(set(mutation) - KEYS)
+        if unknown:
+            raise SystemExit(f"mutación con claves desconocidas {unknown} (¿errata?): {mutation['name']}")
+        # Un `requires` mal escrito la sacaría de todas las capas sin avisar.
+        if mutation.get("requires") not in LAYERS:
+            raise SystemExit(f"'requires' desconocido ({mutation['requires']!r}; vale \"container\" o nada): "
+                             f"{mutation['name']}")
         if not mutation.get("delete") and ("find" in mutation) == ("find_re" in mutation):
             raise SystemExit(f"mutación sin 'find', 'find_re' ni 'delete' (o con los dos): {mutation['name']}")
     return mutations
+
+
+def load_mutations() -> list[dict]:
+    data = testlib.tomllib.loads(testlib.read_text(MUTATIONS_FILE))
+    return validate(data.get("mutation", []))
 
 
 def command_for(caught_by: str) -> list[str]:
@@ -90,13 +105,21 @@ def make_copy(source: Path, target: Path) -> None:
 
 
 def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
+    """(código, salida). Al vencer el plazo mata el grupo entero: check.sh y
+    el build.sh del dry run dejarían nietos vivos en la copia del worker."""
     env = testlib.scratch_env(PYTHONDONTWRITEBYTECODE="1")
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, text=True, start_new_session=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     try:
-        result = subprocess.run(cmd, cwd=cwd, env=env, text=True, timeout=timeout,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        return result.returncode, result.stdout
-    except subprocess.TimeoutExpired as exc:
-        return 124, (exc.stdout or "") + f"\n[timeout tras {timeout:.0f} s]"
+        output, _ = proc.communicate(timeout=timeout)
+        return proc.returncode, output
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        output, _ = proc.communicate()
+        return 124, (output or "") + f"\n[timeout tras {timeout:.0f} s]"
 
 
 def mutated_text(mutation: dict, root: Path) -> tuple[str | None, str | None]:
@@ -135,8 +158,28 @@ def apply(mutation: dict, copy: Path) -> str | None:
 
 
 def restore(mutation: dict, copy: Path) -> None:
-    subprocess.run(["git", "checkout", "-q", "--", mutation["file"]], cwd=copy, check=True,
+    subprocess.run(["git", "checkout", "-q", "HEAD", "--", mutation["file"]], cwd=copy, check=True,
                    env=testlib.scratch_env())
+
+
+def evaluate(mutation: dict, copy: Path, timeout: float) -> dict:
+    """Aplica la mutación en `copy`, ejecuta su prueba y deja la copia como estaba."""
+    error = apply(mutation, copy)
+    if error:
+        # No se tocó nada: no hay que restaurar (y un fichero que ya no
+        # existe ni siquiera se podría).
+        return {"mutation": mutation, "status": "stale", "detail": error}
+    try:
+        code, output = run(command_for(mutation["caught_by"]), copy, timeout)
+    finally:
+        restore(mutation, copy)
+    if code == 0:
+        status = "survived"
+    elif mutation["expect"] not in output:
+        status = "wrong-message"
+    else:
+        status = "killed"
+    return {"mutation": mutation, "status": status, "detail": output}
 
 
 def main() -> int:
@@ -181,27 +224,18 @@ def main() -> int:
             shutil.copytree(base, copy, symlinks=True)
             workers.put(copy)
 
-        def evaluate(mutation: dict) -> dict:
+        def in_worker(mutation: dict) -> dict:
             copy = workers.get()
             try:
-                error = apply(mutation, copy)
-                if error:
-                    return {"mutation": mutation, "status": "stale", "detail": error}
-                code, output = run(command_for(mutation["caught_by"]), copy, args.timeout)
-                if code == 0:
-                    status = "survived"
-                elif mutation["expect"] not in output:
-                    status = "wrong-message"
-                else:
-                    status = "killed"
-                return {"mutation": mutation, "status": status, "detail": output}
+                return evaluate(mutation, copy, args.timeout)
             finally:
-                restore(mutation, copy)
+                # Siempre de vuelta a la cola: una copia perdida bloquea a
+                # las mutaciones que esperan en workers.get().
                 workers.put(copy)
 
         print(f"\n== {len(mutations)} mutaciones ({args.jobs} en paralelo)")
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            results = list(pool.map(evaluate, mutations))
+            results = list(pool.map(in_worker, mutations))
 
     bad = 0
     labels = {"killed": "✓", "survived": "✗ SOBREVIVE", "wrong-message": "✗ MENSAJE", "stale": "✗ OBSOLETA"}

@@ -121,23 +121,36 @@ class _JsonSocket:
     """Socket de líneas JSON (QMP y QGA hablan el mismo formato)."""
 
     def __init__(self, path: Path, timeout: float):
+        self.path = Path(path)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.settimeout(timeout)
         self.sock.connect(str(path))
         self.buffer = b""
 
+    # Un QEMU que muere o un qemu-ga que deja de contestar dan OSError
+    # (BrokenPipeError, TimeoutError) o JSON cortado: todo es VMError, el
+    # único error que boot_smoke sabe convertir en informe.
     def send(self, message: dict) -> None:
-        self.sock.sendall(json.dumps(message).encode() + b"\n")
+        try:
+            self.sock.sendall(json.dumps(message).encode() + b"\n")
+        except OSError as exc:
+            raise VMError(f"socket {self.path.name}: {exc!r}") from exc
 
     def recv(self) -> dict:
         while b"\n" not in self.buffer:
-            chunk = self.sock.recv(65536)
+            try:
+                chunk = self.sock.recv(65536)
+            except OSError as exc:
+                raise VMError(f"socket {self.path.name}: {exc!r}") from exc
             if not chunk:
                 raise VMError("el socket se cerró")
             self.buffer += chunk
         line, self.buffer = self.buffer.split(b"\n", 1)
         line = line.strip().lstrip(b"\xff")
-        return json.loads(line) if line else self.recv()
+        try:
+            return json.loads(line) if line else self.recv()
+        except json.JSONDecodeError as exc:
+            raise VMError(f"socket {self.path.name}: respuesta no es JSON: {line[:200]!r}") from exc
 
     def close(self) -> None:
         self.sock.close()
@@ -189,7 +202,7 @@ class GuestAgent:
             while self.conn.recv().get("return") != token:
                 pass
             return True
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, VMError):
             return False
         finally:
             self.conn.sock.settimeout(self.timeout)
@@ -371,7 +384,7 @@ class VM:
         target = path.with_suffix(".ppm")
         try:
             qmp = QMP(self.qmp_path)
-        except OSError:
+        except (OSError, VMError):
             return None
         try:
             qmp.execute("screendump", filename=str(target))
@@ -383,13 +396,21 @@ class VM:
         if self.display and shutil.which("xwd"):
             # Con varias consolas SDL abre una ventana por consola y numera el
             # título: la gráfica es la -0.
+            data = None
             for window in (["-name", f"QEMU ({WINDOW_NAME}-0)"], ["-name", f"QEMU ({WINDOW_NAME})"], ["-root"]):
-                result = subprocess.run(["xwd", "-silent", "-display", self.display, *window],
-                                        capture_output=True, timeout=60)
+                try:
+                    result = subprocess.run(["xwd", "-silent", "-display", self.display, *window],
+                                            capture_output=True, timeout=60)
+                except subprocess.TimeoutExpired:
+                    continue
                 if result.returncode == 0 and len(result.stdout) > 100:
+                    data = result.stdout
                     break
-            if result.returncode == 0 and len(result.stdout) > 100:
-                width, height, rgb = xwd_to_rgb(result.stdout)
+            if data is not None:
+                try:
+                    width, height, rgb = xwd_to_rgb(data)
+                except (ValueError, struct.error, VMError):
+                    return None
                 if window == ["-root"]:
                     # Sin la ventana, la raíz de Xvfb tiene borde negro alrededor.
                     width, height, rgb = crop_to_content(width, height, rgb)

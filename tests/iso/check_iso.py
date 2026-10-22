@@ -224,9 +224,20 @@ def extract_from_iso(iso: Path, path: str, dest: Path) -> Path:
     return dest
 
 
-def audit(iso: Path, edition_name: str | None, audit_: Audit, workdir: Path) -> str:
+def soname_key(name: str) -> str:
+    """libcalamares.so.3.4.2 -> libcalamares.so: el id de un hallazgo no puede
+    cambiar con cada versión de Calamares del AUR (el mensaje sí la lleva)."""
+    return re.sub(r"(\.so)(\.\d+)+$", r"\1", name)
+
+
+def iso_arch(iso: Path) -> str:
+    """Arquitectura del nombre que pone mkarchiso (ChurrOS-<fecha>-<arch>.iso)."""
     match = re.search(r"-(x86_64|aarch64|i686)(?:-|\.iso)", iso.name)
-    arch = match.group(1) if match else "x86_64"
+    return match.group(1) if match else "x86_64"
+
+
+def audit(iso: Path, edition_name: str | None, audit_: Audit, workdir: Path) -> str:
+    arch = iso_arch(iso)
     prof = testlib.profile(arch)
     install_dir = prof["install_dir"]
     files = iso_files(iso)
@@ -328,7 +339,8 @@ def audit(iso: Path, edition_name: str | None, audit_: Audit, workdir: Path) -> 
         search = [p.replace("$ORIGIN", str(PurePosixPath(real).parent)) for p in info["runpath"]] + ld_dirs
         for lib in info["needed"]:
             if not any(squash.exists(f"{d.rstrip('/')}/{lib}") for d in search):
-                elf_problems.append((f"missing-lib:{PurePosixPath(binary).name}:{lib}", f"{binary} necesita {lib}, que no está en la ISO"))
+                key = f"missing-lib:{soname_key(PurePosixPath(binary).name)}:{soname_key(lib)}"
+                elf_problems.append((key, f"{binary} necesita {lib}, que no está en la ISO"))
     audit_.check(f"{len(binaries)} binarios ELF de {arch} con todas sus bibliotecas", elf_problems)
 
     print("\n== Sistema Live")
@@ -411,10 +423,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="churros-iso-") as tmp:
         edition_name = audit(args.iso.resolve(), args.edition, audit_, Path(tmp))
 
-    match = re.search(r"-(x86_64|aarch64|i686)(?:-|\.iso)", args.iso.name)
     # Una categoría por edición y arquitectura: la ISO aarch64 no puede dar
     # por arreglado un fallo que solo tiene la x86_64.
-    category = f"iso-{edition_name}-{match.group(1) if match else 'x86_64'}"
+    arch = iso_arch(args.iso)
+    category = f"iso-{edition_name}-{arch}"
     findings = {f"{category}:{key}": msg for key, msg in audit_.findings.items()}
     known = {k for k in testlib.known_issues() if k.startswith(category + ":")}
     new = {k: v for k, v in findings.items() if k not in known}

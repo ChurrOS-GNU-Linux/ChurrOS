@@ -8,9 +8,13 @@ y comprueba desde dentro lo que una persona vería al arrancar:
 - systemd termina el arranque y no hay unidades fallidas;
 - greetd, NetworkManager y pacman-init funcionan;
 - greetd abre la sesión del usuario churros (autologin) y está activa;
+- el gestor de usuario de churros no tiene unidades fallidas ni mal
+  escritas y los temporizadores del skel (churros-update.timer) están
+  activos;
 - los procesos del escritorio siguen vivos (niri + noctalia + bienvenida,
   o xfce4-session + xfwm4 + panel...) y, en niri, la ventana de la
-  bienvenida existe (niri msg windows);
+  bienvenida existe (niri msg windows) y Ajustes y el centro de control
+  abren su ventana (niri msg action spawn);
 - no hay core dumps, ni 'Permission denied' al ejecutar scripts de
   ChurrOS, ni errores de configuración de niri, ni opciones desconocidas
   en los lanzadores;
@@ -23,23 +27,25 @@ apuntan en tests/known_issues.toml con la categoría boot-<edición>-<arquitectu
 Uso:
   python3 tests/vm/boot_smoke.py out/ChurrOS-....iso [--firmware uefi|bios]
       [--timeout SEG] [--artifacts DIR] [--edition niri]
-Con KVM tarda 2-4 minutos; sin KVM (TCG) puede pasar de 20.
+Con KVM tarda 2-4 minutos; sin KVM (TCG, con virgl) unos 8-10.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
 import struct
 import sys
 import time
+import traceback
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests import testlib  # noqa: E402
-from tests.vm.qemu import VM, VMError, kvm_available  # noqa: E402
+from tests.vm.qemu import VM, VMError  # noqa: E402
 
 # Lo que tiene que estar vivo en la sesión de cada escritorio (pgrep -x,
 # nombre de proceso de 15 caracteres como mucho).
@@ -57,6 +63,14 @@ DESKTOPS = {
         "windows": [],
     },
 }
+
+# Apps que la sesión no abre sola (Ajustes: Mod+P en niri; el centro de
+# control: Super+A/Super+C en XFCE): binario y app_id de su ventana.
+NIRI_APPS = [("churros-settings", "org.churros.preferences"),
+             ("churros-control-center", "org.churros.controlcenter")]
+
+# Temporizadores de usuario que el skel habilita (useradd copia el enlace).
+SKEL_USER_UNITS = testlib.AIROOTFS / "etc/skel/.config/systemd/user"
 
 # Unidades que la ISO Live tiene que tener activas.
 ACTIVE_UNITS = ["greetd.service", "NetworkManager.service", "qemu-guest-agent.service"]
@@ -216,6 +230,42 @@ def check_session(agent, report: Report, desktop: str, timeout: float) -> str | 
     return uid
 
 
+def user_units_problems(listing: str) -> dict[str, str]:
+    """Unidades de `systemctl --user list-units --all` fallidas o que systemd no pudo cargar."""
+    problems = {}
+    for line in listing.splitlines():
+        fields = line.split(None, 4)
+        if len(fields) < 4:
+            continue
+        unit, load, active = fields[:3]
+        if load in ("error", "bad-setting") or active == "failed":
+            problems[unit] = f"{load}/{active}"
+    return problems
+
+
+def check_user_units(agent, report: Report, uid: str, timeout: float) -> None:
+    """El gestor de usuario de churros: lo que check_system no ve."""
+    user = (f"runuser -u churros -- env XDG_RUNTIME_DIR=/run/user/{uid} "
+            f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus systemctl --user --no-pager")
+    ok, listing = poll(agent, f"{user} list-units --all --plain --no-legend",
+                       lambda out: ".target" in out, timeout=min(timeout, 120))
+    if not ok:
+        report.check("gestor de usuario de churros responde", False, listing[:300])
+        return
+    problems = user_units_problems(listing)
+    for unit, state in problems.items():
+        _, status = guest_sh(agent, f"{user} status -l -n 20 {unit}")
+        report.finding(f"user-unit:{unit}", f"unidad de usuario {unit} {state}:\n{status}")
+    wanted = sorted(p.name for p in SKEL_USER_UNITS.glob("*.wants/*"))
+    for unit in wanted:
+        _, state = guest_sh(agent, f"{user} is-active {unit}")
+        if state != "active":
+            report.finding(f"user-unit:{unit}", f"{unit} (habilitada en el skel) está {state}")
+            problems.setdefault(unit, state)
+    report.check("unidades de usuario de churros cargadas y activas (" + ", ".join(wanted) + ")", not problems,
+                 ", ".join(f"{u} {s}" for u, s in problems.items()))
+
+
 def check_niri(agent, report: Report, uid: str, timeout: float) -> None:
     env = f"XDG_RUNTIME_DIR=/run/user/{uid}"
     sock = f"$(ls /run/user/{uid}/niri.*.sock 2>/dev/null | head -n1)"
@@ -250,25 +300,62 @@ def check_niri(agent, report: Report, uid: str, timeout: float) -> None:
         if not ok:
             report.finding(f"window:{app}", f"no hay ventana {app} en niri")
 
+    # Ajustes y el centro de control no arrancan solos: se abren como lo haría
+    # un atajo (spawn de niri) y se espera a su ventana. Un panic al construir
+    # la ventana (panic = "abort" en release) solo se ve así.
+    missing = []
+    for binary, app_id in NIRI_APPS:
+        guest_sh(agent, f"{cmd} action spawn -- {binary}")
+        opened, windows = poll(agent, f"{cmd} windows",
+                               lambda out, app_id=app_id: f'"{app_id}"' in out, timeout=min(timeout, 120))
+        if not opened:
+            missing.append(binary)
+            report.finding(f"app:{binary}", f"{binary} no abre su ventana {app_id} en niri")
+    report.check("Ajustes y centro de control abren su ventana", not missing, ", ".join(missing))
+
+
+# Errores del diario que nunca deberían salir en la Live. Cada patrón
+# captura lo que identifica el fallo (ruta, opción, unidad, mensaje): un id
+# de tests/known_issues.toml tapa ese fallo y no cualquier otro del mismo tipo.
+JOURNAL_PATTERNS = [
+    (re.compile(r"(/usr/(?:local/)?bin/\S+|/usr/share/churros/\S+).*Permission denied"
+                r"|Permission denied.*(/usr/(?:local/)?bin/\S+|/usr/share/churros/\S+)"), "permission"),
+    (re.compile(r"niri.*?(?:error loading config|failed to parse config|error parsing)[:\s]*(.*)", re.I), "niri-config"),
+    (re.compile(r"Unknown option (\S+)"), "unknown-option"),
+    (re.compile(r"(?:Failed to execute|Failed at step EXEC spawning) (\S+?):"), "exec"),
+    # systemd ignora la línea o la unidad entera (OnCalendar= mal escrito...).
+    (re.compile(r"(?:\S*/)?([\w@.-]+\.(?:service|timer|socket|path|target))(?::\d+)?: .*(?:Failed to parse"
+                r"|bad unit file setting|lacks value setting)"), "unit-setting"),
+]
+TIMESTAMP = re.compile(r"^\[\s*\d+\.\d+\]\s*|\[\d+\]|\b\d+\b")
+
+
+def journal_findings(journal: str) -> dict[str, str]:
+    """{journal:<tipo>:<detalle>: línea} de los errores conocidos del diario."""
+    findings = {}
+    for line in journal.splitlines():
+        for pattern, kind in JOURNAL_PATTERNS:
+            match = pattern.search(line)
+            if not match:
+                continue
+            detail = next((g for g in match.groups() if g), "").strip()
+            if kind == "niri-config":
+                detail = TIMESTAMP.sub("N", detail)[:80]
+            if not detail:
+                # Sin nada que capturar, el mensaje sin marcas de tiempo ni PID.
+                detail = hashlib.sha1(TIMESTAMP.sub("", line).encode()).hexdigest()[:10]
+            findings[f"journal:{kind}:{detail}"] = line.strip()
+    return findings
+
 
 def check_journal(agent, report: Report, artifacts: Path) -> None:
     _, journal = guest_sh(agent, "journalctl -b --no-pager -o short-monotonic", timeout=120)
     (artifacts / "journal.txt").write_text(journal + "\n")
-    patterns = [
-        (re.compile(r"(/usr/(?:local/)?bin/\S+|/usr/share/churros/\S+).*Permission denied|Permission denied.*(/usr/(?:local/)?bin/\S+|/usr/share/churros/\S+)"), "permission"),
-        (re.compile(r"niri.*(?:error loading config|failed to parse config|error parsing)", re.I), "niri-config"),
-        (re.compile(r"Unknown option (\S+)"), "unknown-option"),
-        (re.compile(r"Failed to execute .*: (?:No such file|Permission denied)|Failed at step EXEC"), "exec"),
-    ]
-    hits = 0
-    for line in journal.splitlines():
-        for pattern, kind in patterns:
-            match = pattern.search(line)
-            if match:
-                detail = next((g for g in match.groups() if g), "") if match.groups() else ""
-                report.finding(f"journal:{kind}:{detail}".rstrip(":"), line.strip())
-                hits += 1
-    report.check("diario sin errores de ejecución, permisos ni configuración", hits == 0, f"{hits} líneas")
+    findings = journal_findings(journal)
+    for key, line in findings.items():
+        report.finding(key, line)
+    report.check("diario sin errores de ejecución, permisos ni configuración", not findings,
+                 f"{len(findings)} errores distintos")
 
     _, dumps = guest_sh(agent, "coredumpctl --json=short --no-pager list 2>/dev/null || true")
     crashed = parse_coredumps(dumps)
@@ -320,17 +407,21 @@ def main() -> int:
     iso = args.iso.resolve()
     match = re.search(r"-(x86_64|aarch64|i686)(?:-|\.iso)", iso.name)
     arch = match.group(1) if match else "x86_64"
-    timeout = args.timeout or (420 if kvm_available() else 2400)
     artifacts = (args.artifacts or testlib.ROOT / "out" / f"boot-{iso.stem}-{args.firmware}").resolve()
     artifacts.mkdir(parents=True, exist_ok=True)
     report = Report()
-    print(f"== Arranque de {iso.name} ({arch}, {args.firmware}, {'KVM' if kvm_available() else 'TCG'}, espera {timeout:.0f} s)")
-    print(f"   artefactos: {artifacts}")
 
     vm = VM(iso=iso, arch=arch, firmware=args.firmware, memory=args.memory, artifacts=artifacts, gpu=args.gpu)
+    # El acelerador que usa la VM, no si existe /dev/kvm: una ISO i686 o
+    # aarch64 en un equipo x86_64 va por TCG aunque haya KVM.
+    timeout = args.timeout or (420 if vm.accel == "kvm" else 2400)
     report.facts["gpu"] = vm.gpu
+    report.facts["accel"] = vm.accel
+    print(f"== Arranque de {iso.name} ({arch}, {args.firmware}, {vm.accel.upper()}, espera {timeout:.0f} s)")
+    print(f"   artefactos: {artifacts}")
     started = time.monotonic()
     edition_name = args.edition
+    completed = False
     try:
         vm.start()
         agent = vm.wait_for_agent(timeout, abort_patterns=FATAL_SERIAL)
@@ -347,15 +438,24 @@ def main() -> int:
         check_system(agent, report, timeout)
         if item and item.desktop:
             uid = check_session(agent, report, item.desktop, timeout)
+            check_user_units(agent, report, uid, timeout)
             if item.desktop == "niri":
                 check_niri(agent, report, uid, timeout=min(timeout, 300))
         check_journal(agent, report, artifacts)
         if item and item.desktop:
             check_screen(vm, report, artifacts)
         agent.close()
-    except VMError as exc:
-        report.check("la VM arrancó", False, str(exc))
-        capture(vm, artifacts, "screen")
+        completed = True
+    except Exception as exc:  # noqa: BLE001 - cualquier error tiene que acabar en report.json
+        if isinstance(exc, VMError):
+            report.check("la VM arrancó", False, str(exc))
+        else:
+            report.check("el arnés terminó sin excepciones", False, f"{type(exc).__name__}: {exc}")
+            report.facts["traceback"] = traceback.format_exc()
+        try:
+            capture(vm, artifacts, "screen")
+        except Exception as shot:  # noqa: BLE001
+            report.facts["screen_error"] = f"{type(shot).__name__}: {shot}"
     finally:
         report.facts["seconds"] = round(time.monotonic() - started)
         if not args.keep:
@@ -365,11 +465,15 @@ def main() -> int:
     findings = {f"{category}:{key}": msg for key, msg in report.findings.items()}
     known = {k: v for k, v in testlib.known_issues().items() if k.startswith(category + ":")}
     new = {k: v for k, v in findings.items() if k not in known}
-    fixed = sorted(k for k in known if k not in findings)
+    # Si la prueba no llegó al final, un fallo conocido que no salió puede ser
+    # solo una comprobación que no se ejecutó: no se manda borrar nada.
+    fixed = sorted(k for k in known if k not in findings) if completed else []
     failed_checks = [c for c in report.checks if not c["ok"]]
     # Un check que falla solo por hallazgos ya apuntados no cuenta.
     explained = {"sin unidades fallidas", "procesos del escritorio vivos", "sin core dumps",
-                 "diario sin errores de ejecución, permisos ni configuración"}
+                 "diario sin errores de ejecución, permisos ni configuración",
+                 "Ajustes y centro de control abren su ventana"}
+    explained |= {c["name"] for c in report.checks if c["name"].startswith("unidades de usuario de churros")}
     real_failures = [c for c in failed_checks if not (c["name"] in explained and not new)]
     if any(c["name"].startswith("ventanas esperadas") for c in failed_checks) and not new:
         real_failures = [c for c in real_failures if not c["name"].startswith("ventanas esperadas")]
@@ -384,6 +488,8 @@ def main() -> int:
         print(f"{len(new)} problema(s) nuevo(s):")
         for key, message in sorted(new.items()):
             print(f"  - [{key}] {message.splitlines()[0]}")
+    if known and not completed:
+        print(f"La prueba no terminó: los {len(known)} fallo(s) conocido(s) de {category} no se han comprobado.")
     if fixed:
         print("Ya no fallan; borra su entrada de tests/known_issues.toml:")
         for key in fixed:

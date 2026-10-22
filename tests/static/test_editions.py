@@ -50,7 +50,8 @@ LIST_NAME = re.compile(r"packages\.(?:([a-z0-9-]+)\.)?(x86_64|aarch64|i686)")
 # waybar y hace exec de /usr/bin/labwc.
 SESSIONS = {
     "niri": ("niri", ("niri",)),
-    "/usr/bin/churros-xfce-session": ("xfce", ("xfce4-session", "xorg-xinit")),
+    # startx (xorg-xinit) necesita el servidor X: sin xorg-server, pantalla negra.
+    "/usr/bin/churros-xfce-session": ("xfce", ("xfce4-session", "xorg-xinit", "xorg-server")),
     "/usr/bin/churros-pi-session": ("labwc", ("labwc", "waybar")),
 }
 

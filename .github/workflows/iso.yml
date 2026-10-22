@@ -12,8 +12,11 @@ name: ISO x86_64
 # aparecen aquí.
 #
 # Cuándo corre:
-#   - en los pull requests que tocan lo que acaba dentro de la ISO
-#     (solo la edición niri, la que más cambia);
+#   - en los pull requests que tocan lo que acaba dentro de la ISO: niri
+#     siempre (la que más cambia) y además cada edición cuyos ficheros toca
+#     el PR (tests/iso/pick_editions.py: lista de XFCE/server, sesión X,
+#     build.sh...). El arranque por BIOS solo si cambia syslinux,
+#     profiledef.sh o tests/vm;
 #   - cada noche, las tres ediciones x86_64: Arch es rolling y la ISO se
 #     puede romper sin ningún commit nuestro;
 #   - a mano (workflow_dispatch), eligiendo edición.
@@ -62,14 +65,27 @@ jobs:
     timeout-minutes: 5
     outputs:
       editions: ${{ steps.pick.outputs.editions }}
+      bios: ${{ steps.pick.outputs.bios }}
     steps:
+      # En un PR, HEAD es el merge con la base y HEAD^1 la base: el diff es
+      # exactamente lo que cambia el PR.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
       - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          EDITION: ${{ inputs.edition }}
         run: |
-          case "${{ github.event_name }}" in
-            schedule)          echo 'editions=["niri","xfce","server"]' >> "$GITHUB_OUTPUT" ;;
-            workflow_dispatch) echo 'editions=["${{ inputs.edition }}"]' >> "$GITHUB_OUTPUT" ;;
-            *)                 echo 'editions=["niri"]' >> "$GITHUB_OUTPUT" ;;
+          case "$EVENT" in
+            pull_request)
+              changed=$(git diff --name-only HEAD^1 HEAD)
+              printf '%s\n' "$changed"
+              python3 tests/iso/pick_editions.py --pull-request <<< "$changed" >> "$GITHUB_OUTPUT" ;;
+            workflow_dispatch) python3 tests/iso/pick_editions.py --edition "$EDITION" >> "$GITHUB_OUTPUT" ;;
+            *)                 python3 tests/iso/pick_editions.py --all >> "$GITHUB_OUTPUT" ;;
           esac
+          cat "$GITHUB_OUTPUT"
 
   iso:
     name: Build, audit and boot (${{ matrix.edition }})
@@ -127,7 +143,7 @@ jobs:
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --artifacts out/reports/boot-uefi
 
       - name: Boot ISO in QEMU (BIOS)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name != 'pull_request' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && needs.matrix.outputs.bios == 'true' }}
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --firmware bios --artifacts out/reports/boot-bios
 
       # Consola serie, diario, captura de pantalla e informe JSON: con esto se

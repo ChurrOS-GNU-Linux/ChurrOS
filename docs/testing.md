@@ -28,8 +28,12 @@ obligar a instalarlo todo: `./install-deps.sh` instala lo necesario.
   `./churros build`, luego `./churros test --iso --boot`, y un vistazo en
   `./churros run`.
 
-`iso.yml` repite la construcción y el arranque de la edición niri en los PR que
-tocan lo que entra en la ISO, y las tres ediciones x86_64 cada noche.
+`iso.yml` repite la construcción y el arranque en los PR que tocan lo que entra
+en la ISO: siempre la edición niri, más cada edición x86_64 cuyos ficheros toca
+el PR (`tests/iso/pick_editions.py`: la lista de XFCE o server, la sesión X,
+`build.sh`...). Arranca por UEFI; por BIOS (syslinux) solo si el PR toca
+`archiso/syslinux`, `profiledef.sh` o `tests/vm`. Cada noche, las tres ediciones
+x86_64 por UEFI y por BIOS.
 
 ## Capa estática: `tests/static`
 
@@ -44,13 +48,14 @@ sistema a partir del repo:
 | `test_file_permissions.py` | Todo lo que se ejecuta en la ISO tiene modo ejecutable en `file_permissions` (mkarchiso no conserva el `+x` de git). |
 | `test_references.py` | Cada comando que lanza niri, un `.desktop`, XFCE, labwc, waybar, greetd, systemd, un hook de pacman, Calamares o una app Rust existe en la edición que lo lanza. |
 | `test_editions.py` | La matriz edición × arquitectura de `build.sh`, la higiene de las listas y los paquetes imprescindibles de cada edición. |
-| `test_systemd_units.py` | Unidades, enlaces `*.wants`, `services.sh` y hooks de pacman apuntan a cosas que existen. |
-| `test_calamares_config.py` | YAML estricto, orden de la secuencia, instancias `shellprocess`, comandos que parsean y scripts que existen. |
-| `test_config_syntax.py` | JSON/JSONC, TOML, XML, `.desktop`, KDL, tema de GRUB y Plymouth parsean; la versión es la de `VERSION`. |
+| `test_systemd_units.py` | Unidades, enlaces `*.wants`, `services.sh` y hooks de pacman apuntan a cosas que existen; los `OnCalendar=`/`On*Sec=` de los temporizadores los entiende `systemd-analyze`. |
+| `test_calamares_config.py` | YAML estricto, orden de la secuencia, instancias `shellprocess`, comandos que parsean y scripts que existen; `post-install` quita la cuenta y el sudoers sin contraseña del Live (simulado). |
+| `test_config_syntax.py` | JSON/JSONC, TOML, XML, `.desktop`, KDL, tema de GRUB y Plymouth parsean; cada entrada de arranque de la Live sabe encontrar el medio; la versión es la de `VERSION`. |
 | `test_rust_contract.py` | Binarios desplegados, assets, nombres de popups, `app-id` de las reglas de niri y opciones de los lanzadores. |
 | `test_build_dryrun.py` | `build.sh` completo con herramientas falsas para cada edición: lo que recibe mkarchiso y que el árbol queda limpio. |
 | `test_release_bundle.py` | El bundle de actualización y su manifiesto. |
-| `test_repo_wiring.py` | Que ninguna prueba quede desconectada, que el CI no se ablande y que `AGENTS.md` diga la verdad. |
+| `test_repo_wiring.py` | Que ninguna prueba quede desconectada, que el CI no se ablande, que cada entrada de `known_issues.toml` caiga en la categoría exacta de una prueba y que `AGENTS.md` diga la verdad. |
+| `test_harness.py` | Las funciones puras de `tests/iso`, `tests/vm` y `tests/mutations` (que solo corren con una ISO, con QEMU o en el job de mutaciones). |
 
 Una prueba concreta: `python3 -m unittest tests.static.test_references -v`.
 
@@ -95,14 +100,20 @@ bibliotecas, la sesión de greetd, los usuarios, `pkglist`, los enlaces de
 systemd y `/etc/calamares`.
 
 `tests/vm/boot_smoke.py` arranca la ISO en QEMU por el camino real (UEFI y
-GRUB, o BIOS y syslinux) y habla con `qemu-guest-agent`, que todas las
-ediciones con escritorio instalan. Comprueba desde dentro que systemd termina
-sin unidades fallidas, que hay una sesión gráfica activa de `churros` del tipo
-de su edición, que los procesos del escritorio siguen vivos, que niri tiene
-abierta la bienvenida, que el diario no tiene errores de permisos ni de
-configuración, que no hay core dumps y que la pantalla no está negra. Deja
-`serial.log`, `journal.txt`, `screen.png` y `report.json` en
-`out/boot-<iso>-<firmware>/` (y como artefacto del CI).
+GRUB, o BIOS y syslinux) y habla con `qemu-guest-agent`, que instalan todas las
+ediciones salvo `pi` (fallo conocido `edition-pkg:pi/aarch64:qemu-guest-agent`).
+Comprueba desde dentro que systemd termina sin unidades fallidas; que greetd
+abre una sesión activa de `churros` (logind la registra como `tty`, así que lo
+gráfico se comprueba por los procesos del escritorio, el IPC de niri y la
+pantalla); que el gestor de usuario de `churros` no tiene unidades fallidas ni
+mal escritas y que los temporizadores del skel están activos; que los procesos
+del escritorio siguen vivos; que niri tiene abierta la bienvenida y que
+Ajustes y el centro de control abren su ventana; que el diario no tiene errores
+de permisos, de ejecución ni de configuración (un id por fallo); que no hay
+core dumps y que la pantalla no está negra. Deja `serial.log`, `journal.txt`,
+`screen.png` y `report.json` en `out/boot-<iso>-<firmware>/` (y como artefacto
+del CI), también si el arnés falla a medias; si la prueba no llega al final,
+no da por arreglado ningún fallo conocido.
 
 ```bash
 ./churros build
@@ -119,7 +130,9 @@ un Xvfb privado y usa el GL de Mesa (`xvfb`, `x11-apps`, `qemu-system-gui`,
 `libgl1-mesa-dri`). La captura de pantalla sale de esa ventana con `xwd`.
 `--gpu plain` reproduce el caso sin 3D.
 
-Con KVM tarda 2-4 minutos; sin `/dev/kvm` (emulación por software) unos 8.
+Con KVM tarda 2-4 minutos; sin KVM (emulación por software, con virgl) unos
+8-10. La espera sale del acelerador que usa la VM: una ISO i686 o aarch64 en un
+equipo x86_64 va por TCG aunque haya `/dev/kvm`.
 
 ## Reglas para cambios hechos con ayuda de IA
 

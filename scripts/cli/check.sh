@@ -127,13 +127,13 @@ for target in x86_64 aarch64 i686; do
         declare -A file_permissions=()
         cd archiso
         . ./profiledef.sh
-        printf "%s|%s|%s|%s\n" "$arch" "$pacman_conf" "${bootmodes[*]}" "${airootfs_image_tool_options[*]}"
+        printf "%s|%s|%s|%s|%s\n" "$arch" "$pacman_conf" "${bootmodes[*]}" "${airootfs_image_tool_options[*]}" "$install_dir"
     ' 2>&1); then
         fail "profiledef.sh does not load with CHURROS_ARCH=$target: $pv"
         profile_ok=0
         continue
     fi
-    IFS='|' read -r p_arch p_conf p_boot p_sfs <<< "$pv"
+    IFS='|' read -r p_arch p_conf p_boot p_sfs p_dir <<< "$pv"
     conf_arch=$(awk -F= '/^[[:space:]]*Architecture[[:space:]]*=/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' \
         "archiso/$p_conf" 2>/dev/null || true)
     if [ "$p_arch" != "$target" ] || [ "$conf_arch" != "$target" ]; then
@@ -163,8 +163,15 @@ for target in x86_64 aarch64 i686; do
     unpackfs=installer/calamares/modules/unpackfs.conf
     [ -f "installer/calamares/modules/$target/unpackfs.conf" ] &&
         unpackfs="installer/calamares/modules/$target/unpackfs.conf"
-    if ! grep -q "bootmnt/churros/$target/airootfs.sfs" "$unpackfs"; then
-        fail "$target: $unpackfs does not unpack churros/$target/airootfs.sfs"
+    # mkarchiso pone el medio en /<install_dir>/: con otro install_dir la
+    # Live arranca (GRUB y syslinux usan %INSTALL_DIR%) pero unpackfs no
+    # encuentra nada y cada instalación falla.
+    if ! grep -q "bootmnt/$p_dir/$target/airootfs.sfs" "$unpackfs"; then
+        fail "$target: $unpackfs does not unpack $p_dir/$target/airootfs.sfs (install_dir=\"$p_dir\" in profiledef.sh)"
+        profile_ok=0
+    fi
+    if other=$(grep -E '^[[:space:]]*-?[[:space:]]*source:' "$unpackfs" | grep -v "\"/run/archiso/bootmnt/$p_dir/"); then
+        fail "$target: $unpackfs sources outside /run/archiso/bootmnt/$p_dir/: $other"
         profile_ok=0
     fi
     # pacstrap usa este conf. Bajo qemu-user, pacman 7 falla en seccomp si

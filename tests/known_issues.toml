@@ -367,55 +367,55 @@ note = "En la ISO, el alias dbus-org.freedesktop.ModemManager1.service apunta a 
 
 # --- tests/iso/check_iso.py (confirmado en una ISO server x86_64 construida) ---
 [[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6Qml.so.6"
+id = "iso-server-x86_64:missing-lib:calamares:libQt6Qml.so"
 note = "/usr/bin/calamares necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6Quick.so.6"
+id = "iso-server-x86_64:missing-lib:calamares:libQt6Quick.so"
 note = "/usr/bin/calamares necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6QuickWidgets.so.6"
+id = "iso-server-x86_64:missing-lib:calamares:libQt6QuickWidgets.so"
 note = "/usr/bin/calamares necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares.so.3.4.2:libkpmcore.so.13"
+id = "iso-server-x86_64:missing-lib:libcalamares.so:libkpmcore.so"
 note = "/usr/lib/libcalamares.so.3.4.2 necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares.so.3.4.2:libyaml-cpp.so.0.9"
+id = "iso-server-x86_64:missing-lib:libcalamares.so:libyaml-cpp.so"
 note = "/usr/lib/libcalamares.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_job_fsresizer.so:libkpmcore.so.13"
+id = "iso-server-x86_64:missing-lib:libcalamares_job_fsresizer.so:libkpmcore.so"
 note = "/usr/lib/calamares/modules/fsresizer/libcalamares_job_fsresizer.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_netinstall.so:libyaml-cpp.so.0.9"
+id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_netinstall.so:libyaml-cpp.so"
 note = "/usr/lib/calamares/modules/netinstall/libcalamares_viewmodule_netinstall.so necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_partition.so:libkpmcore.so.13"
+id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_partition.so:libkpmcore.so"
 note = "/usr/lib/calamares/modules/partition/libcalamares_viewmodule_partition.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so.3.4.2:libQt6Qml.so.6"
+id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Qml.so"
 note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so.3.4.2:libQt6Quick.so.6"
+id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Quick.so"
 note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so.3.4.2:libQt6QuickWidgets.so.6"
+id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6QuickWidgets.so"
 note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so.3.4.2:libQt6Svg.so.6"
+id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Svg.so"
 note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Svg.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so.3.4.2:libyaml-cpp.so.0.9"
+id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libyaml-cpp.so"
 note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
 
 [[issue]]

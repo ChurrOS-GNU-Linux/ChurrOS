@@ -1285,22 +1285,80 @@ class KnownIssuesTest(unittest.TestCase):
         self.assertFalse(problems, "\n".join(problems))
 
     def test_categories_have_a_test(self):
-        used, prefixes = set(), set()
-        for path in testlib.repo_files():
-            rel = testlib.rel(path)
-            if not rel.startswith("tests/") or path.suffix != ".py" or path.name == "testlib.py":
-                continue
-            text = testlib.read_text(path)
-            used |= set(re.findall(r"assert_findings\(\s*[\w.]+\s*,\s*f?[\"']([a-z][a-z0-9-]*)", text))
-            used |= set(re.findall(r"f?[\"']([a-z][a-z0-9-]*):", text))
-            # category = "calamares-yaml"; assert_findings(self, category, ...)
-            used |= set(re.findall(r"\bcategory\s*=\s*[\"']([a-z][a-z0-9-]*)[\"']", text))
-            # category = f"iso-{edition}" (tests/iso, tests/vm): vale cualquier sufijo.
-            prefixes |= set(re.findall(r"\bcategory\s*=\s*f[\"']([a-z][a-z0-9-]*-)\{", text))
-        categories = {str(e.get("id", "")).split(":", 1)[0] for e in self.entries() if isinstance(e, dict)}
-        orphans = sorted(c for c in categories - used if not c.startswith(tuple(prefixes)))
-        self.assertFalse(orphans, f"categorías de tests/known_issues.toml que ninguna prueba de tests/ "
-                                  f"produce (entradas que ya no silencian nada): {orphans}")
+        """Cada id cae en la categoría completa de alguna llamada a assert_findings.
+
+        assert_findings solo mira las entradas que empiezan por `categoria:`.
+        Comparar solo la primera palabra dejaba pasar `release:manfest:…`
+        (errata), `deploy:bogus:…` o `boot-nirri-x86_64:…`: entradas que no
+        silencian nada y que nadie borraría nunca.
+        """
+        patterns = category_patterns()
+        self.assertTrue(patterns, "no se encontró ninguna llamada a assert_findings en tests/")
+        orphans = sorted(str(e.get("id")) for e in self.entries() if isinstance(e, dict)
+                         and not any(p.match(str(e.get("id", ""))) for p in patterns))
+        self.assertFalse(orphans, "entradas de tests/known_issues.toml cuya categoría no produce ninguna prueba "
+                                  "de tests/ (no silencian nada: borra la entrada o corrige la categoría):\n  "
+                                  + "\n  ".join(orphans))
+
+
+# Lo que puede valer un {…} de una categoría f-string: edición, arquitectura,
+# nombre de la lista de paquetes (repo-pkg:{list_name(item)}) o 'unknown'.
+PLACEHOLDER_VALUES = sorted({e.name for e in testlib.EDITIONS} | set(testlib.ARCHES)
+                            | {Path(e.package_list).name for e in testlib.EDITIONS} | {"unknown"},
+                            key=len, reverse=True)
+STRING_LITERAL = re.compile(r"""(f?)"([^"\n]*)"|(f?)'([^'\n]*)'""")
+
+
+def category_regex(literal: str, fstring: bool) -> re.Pattern:
+    """Regex de los ids de una categoría; cada {…} de una f-string, un valor conocido."""
+    if not fstring:
+        return re.compile(re.escape(literal) + ":")
+    values = "(?:" + "|".join(map(re.escape, PLACEHOLDER_VALUES)) + ")"
+    parts = re.split(r"\{[^{}]*\}", literal)
+    return re.compile(values.join(map(re.escape, parts)) + ":")
+
+
+def category_patterns() -> list[re.Pattern]:
+    """Las categorías exactas con las que tests/ llama a testlib.assert_findings
+    (o a check_each, que hace lo mismo fichero a fichero).
+
+    Acepta un literal, una f-string, una constante del módulo
+    (KNOWN_ISSUE_CATEGORY = "build"), la variable `category` (sus
+    asignaciones en el mismo fichero, también `category = f"iso-{…}-{…}"` de
+    tests/iso y tests/vm) y el parámetro `category` de un método auxiliar
+    (los literales con los que se le llama).
+    """
+    found: set[tuple[str, bool]] = set()
+    for path in testlib.repo_files():
+        rel = testlib.rel(path)
+        if not rel.startswith("tests/") or path.suffix != ".py" or path.name == "testlib.py":
+            continue
+        text = testlib.read_text(path)
+        constants = dict(re.findall(r"^([A-Z][A-Z0-9_]*)\s*=\s*[\"']([^\"'\n]+)[\"']\s*$", text, re.M))
+        # tests/iso y tests/vm comparan con testlib.known_issues() sin assert_findings.
+        uses_variable = "known_issues()" in text
+        # check_each (test_config_syntax) aplica el mismo trinquete por fichero.
+        for arg in re.findall(r"(?:assert_findings|check_each)\(\s*self\s*,\s*(f?\"[^\"\n]*\"|f?'[^'\n]*'|\w+)", text):
+            literal = STRING_LITERAL.fullmatch(arg)
+            if literal:
+                fstring, value = (literal.group(1), literal.group(2)) if literal.group(2) is not None \
+                    else (literal.group(3), literal.group(4))
+                found.add((value, bool(fstring)))
+            elif arg in constants:
+                found.add((constants[arg], False))
+            elif arg == "category":
+                uses_variable = True
+        if not uses_variable:
+            continue
+        for rhs in re.findall(r"^\s*category\s*=\s*(.+)$", text, re.M):
+            for literal in STRING_LITERAL.finditer(rhs):
+                fstring, value = (literal.group(1), literal.group(2)) if literal.group(2) is not None \
+                    else (literal.group(3), literal.group(4))
+                found.add((value, bool(fstring)))
+        for helper in re.findall(r"def (\w+)\(self, category\b", text):
+            for literal in re.finditer(rf"\.{helper}\(\s*(f?)\"([^\"\n]*)\"", text):
+                found.add((literal.group(2), bool(literal.group(1))))
+    return [category_regex(value, fstring) for value, fstring in sorted(found)]
 
 
 # ---------------------------------------------------------------- CODEOWNERS
