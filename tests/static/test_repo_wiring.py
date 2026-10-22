@@ -66,6 +66,19 @@ NEGATION_RE = re.compile(
     r"\*\*no\*\*|\b(?:no|not|never|sin|ya no|removed|eliminad[oa]s?|retirad[oa]s?|deprecated|obsolet[oa]s?)\b",
     re.IGNORECASE,
 )
+# Negación que va detrás de lo nombrado ("`shellprocess@x` ya no existe").
+# Solo verbos de existencia: un "no" cualquiera más adelante en la frase no
+# puede esconder una afirmación falsa.
+NEGATION_AFTER_RE = re.compile(
+    r"\b(?:ya no existe|no existe|fue eliminad[oa]|se elimin[oó]|was removed|has been removed|"
+    r"no longer exists|does not exist|retirad[oa]|obsolet[oa]|deprecated)",
+    re.IGNORECASE,
+)
+# "no en el arranque live", "not at live boot": la línea niega la frase falsa.
+NEGATED_CLAIM_RE = re.compile(r"(?i)\b(?:no|not)\s+(?:en\s+el\s+|at\s+)?(?:arranque|live boot)")
+# "`./churros check` does not run it", "no lo ejecuta".
+NEGATED_RUN_RE = re.compile(
+    r"(?i)\b(?:does not|doesn't|do not|never)\s+run|\bno\s+(?:lo|la|los|las)?\s*(?:ejecuta|corre|lanza)\b")
 
 
 # ------------------------------------------------------------ lectura de shell
@@ -721,7 +734,13 @@ class AntiWeakeningTest(unittest.TestCase):
                    for m in PATH_RE.finditer(line))
 
     def setUp(self):
-        self.stmts = shell_statements(read(CHECK_SH))
+        text = read(CHECK_SH)
+        self.stmts = shell_statements(text)
+        # Funciones de check.sh que ejecutan "$@" y llaman a fail(): llamar a
+        # una prueba a través de ellas cuenta como protegido.
+        self.guarded_helpers = {
+            name for name, body in re.findall(r"(?ms)^(?:function\s+)?(\w+)\s*\(\)\s*\{\n(.*?)^\}", text)
+            if re.search(r'"\$@"|"\$\*"', body) and re.search(r"\bfail\b", body)}
 
     @staticmethod
     def count_if(text: str) -> int:
@@ -749,6 +768,14 @@ class AntiWeakeningTest(unittest.TestCase):
         text = self.stmts[k].text
         if re.search(r"\|\|\s*\{?\s*fail\b", text):
             return True
+        words = text.split()
+        if words and words[0] in self.guarded_helpers:
+            return True
+        # `if X` con `then` en la línea siguiente.
+        if (re.match(r"\s*(?:if|elif)\s", text) and not re.search(r"\bthen\b", text)
+                and k + 1 < len(self.stmts) and re.match(r"\s*then\b", self.stmts[k + 1].text)):
+            then_fail, else_fail = self.branches(k)
+            return then_fail if re.match(r"\s*(?:if|elif)\s+!", text) else else_fail
         match = re.match(r"\s*(?:if|elif)\s+(!\s*)?(.*?);\s*then\b(.*)$", text)
         if match:
             negated, rest = bool(match.group(1)), match.group(3)
@@ -775,7 +802,9 @@ class AntiWeakeningTest(unittest.TestCase):
         for k, stmt in enumerate(self.stmts):
             if self.is_test_call(stmt.text) and not self.guarded(k):
                 problems.append(f"{CHECK_SH}:{stmt.lineno}: {stmt.text.strip()}")
-        self.assertFalse(problems, "llamadas a pruebas cuyo fallo no llega a fail() (se ignoran en silencio):\n"
+        self.assertFalse(problems, "llamadas a pruebas cuyo fallo no llega a fail() (se ignoran en silencio). "
+                                   "Formas aceptadas: `if out=$(X 2>&1); then pass ...; else ...; fail ...; fi`, "
+                                   "`X || fail ...`, o una función de check.sh que ejecute \"$@\" y llame a fail:\n"
                                    + "\n".join(problems))
 
     def test_check_sh_has_no_neutralisers(self):
@@ -1151,6 +1180,8 @@ class DocsDriftTest(unittest.TestCase):
             names = set(re.findall(name_re, sentence))
             if not names:
                 continue
+            if NEGATED_RUN_RE.search(sentence):
+                continue  # dice que algo NO se ejecuta
             claims_check = re.search(r"\./churros check\b|scripts/cli/check\.sh", sentence)
             claimed_workflows = {w for w in re.findall(r"`(?:\.github/workflows/)?([\w.-]+\.ya?ml)`", sentence)
                                  if (WORKFLOWS_DIR / w).is_file()}
@@ -1172,7 +1203,8 @@ class DocsDriftTest(unittest.TestCase):
         for claim_id, pattern, is_false, why in FALSE_CLAIMS:
             regex = re.compile(pattern)
             hits = [testlib.rel(p) for p in doc_files()
-                    if any(regex.search(line) for line in testlib.read_text(p).splitlines())]
+                    if any(regex.search(line) and not NEGATED_CLAIM_RE.search(line)
+                           for line in testlib.read_text(p).splitlines())]
             if hits and is_false():
                 for rel in hits:
                     findings[f"docs:false-claim:{claim_id}:{rel}"] = f"{rel} afirma algo falso ({claim_id}): {why}"
@@ -1192,7 +1224,8 @@ class DocsDriftTest(unittest.TestCase):
                 def affirmed(pattern):
                     # "There is **no** `shellprocess@x`": la negación justo antes no afirma que exista.
                     return [m.group(1) for m in re.finditer(pattern, line)
-                            if not NEGATION_RE.search(line[max(0, m.start() - 30):m.start()])]
+                            if not NEGATION_RE.search(line[max(0, m.start() - 30):m.start()])
+                            and not NEGATION_AFTER_RE.search(line[m.end():m.end() + 40])]
                 for name in affirmed(r"shellprocess@([\w-]+)"):
                     if name not in instances:
                         findings[f"docs:installer:instance:{rel}:{name}"] = (
@@ -1202,8 +1235,10 @@ class DocsDriftTest(unittest.TestCase):
                         findings[f"docs:installer:config:{rel}:{name}"] = (
                             f"{rel} nombra {name}.conf, que no existe en installer/calamares/modules/")
                 if "`instances:`" in line:
-                    listed = set(re.findall(r"`([a-z][\w-]*)`", line.split("`instances:`", 1)[1]))
-                    if listed and listed != instances:
+                    # Solo es una enumeración si nombra ids de instancia (con guion):
+                    # "cada entrada de `instances:` lleva `id` y `module`" no lo es.
+                    listed = set(re.findall(r"`([a-z]+(?:-[a-z]+)+)`", line.split("`instances:`", 1)[1]))
+                    if len(listed) >= 2 and listed != instances:
                         findings[f"docs:installer:instances-list:{rel}"] = (
                             f"{rel} enumera las instancias {sorted(listed)}; settings.conf tiene {sorted(instances)}")
             for line in fenced_lines(text):

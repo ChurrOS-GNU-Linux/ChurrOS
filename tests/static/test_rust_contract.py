@@ -1026,31 +1026,59 @@ class DeployContract(unittest.TestCase):
                     "llega a la ISO con 0644 y todo lanzador falla con 'permission denied'")
         testlib.assert_findings(self, "deploy:perm", findings)
 
-    def check_removed(self, category: str, text: str, label: str):
-        removed = set()
-        for _, line in logical_lines(text):
-            for argv in shell_argvs(line):
-                if argv and argv[0] == "rm":
-                    removed |= {arg.rstrip("/") for arg in argv[1:] if arg and not arg.startswith("-")}
-        findings = {}
-        for name in self.names:
-            path = f"archiso/airootfs/usr/bin/{name}"
-            if not any(path == r or path.startswith(r + "/") for r in removed):
-                findings[f"{category}:{name}"] = f"{label} no borra {path}, que build-rust.sh crea en cada build"
+    def check_removed(self, category: str, script: str, label: str):
+        """Ejecuta `script` (bash) en un árbol temporal con los binarios desplegados.
+
+        Se comprueba el efecto, no el texto: da igual que el script enumere los
+        `rm` o recorra los crates con deploy = true. sudo, findmnt y mountpoint
+        son falsos y nada sale del directorio temporal.
+        """
+        with tempfile.TemporaryDirectory(prefix="churros-clean-") as tmp:
+            root = Path(tmp)
+            for manifest in (ROOT / "rust").glob("*/Cargo.toml"):
+                dest = root / manifest.relative_to(ROOT)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(manifest.read_bytes())
+            for helper in ("scripts/apply-aarch64-mkinitcpio.sh",):
+                (root / helper).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / helper, root / helper)
+            bin_dir = root / "archiso/airootfs/usr/bin"
+            bin_dir.mkdir(parents=True)
+            for name in self.names:
+                (bin_dir / name).write_bytes(b"\x7fELF fake")
+            tracked = [path.name for path in (AIROOTFS / "usr/bin").iterdir() if path.is_file()]
+            for name in tracked:
+                shutil.copy2(AIROOTFS / "usr/bin" / name, bin_dir / name)
+            stubs = root / ".stubs"
+            stubs.mkdir()
+            for name, body in {"sudo": 'exec "$@"', "findmnt": "exit 0", "mountpoint": "exit 1"}.items():
+                (stubs / name).write_text(f"#!/bin/sh\n{body}\n")
+                (stubs / name).chmod(0o755)
+            (root / "run.sh").write_text(script)
+            env = testlib.scratch_env(PATH=f"{stubs}:{os.environ.get('PATH', '/usr/bin:/bin')}")
+            result = testlib.run(["bash", "run.sh"], cwd=root, env=env, timeout=60)
+            left = {name for name in self.names if (bin_dir / name).exists()}
+            lost = sorted(name for name in tracked if not (bin_dir / name).exists())
+        self.assertFalse(lost, f"{label} borra scripts versionados de archiso/airootfs/usr/bin: {lost}")
+        findings = {
+            f"{category}:{name}": (f"{label} no borra archiso/airootfs/usr/bin/{name}, que build-rust.sh crea "
+                                   f"en cada build (salida del script: {result.stdout.strip()[-300:]!r})")
+            for name in sorted(left)}
         testlib.assert_findings(self, category, findings)
 
     def test_cleanup_trap_removes_binaries(self):
         text = testlib.read_text(ROOT / "scripts/cli/build.sh")
-        body = re.search(r"^cleanup_temp\(\)\s*\{\n(.*?)^\}", text, re.MULTILINE | re.DOTALL)
+        body = re.search(r"^cleanup_temp\(\)\s*\{\n.*?^\}", text, re.MULTILINE | re.DOTALL)
         self.assertIsNotNone(body, "scripts/cli/build.sh ya no define cleanup_temp() { ... }: actualiza esta prueba")
         self.assertRegex(text, r"(?m)^trap cleanup_temp EXIT", "scripts/cli/build.sh ya no instala cleanup_temp como trap EXIT")
-        self.check_removed("deploy:trap", body.group(1), "el trap cleanup_temp de scripts/cli/build.sh")
+        # El trap usa variables y funciones de build.sh: se dan valores neutros.
+        script = ("unmount_work_submounts() { :; }\nHOST_REPO_SYMLINK=0\nPACKAGES_BACKED_UP=0\n"
+                  "PACKAGE_LIST=archiso/packages.x86_64\n" + body.group(0) + "\ncleanup_temp\n")
+        self.check_removed("deploy:trap", script, "el trap cleanup_temp de scripts/cli/build.sh")
 
     def test_clean_removes_binaries(self):
-        text = testlib.read_text(ROOT / "scripts/cli/clean.sh")
-        if "archiso/airootfs/usr/bin/" not in text:
-            self.skipTest("clean.sh ya no enumera los binarios generados")
-        self.check_removed("deploy:clean", text, "scripts/cli/clean.sh (./churros clean)")
+        self.check_removed("deploy:clean", testlib.read_text(ROOT / "scripts/cli/clean.sh"),
+                           "scripts/cli/clean.sh (./churros clean)")
 
     def test_generated_files_are_gitignored(self):
         git = testlib.require_tool(self, "git")
