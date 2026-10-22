@@ -11,3 +11,12 @@
 #   [[issue]]
 #   id = "categoria:detalle"
 #   note = "qué falla, consecuencia y dónde"
+
+# --- test_file_permissions ---
+[[issue]]
+id = "exec-mode:/usr/local/bin/livecd-sound"
+note = "archiso/profiledef.sh no declara /usr/local/bin/livecd-sound en file_permissions (la releng de archiso lo pone 0:0:755). mkarchiso copia el airootfs con --no-preserve=mode y el script sale 0644: en la entrada Accessibility (accessibility=on) livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC y no hay sonido ni lector de pantalla. Arreglo: añadir [\"/usr/local/bin/livecd-sound\"]=\"0:0:755\"."
+
+[[issue]]
+id = "exec-mode:/usr/local/bin/Installation_guide"
+note = "archiso/profiledef.sh no declara /usr/local/bin/Installation_guide (resto de la releng de archiso, abre la guía de instalación de Arch con xdg-open). Sale 0644: escribir Installation_guide en la terminal del Live da 'permission denied'. Arreglo: añadir [\"/usr/local/bin/Installation_guide\"]=\"0:0:755\" o borrar el fichero si ChurrOS no lo quiere."
