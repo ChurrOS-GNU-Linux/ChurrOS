@@ -433,3 +433,20 @@ note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/l
 [[issue]]
 id = "iso-server:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
 note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
+
+# --- tests/iso/check_iso.py (confirmado en una ISO xfce x86_64 construida) ---
+[[issue]]
+id = "iso-xfce:not-executable:/usr/local/bin/Installation_guide"
+note = "/usr/local/bin/Installation_guide tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-xfce:not-executable:/usr/local/bin/livecd-sound"
+note = "/usr/local/bin/livecd-sound tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-xfce:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
+note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
+
+[[issue]]
+id = "iso-xfce:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
+note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
