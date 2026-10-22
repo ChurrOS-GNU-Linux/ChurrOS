@@ -450,3 +450,12 @@ note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/l
 [[issue]]
 id = "iso-xfce:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
 note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
+
+# --- tests/vm/boot_smoke.py ---
+[[issue]]
+id = "boot-server:process:churros-welcome"
+note = "Confirmado arrancando la ISO server en QEMU: la sesión XFCE del Live llega al escritorio, pero la bienvenida (la entrada al instalador) no se abre. El autostart XFCE ejecuta `churros-welcome --live-only` y main.rs acaba en app.run(), que pasa argv a GApplication: 'Unknown option --live-only', sale con 1. Mismo fallo que rust-cli:churros-welcome --live-only."
+
+[[issue]]
+id = "boot-xfce:process:churros-welcome"
+note = "Misma causa que boot-server:process:churros-welcome (mismo autostart OnlyShowIn=XFCE y misma sesión churros-xfce-session): en el Live XFCE la bienvenida no se abre. Arreglo: app.run_with_args(&[] as &[&str]) en rust/churros-welcome/src/main.rs."
