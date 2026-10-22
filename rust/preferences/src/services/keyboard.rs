@@ -138,13 +138,37 @@ fn line_matches_key(stripped: &str, key: &str) -> bool {
     }
 }
 
-/// ¿Es la misma tecla para niri? No distingue mayúsculas ni el orden de
-/// los modificadores (Mod+w y Shift+Mod+X son Mod+W y Mod+Shift+X).
+/// ¿Es la misma tecla para niri? Como `impl FromStr for Key` de niri-config:
+/// la última parte es la tecla y las demás un conjunto de modificadores, sin
+/// mayúsculas ni orden y con sus alias (Ctrl/Control, Super/Win,
+/// ISO_Level3_Shift/Mod5, ISO_Level5_Shift/Mod3). La tecla es un keysym que
+/// niri busca sin distinguir mayúsculas, y algunos tienen dos nombres
+/// (Prior/Page_Up). Así Mod+w, Shift+Mod+X, Mod+Control+T y Mod+Prior son
+/// Mod+W, Mod+Shift+X, Mod+Ctrl+T y Mod+Page_Up.
 fn same_key(a: &str, b: &str) -> bool {
     let parts = |key: &str| {
-        let mut parts: Vec<String> = key.split('+').map(|p| p.to_lowercase()).collect();
-        parts.sort();
-        parts
+        let mut parts: Vec<String> = key.split('+').map(|p| p.trim().to_lowercase()).collect();
+        let name = parts.pop().unwrap_or_default();
+        let name = match name.as_str() {
+            "prior" => "page_up".to_string(),
+            "next" => "page_down".to_string(),
+            "kp_prior" => "kp_page_up".to_string(),
+            "kp_next" => "kp_page_down".to_string(),
+            _ => name,
+        };
+        let mut modifiers: Vec<String> = parts
+            .into_iter()
+            .map(|m| match m.as_str() {
+                "control" => "ctrl".to_string(),
+                "win" => "super".to_string(),
+                "iso_level3_shift" | "mod5" => "l3".to_string(),
+                "iso_level5_shift" | "mod3" => "l5".to_string(),
+                _ => m,
+            })
+            .collect();
+        modifiers.sort();
+        modifiers.dedup();
+        (modifiers, name)
     };
     parts(a) == parts(b)
 }
@@ -574,15 +598,47 @@ mod tests {
     #[test]
     fn add_keybind_refuses_a_key_already_bound() {
         // niri rechaza el config entero con dos binds de la misma tecla
-        // ("duplicate keybind"), y para niri Mod+w y Shift+Mod+X son
-        // Mod+W y Mod+Shift+X.
-        let original = "binds {\n    Mod+W { spawn \"churros-welcome\"; }\n    Mod+Shift+X { close-window; }\n}\n";
+        // ("duplicate keybind"), y para niri Mod+w, Shift+Mod+X,
+        // Mod+Control+T y Mod+Prior son Mod+W, Mod+Shift+X, Mod+Ctrl+T y
+        // Mod+Page_Up.
+        let original = concat!(
+            "binds {\n",
+            "    Mod+W { spawn \"churros-welcome\"; }\n",
+            "    Mod+Shift+X { close-window; }\n",
+            "    Mod+Ctrl+T { spawn \"foot\"; }\n",
+            "    Mod+Page_Up { focus-workspace-up; }\n",
+            "}\n",
+        );
         let home = TempHome::new("kbd-dup", original);
-        for key in ["Mod+W", "Mod+w", "Shift+Mod+X"] {
+        for key in ["Mod+W", "Mod+w", "Shift+Mod+X", "Mod+Control+T", "Mod+Prior"] {
             assert!(!KeyboardService::add_keybind(key, "spawn", "foot", ""), "add_keybind({key}) duplica un atajo");
             assert_eq!(home.read(), original, "add_keybind({key}) cambió el config");
         }
         assert!(KeyboardService::add_keybind("Mod+Shift+W", "spawn", "foot", ""));
+        // Otro modificador u otra tecla sí son otro atajo.
+        assert!(KeyboardService::add_keybind("Mod+Alt+T", "spawn", "foot", ""));
+        assert!(KeyboardService::add_keybind("Mod+Next", "builtin", "focus-workspace-down", ""));
+    }
+
+    #[test]
+    fn same_key_is_niri_key_equality() {
+        // Comprobado con `niri validate` (niri 26.04): cada pareja de la
+        // primera lista es "duplicate keybind", las de la segunda no.
+        for (a, b) in [
+            ("Mod+Ctrl+T", "Mod+Control+T"),
+            ("Mod+Page_Up", "Mod+Prior"),
+            ("Mod+Page_Down", "Mod+Next"),
+            ("Mod+KP_Prior", "Mod+KP_Page_Up"),
+            ("Super+Alt+T", "Win+Alt+T"),
+            ("Mod+Mod5+T", "Mod+ISO_Level3_Shift+T"),
+            ("Mod+Mod3+T", "Mod+ISO_Level5_Shift+T"),
+            ("Mod+Shift+t", "shift+mod+T"),
+        ] {
+            assert!(same_key(a, b), "para niri {a} y {b} son la misma tecla");
+        }
+        for (a, b) in [("Mod+Alt+T", "Mod+Ctrl+T"), ("Mod+Page_Up", "Mod+Page_Down"), ("Mod+T", "Super+T")] {
+            assert!(!same_key(a, b), "para niri {a} y {b} son teclas distintas");
+        }
     }
 
     #[test]

@@ -363,6 +363,16 @@ fn keyboard_cases() -> Vec<Case> {
             .expect(Expect::Refuse),
         );
     }
+    // La misma tecla con otro nombre: para niri Control es Ctrl y Prior es Page_Up.
+    for (bound, key) in [("Mod+Ctrl+T", "Mod+Control+T"), ("Mod+Page_Up", "Mod+Prior")] {
+        cases.push(
+            case(ADD, format!("KeyboardService::add_keybind({key:?}, \"spawn\", \"foot\", \"\") con {bound} puesto"), move || {
+                KeyboardService::add_keybind(key, "spawn", "foot", "")
+            })
+            .after(move || assert!(KeyboardService::add_keybind(bound, "spawn", "foot", ""), "{bound} ya está en el skel"))
+            .expect(Expect::Refuse),
+        );
+    }
     cases.push(
         case(RENAME, "KeyboardService::rename_keybind(\"Mod+W\", \"Mod+Q\") (ya tiene atajo)", || {
             KeyboardService::rename_keybind("Mod+W", "Mod+Q", "spawn", "churros-welcome", "")

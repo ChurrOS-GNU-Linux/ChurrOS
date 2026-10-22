@@ -370,6 +370,52 @@ fn on_add_rule(state: &RulesStateRef) {
     refresh_rules(state);
 }
 
+/// Lo que muestra el formulario: un valor por control.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FormValues {
+    pub app_id: String,
+    pub title: String,
+    pub opacity: f64,
+    pub corner_radius: f64,
+    pub open_floating: bool,
+    pub clip_to_geometry: bool,
+    pub blur: bool,
+}
+
+/// El formulario al pulsar Editar en `rule`: todos los controles, también
+/// los que la regla no tiene (opacidad 1, radio 0, interruptor apagado,
+/// como un formulario vacío). on_edit_rule solo ponía la opacidad y el radio
+/// si la regla los tenía, y guardar una regla sin opacidad tras editar otra
+/// con `opacity 0.8` (o tras escribirla en Añadir) le escribía esa opacidad.
+pub(crate) fn form_values(rule: &Value) -> FormValues {
+    FormValues {
+        app_id: rule["app_id"].as_str().unwrap_or("").to_string(),
+        title: rule["title"].as_str().unwrap_or("").to_string(),
+        opacity: rule["opacity"].as_f64().unwrap_or(1.0),
+        corner_radius: rule["corner_radius"].as_f64().unwrap_or(0.0),
+        open_floating: rule["open_floating"].as_bool().unwrap_or(false),
+        clip_to_geometry: rule["clip_to_geometry"].as_bool().unwrap_or(false),
+        blur: rule["blur"].as_bool().unwrap_or(false),
+    }
+}
+
+/// Lo que manda on_update_rule a update_rule con el formulario `form`.
+/// Opacidad 1 o más, radio 0 e interruptor apagado van como null
+/// (Python: get_active() or None -> None si False).
+pub(crate) fn rule_payload(form: &FormValues) -> Value {
+    let opacity = if form.opacity >= 1.0 { Value::Null } else { serde_json::json!(form.opacity) };
+    let corner_radius = if form.corner_radius == 0.0 { Value::Null } else { serde_json::json!(form.corner_radius) };
+    serde_json::json!({
+        "app_id": form.app_id.trim(),
+        "title": form.title.trim(),
+        "opacity": opacity,
+        "corner_radius": corner_radius,
+        "open_floating": form.open_floating.then_some(true),
+        "clip_to_geometry": form.clip_to_geometry.then_some(true),
+        "blur": form.blur.then_some(true),
+    })
+}
+
 /// Equivalente a _on_update_rule.
 fn on_update_rule(state: &RulesStateRef) {
     let st = state.borrow();
@@ -377,24 +423,14 @@ fn on_update_rule(state: &RulesStateRef) {
         return;
     };
 
-    let app_id = st.app_id_entry.text().trim().to_string();
-    let title = st.title_entry.text().trim().to_string();
-
-    let opacity = st.opacity_spin.value();
-    let opacity = if opacity >= 1.0 { Value::Null } else { serde_json::json!(opacity) };
-
-    let corner_radius = st.corner_spin.value();
-    let corner_radius = if corner_radius == 0.0 { Value::Null } else { serde_json::json!(corner_radius) };
-
-    let updates = serde_json::json!({
-        "app_id": app_id,
-        "title": title,
-        "opacity": opacity,
-        "corner_radius": corner_radius,
-        // Python: get_active() or None -> None si False
-        "open_floating": st.floating_switch.get_active().then_some(true),
-        "clip_to_geometry": st.clip_switch.get_active().then_some(true),
-        "blur": st.blur_switch.get_active().then_some(true),
+    let updates = rule_payload(&FormValues {
+        app_id: st.app_id_entry.text().to_string(),
+        title: st.title_entry.text().to_string(),
+        opacity: st.opacity_spin.value(),
+        corner_radius: st.corner_spin.value(),
+        open_floating: st.floating_switch.get_active(),
+        clip_to_geometry: st.clip_switch.get_active(),
+        blur: st.blur_switch.get_active(),
     });
     drop(st);
 
@@ -469,22 +505,17 @@ fn on_edit_rule(state: &RulesStateRef, index: usize) {
         return;
     };
 
+    // Todos los controles, sin condiciones: lo que no se pone se queda con
+    // lo de la regla editada antes.
+    let form = form_values(match_rule);
     let st = state.borrow();
-    st.app_id_entry.set_text(match_rule["app_id"].as_str().unwrap_or(""));
-    st.title_entry.set_text(match_rule["title"].as_str().unwrap_or(""));
-
-    if let Some(opacity) = match_rule["opacity"].as_f64() {
-        st.opacity_spin.set_value(opacity);
-    }
-    if let Some(corner_radius) = match_rule["corner_radius"].as_f64() {
-        st.corner_spin.set_value(corner_radius);
-    }
-    st.floating_switch
-        .set_active(match_rule["open_floating"].as_bool().unwrap_or(false));
-    st.clip_switch
-        .set_active(match_rule["clip_to_geometry"].as_bool().unwrap_or(false));
-    st.blur_switch
-        .set_active(match_rule["blur"].as_bool().unwrap_or(false));
+    st.app_id_entry.set_text(&form.app_id);
+    st.title_entry.set_text(&form.title);
+    st.opacity_spin.set_value(form.opacity);
+    st.corner_spin.set_value(form.corner_radius);
+    st.floating_switch.set_active(form.open_floating);
+    st.clip_switch.set_active(form.clip_to_geometry);
+    st.blur_switch.set_active(form.blur);
     drop(st);
 
     state.borrow_mut().edit_index = Some(index);
@@ -506,4 +537,43 @@ fn show_error(state: &RulesStateRef, message: &str) {
         .root()
         .and_downcast::<gtk::Window>();
     dialog.show(root.as_ref());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::test_support::{skel_niri_config, TempHome};
+
+    #[test]
+    fn editing_a_rule_after_another_saves_it_unchanged() {
+        // Editar foot (opacity 0.8) y después pavucontrol (sin opacidad ni
+        // radio) y guardar le escribía `opacity 0.8` a pavucontrol: el
+        // formulario se quedaba con lo de la regla anterior (o con lo
+        // escrito en Añadir regla). Al pulsar Editar, cada control toma el
+        // valor de la regla o el de un formulario vacío.
+        let skel = skel_niri_config();
+        let home = TempHome::new("rules-edit-edit", &skel);
+        let rules = WindowRulesService::list_rules();
+        let position = |id: &str| rules.iter().position(|r| r["app_id"] == id).expect("regla del skel");
+        let (foot, pavucontrol) = (position("foot"), position("pavucontrol"));
+
+        let form = form_values(&rules[foot]);
+        assert_eq!((form.opacity, form.blur), (0.8, true), "form_values no lee la regla de foot");
+        let form = form_values(&rules[pavucontrol]);
+        assert_eq!(
+            form,
+            FormValues {
+                app_id: "pavucontrol".to_string(),
+                title: String::new(),
+                opacity: 1.0,
+                corner_radius: 0.0,
+                open_floating: true,
+                clip_to_geometry: false,
+                blur: false,
+            },
+            "el formulario de pavucontrol no es el de un formulario vacío con lo que tiene la regla"
+        );
+        WindowRulesService::update_rule(pavucontrol, &rule_payload(&form)).unwrap();
+        assert_eq!(home.read(), skel, "guardar pavucontrol sin cambios tras editar foot cambia config.kdl");
+    }
 }

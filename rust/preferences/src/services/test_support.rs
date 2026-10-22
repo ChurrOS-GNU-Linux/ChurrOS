@@ -4,11 +4,13 @@
 // el proceso: quien lo cambia lo hace con TempHome, que lo serializa.
 // ==========================================
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
+
+use crate::pages::window_rules::{form_values, rule_payload};
 
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 
@@ -67,16 +69,9 @@ impl Drop for TempHome {
 }
 
 /// Lo que manda pages/window_rules.rs (on_edit_rule + on_update_rule) al
-/// guardar la regla `rule` sin tocar el formulario.
+/// guardar la regla `rule` sin tocar el formulario: las mismas funciones que
+/// usa la página, no una copia (la copia suponía un formulario recién
+/// vaciado y no veía lo que quedaba de la regla editada antes).
 pub fn rule_form(rule: &Value) -> Value {
-    let switch = |field: &str| rule[field].as_bool().unwrap_or(false).then_some(true);
-    json!({
-        "app_id": rule["app_id"].as_str().unwrap_or(""),
-        "title": rule["title"].as_str().unwrap_or(""),
-        "opacity": rule["opacity"].as_f64().filter(|v| *v < 1.0),
-        "corner_radius": rule["corner_radius"].as_f64().filter(|v| *v != 0.0),
-        "open_floating": switch("open_floating"),
-        "clip_to_geometry": switch("clip_to_geometry"),
-        "blur": switch("blur"),
-    })
+    rule_payload(&form_values(rule))
 }
