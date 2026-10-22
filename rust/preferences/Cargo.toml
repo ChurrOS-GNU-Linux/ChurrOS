@@ -2,6 +2,7 @@
 name = "churros-settings"
 version = "1.3.0"
 edition = "2024"
+license.workspace = true
 description = "ChurrOS Preferences (centro de configuración) — port Rust de preferences/"
 
 [package.metadata.churros]
