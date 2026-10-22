@@ -400,13 +400,13 @@ expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
 why = "Typo in the Live session command: every niri ISO autologins a command that does not exist."
 
 [[mutation]]
-name = "test_editions: churros-xfce-session execs startx (xorg-xinit)"
+name = "test_editions: el server pierde xfce4-session (startxfce4)"
 file = "archiso/packages.server.x86_64"
-find = "xorg-xinit\n"
-replace = ""
+find = "\nxfce4-session\n"
+replace = "\n"
 caught_by = "tests.static.test_editions"
-expect = "edition-pkg:server/x86_64:xorg-xinit"
-why = "churros-xfce-session execs startx (xorg-xinit): the server Live loops back to the greeter."
+expect = "edition-pkg:server/x86_64:xfce4-session"
+why = "churros-xfce-session ejecuta startxfce4 (xfce4-session): sin él, la sesión Live del server vuelve al greeter en bucle. (Quitar solo xorg-xinit no rompe nada: xfce4-session depende de él.)"
 
 [[mutation]]
 name = "test_editions: Removing [multilib] makes pacstrap fail on lib32-mesa / lib32-vulkan-icd-loader"
@@ -1529,3 +1529,155 @@ delete = true
 caught_by = "tests.static.test_repo_wiring"
 expect = "CLI_HELPERS nombra scripts/cli/apps-dev-stub.sh"
 why = "se borra un helper documentado"
+
+# --- tests/container (./churros test --mutations dentro del contenedor: rust.yml) ---
+
+[[mutation]]
+name = "test_arch_repos: A typo in a package name makes pacstrap abort with 'target not found'"
+file = "archiso/packages.x86_64"
+find = "\nnetworkmanager\n"
+replace = "\nnetworkmanger\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.x86_64:networkmanger"
+requires = "container"
+why = "A typo in a package name makes pacstrap abort with 'target not found'. check.sh only looks for duplicates."
+
+[[mutation]]
+name = "test_arch_repos: An AI guesses the upstream/AUR name instead of the [extra] package name"
+file = "archiso/packages.x86_64"
+find = "\nnoctalia\n"
+replace = "\nnoctalia-shell\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.x86_64:noctalia-shell"
+requires = "container"
+why = "An AI guesses the upstream/AUR name instead of the [extra] package name."
+
+[[mutation]]
+name = "test_arch_repos: Kernel swap"
+file = "archiso/packages.x86_64"
+find = "linux\nlinux-atm\n"
+replace = "linux-zen\nlinux-atm\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.x86_64:linux]"
+requires = "container"
+why = "Kernel swap. grub/syslinux/unpackfs/linux.preset hardcode vmlinuz-linux, so the ISO does not boot and Calamares copies files that do not exist."
+
+[[mutation]]
+name = "test_arch_repos: Adding pulseaudio next to pipewire-pulse makes pacstrap abort ('unresolvable package confl"
+file = "archiso/packages.x86_64"
+find = "\npipewire-pulse\n"
+replace = "\npipewire-pulse\npulseaudio\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-dep:packages.x86_64:conflict:pipewire-pulse:pulseaudio"
+requires = "container"
+why = "Adding pulseaudio next to pipewire-pulse makes pacstrap abort ('unresolvable package conflicts detected'), and pacman -Sp alone does not see it."
+
+[[mutation]]
+name = "test_arch_repos: An x86-only package copied into the ARM list"
+file = "archiso/packages.aarch64"
+find = "\nlinux-firmware\n"
+replace = "\nlinux-firmware\nintel-ucode\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.aarch64:intel-ucode"
+requires = "container"
+why = "An x86-only package copied into the ARM list. The ARM ISO job only runs on path-filtered PRs, and this is now caught from the x86_64 container."
+
+[[mutation]]
+name = "test_arch_repos: The boot config is switched to a kernel that the list does not install"
+file = "archiso/grub/grub.cfg"
+find = "    set churros_kernel=\"vmlinuz-linux\"\n"
+replace = "    set churros_kernel=\"vmlinuz-linux-lts\"\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.x86_64:linux-lts"
+requires = "container"
+why = "The boot config is switched to a kernel that the list does not install."
+
+[[mutation]]
+name = "test_arch_repos: The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux"
+file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
+find = "archiso_image=\"/boot/initramfs-linux.img\""
+replace = "archiso_image=\"/boot/initramfs-linux-archiso.img\""
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.x86_64:initramfs-linux.img"
+requires = "container"
+why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img."
+
+[[mutation]]
+name = "test_arch_repos: A wrong command->package mapping would make the static resolver accept a command that the"
+file = "tests/command_providers.toml"
+find = "[commands]\n"
+replace = "[commands]\nnm-connection-editor = \"networkmanager\"\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "providers:commands:nm-connection-editor"
+requires = "container"
+why = "A wrong command->package mapping would make the static resolver accept a command that the listed package does not ship."
+
+[[mutation]]
+name = "test_arch_repos: A false 'pulled in as a dependency' claim makes testlib"
+file = "tests/command_providers.toml"
+find = "[implicit]\n"
+replace = "[implicit]\nxdg-desktop-portal-wlr = { pulled_by = [\"niri\"] }\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "installed:packages.x86_64:xdg-desktop-portal-wlr"
+requires = "container"
+why = "A false 'pulled in as a dependency' claim makes testlib.installed() lie to every static test."
+
+[[mutation]]
+name = "test_niri_config: An unknown node parses as KDL but niri rejects the config"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "prefer-no-csd\n"
+replace = "prefer-no-csd-please\n"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-validate:archiso/airootfs/etc/skel/.config/niri/config.kdl"
+requires = "container"
+why = "An unknown node parses as KDL but niri rejects the config: no bar, welcome or portals at login."
+
+[[mutation]]
+name = "test_niri_config: A wrong action name (an AI writing from memory) in the defaults copy that churros-settings"
+file = "archiso/airootfs/usr/share/churros/defaults/niri/config.kdl"
+find = "{ toggle-window-floating; }"
+replace = "{ toggle-floating; }"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-validate:archiso/airootfs/usr/share/churros/defaults/niri/config.kdl"
+requires = "container"
+why = "A wrong action name (an AI writing from memory) in the defaults copy that churros-settings restores."
+
+[[mutation]]
+name = "test_niri_config: A harmless reformat of the bind"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "    Mod+W hotkey-overlay-title=\"Abrir la bienvenida\" { spawn \"churros-welcome\"; }\n"
+replace = "    Mod+W hotkey-overlay-title=\"Abrir la bienvenida\" {\n        spawn \"churros-welcome\";\n    }\n"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-installed:x86_64"
+requires = "container"
+why = "A harmless reformat of the bind. The installer's line-based `sed '/churros-welcome/d'` then leaves a bind with no action, so every installed system's niri config fails ('expected an action for this keybind'). The shipped config stays valid."
+
+[[mutation]]
+name = "test_niri_config: An invalid enum value is silently ignored by Noctalia, so the ChurrOS setting never applie"
+file = "archiso/airootfs/etc/skel/.config/noctalia/config.toml"
+find = "transparency_mode              = \"soft\""
+replace = "transparency_mode              = \"frosted\""
+caught_by = "tests.container.test_niri_config"
+expect = "noctalia-validate:archiso/airootfs/etc/skel/.config/noctalia"
+requires = "container"
+why = "An invalid enum value is silently ignored by Noctalia, so the ChurrOS setting never applies."
+
+[[mutation]]
+name = "test_niri_config: Typo in the Live-only live"
+file = "archiso/airootfs/root/scripts/desktop.sh"
+find = "allow_empty_password = true"
+replace = "allow_empty_passwords = true"
+caught_by = "tests.container.test_niri_config"
+expect = "noctalia-validate:live"
+requires = "container"
+why = "Typo in the Live-only live.toml. Noctalia ignores the unknown key, so the idle lock screen cannot be unlocked with the empty live password."
+
+[[mutation]]
+name = "test_niri_config: An invalid boolean in a"
+file = "archiso/airootfs/usr/share/applications/churros-welcome.desktop"
+find = "Terminal=false\n"
+replace = "Terminal=no\n"
+caught_by = "tests.container.test_niri_config"
+expect = "desktop-file:archiso/airootfs/usr/share/applications/churros-welcome.desktop"
+requires = "container"
+why = "An invalid boolean in a .desktop entry. GLib cannot parse the key."

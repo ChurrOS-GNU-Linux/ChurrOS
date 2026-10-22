@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import shutil
 import socket
+import struct
 import subprocess
 import time
 
@@ -67,6 +68,30 @@ def resolve_firmware(arch: str, workdir: Path) -> tuple[str, str]:
     vars_copy = workdir / "efivars.fd"
     shutil.copyfile(vars_template, vars_copy)
     return code, str(vars_copy)
+
+
+def xwd_to_rgb(data: bytes) -> tuple[int, int, bytes]:
+    """Imagen XWD (ZPixmap de 24/32 bits, la de Xvfb) a RGB."""
+    fields = struct.unpack(">25I", data[:100])
+    header_size, _version, pixmap_format, depth, width, height = fields[:6]
+    byte_order, bits_per_pixel, bytes_per_line = fields[7], fields[11], fields[12]
+    red_mask, green_mask, blue_mask, ncolors = fields[14], fields[15], fields[16], fields[19]
+    if pixmap_format != 2 or bits_per_pixel not in (24, 32) or depth < 24:
+        raise VMError(f"formato XWD no soportado (format={pixmap_format}, bpp={bits_per_pixel})")
+    pixels = data[header_size + ncolors * 12:]
+    step = bits_per_pixel // 8
+    endian = "little" if byte_order == 0 else "big"
+    shifts = [(mask, (mask & -mask).bit_length() - 1) for mask in (red_mask, green_mask, blue_mask)]
+    out = bytearray(width * height * 3)
+    index = 0
+    for row in range(height):
+        line = pixels[row * bytes_per_line:row * bytes_per_line + width * step]
+        for column in range(0, width * step, step):
+            value = int.from_bytes(line[column:column + step], endian)
+            for mask, shift in shifts:
+                out[index] = (value & mask) >> shift
+                index += 1
+    return width, height, bytes(out)
 
 
 class _JsonSocket:
@@ -192,6 +217,7 @@ class VM:
         # negra. 'virgl' da 3D al invitado (llvmpipe en el host si no hay GPU).
         self.gpu = ("virgl" if virgl_available() else "plain") if gpu == "auto" else gpu
         self.xvfb: subprocess.Popen | None = None
+        self.display: str | None = None
         self.memory, self.cpus = memory, cpus
         self.artifacts = artifacts
         self.accel = accel or ("kvm" if kvm_available() and arch == os.uname().machine else "tcg")
@@ -250,7 +276,9 @@ class VM:
             return env
         read_fd, write_fd = os.pipe()
         self.xvfb = subprocess.Popen(
-            ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "1280x800x24", "-nolisten", "tcp"],
+            # Pantalla holgada: la ventana de QEMU tiene que caber entera para
+            # poder capturarla (xwd -name falla si se sale de la raíz).
+            ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "2560x1600x24", "-nolisten", "tcp"],
             pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.close(write_fd)
         with os.fdopen(read_fd) as handle:
@@ -259,6 +287,7 @@ class VM:
             raise VMError("Xvfb no arrancó (necesario para dar 3D al invitado sin GPU en el host)")
         env["DISPLAY"] = f":{number}"
         env.setdefault("SDL_VIDEODRIVER", "x11")
+        self.display = env["DISPLAY"]
         return env
 
     def start(self) -> None:
@@ -310,7 +339,12 @@ class VM:
         raise VMError(f"qemu-guest-agent no respondió en {timeout:.0f} s")
 
     def screenshot(self, path: Path) -> Path | None:
-        """Captura de la pantalla del invitado en PPM (lo admite cualquier QEMU)."""
+        """Captura de la pantalla del invitado en PPM.
+
+        QMP screendump no sirve con una salida GL (virgl): responde 'no
+        surface'. En ese caso se captura el Xvfb en el que QEMU dibuja su
+        ventana SDL (xwd, del paquete x11-apps).
+        """
         target = path.with_suffix(".ppm")
         try:
             qmp = QMP(self.qmp_path)
@@ -320,9 +354,20 @@ class VM:
             qmp.execute("screendump", filename=str(target))
             return target if target.exists() else None
         except (OSError, VMError):
-            return None
+            pass
         finally:
             qmp.close()
+        if self.display and shutil.which("xwd"):
+            for window in (["-name", "QEMU"], ["-root"]):
+                result = subprocess.run(["xwd", "-silent", "-display", self.display, *window],
+                                        capture_output=True, timeout=60)
+                if result.returncode == 0 and len(result.stdout) > 100:
+                    break
+            if result.returncode == 0 and len(result.stdout) > 100:
+                width, height, rgb = xwd_to_rgb(result.stdout)
+                target.write_bytes(b"P6\n%d %d\n255\n" % (width, height) + rgb)
+                return target
+        return None
 
     def stop(self) -> None:
         try:

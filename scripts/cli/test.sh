@@ -8,6 +8,7 @@
 #   ./churros test --iso [ISO]      auditoría del contenido de una ISO ya construida
 #   ./churros test --boot [ISO]     arranque de la ISO en QEMU y comprobaciones en la sesión Live
 #   ./churros test --mutations      autoprueba: cada regresión sembrada tiene que hacer fallar la batería
+#                                   (con --container, las de tests/container dentro del contenedor)
 #
 # Sin ISO explícita, --iso y --boot usan la más reciente de out/. Las capas se
 # pueden combinar (./churros test --iso --boot). CHURROS_STRICT=1 (o CI=true)
@@ -29,7 +30,7 @@ ISO=""
 BOOT_ARGS=()
 
 show_help() {
-    sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -80,15 +81,20 @@ if [ "$RUN_STATIC" -eq 1 ]; then
 fi
 
 if [ "$RUN_CONTAINER" -eq 1 ]; then
+    CONTAINER_CMD=(python3 -m unittest discover -s tests/container -t . -v)
+    if [ "$RUN_MUTATIONS" -eq 1 ]; then
+        CONTAINER_CMD=(python3 tests/mutations/run_mutations.py --container)
+        RUN_MUTATIONS=0
+    fi
     if churros_in_container; then
-        python3 -m unittest discover -s tests/container -t . -v || status=1
+        "${CONTAINER_CMD[@]}" || status=1
     else
         # shellcheck source=scripts/lib/container.sh
         source scripts/lib/container.sh
         container_engine_init
         container_ensure_image
         container_run --upgrade -e "CHURROS_STRICT=${CHURROS_STRICT:-}" -- \
-            python3 -m unittest discover -s tests/container -t . -v || status=1
+            "${CONTAINER_CMD[@]}" || status=1
     fi
 fi
 

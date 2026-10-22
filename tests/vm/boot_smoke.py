@@ -225,7 +225,12 @@ def check_niri(agent, report: Report, uid: str, timeout: float) -> None:
         output_count = len(json.loads(outputs)) if code == 0 else 0
     except json.JSONDecodeError:
         output_count = 0
-    report.check("niri responde por IPC y tiene una salida", output_count > 0, outputs[:300])
+    detail = outputs[:300]
+    if output_count == 0:
+        # niri 26.04 rechaza los renderizadores EGL por software ("software EGL
+        # renderers are skipped"): sin virgl no abre ninguna salida.
+        detail += " (niri sin salidas: ¿la VM tiene 3D? mira /dev/vcs7 en la VM o usa --gpu virgl)"
+    report.check("niri responde por IPC y tiene una salida", output_count > 0, detail)
 
     def has_windows(out: str) -> bool:
         try:
@@ -293,6 +298,8 @@ def main() -> int:
     parser.add_argument("--artifacts", type=Path, default=None)
     parser.add_argument("--edition", default=None, help="por defecto, /etc/churros-edition de la ISO")
     parser.add_argument("--memory", type=int, default=4096)
+    parser.add_argument("--gpu", choices=("auto", "virgl", "plain"), default="auto",
+                        help="virgl da 3D al invitado (niri lo necesita); plain, virtio-vga sin 3D")
     parser.add_argument("--keep", action="store_true", help="no apagar la VM al terminar")
     args = parser.parse_args()
 
@@ -306,7 +313,8 @@ def main() -> int:
     print(f"== Arranque de {iso.name} ({arch}, {args.firmware}, {'KVM' if kvm_available() else 'TCG'}, espera {timeout:.0f} s)")
     print(f"   artefactos: {artifacts}")
 
-    vm = VM(iso=iso, arch=arch, firmware=args.firmware, memory=args.memory, artifacts=artifacts)
+    vm = VM(iso=iso, arch=arch, firmware=args.firmware, memory=args.memory, artifacts=artifacts, gpu=args.gpu)
+    report.facts["gpu"] = vm.gpu
     started = time.monotonic()
     edition_name = args.edition
     try:

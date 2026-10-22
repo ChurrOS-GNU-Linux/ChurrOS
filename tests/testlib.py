@@ -91,7 +91,7 @@ def repo_files() -> tuple[Path, ...]:
     if result.returncode == 0:
         names = sorted({name for name in result.stdout.decode().split("\0") if name})
         return tuple(ROOT / name for name in names if (ROOT / name).is_file() or (ROOT / name).is_symlink())
-    skip = {".git", "target", "work", "out", "vm", "node_modules", "__pycache__"}
+    skip = {".git", ".claude", "target", "work", "out", "vm", "node_modules", "__pycache__"}
     found = []
     for dirpath, dirnames, filenames in os.walk(ROOT):
         dirnames[:] = [d for d in dirnames if d not in skip]
@@ -244,7 +244,8 @@ def local_packages() -> frozenset[str]:
 
 
 # Dependencias del metapaquete `base` de Arch: están en toda ISO que liste
-# `base`. tests/container la contrasta con `pacman -Si base`.
+# `base`. tests/container la contrasta con `pacman -Si base`. Arch Linux 32
+# cambia el keyring (archlinux32-keyring); Arch Linux ARM usa el de Arch.
 BASE_DEPENDS = frozenset({
     "archlinux-keyring", "bash", "bzip2", "coreutils", "file", "filesystem",
     "findutils", "gawk", "gcc-libs", "gettext", "glibc", "grep", "gzip",
@@ -252,6 +253,12 @@ BASE_DEPENDS = frozenset({
     "psmisc", "sed", "shadow", "systemd", "systemd-sysvcompat", "tar",
     "util-linux", "xz",
 })
+
+
+def base_depends(arch: str) -> frozenset[str]:
+    if arch == "i686":
+        return (BASE_DEPENDS - {"archlinux-keyring"}) | {"archlinux32-keyring"}
+    return BASE_DEPENDS
 
 
 @lru_cache(maxsize=None)
@@ -282,7 +289,7 @@ def installed(item: Edition) -> frozenset[str]:
     if item.installer:
         names.add("calamares")
     if "base" in names:
-        names |= BASE_DEPENDS
+        names |= base_depends(item.arch)
     implicit = providers()["implicit"]
     changed = True
     while changed:

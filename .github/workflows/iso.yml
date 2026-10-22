@@ -91,10 +91,14 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
+      # niri 26.04 descarta el renderizado EGL por software: sin 3D en la VM
+      # arranca sin ninguna salida. tests/vm da virgl al invitado con la
+      # ventana SDL de QEMU en un Xvfb y el GL de Mesa (el runner no tiene GPU).
       - name: Install QEMU and ISO tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools
+          sudo apt-get install -y qemu-system-x86 qemu-system-gui qemu-utils ovmf \
+            xorriso squashfs-tools xvfb x11-apps libgl1-mesa-dri libegl1
 
       # Los runners Linux de GitHub tienen /dev/kvm, pero solo root puede
       # abrirlo hasta que se añade esta regla.

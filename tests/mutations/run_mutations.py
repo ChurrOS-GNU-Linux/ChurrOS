@@ -20,8 +20,11 @@ Formato de cada entrada:
   replace = "texto nuevo"
   caught_by = "tests.static.test_x"   # módulo unittest, "check" o comando de shell
   expect = "texto que debe salir en el fallo"
+  requires = "container"   # opcional: solo con --container, dentro del contenedor Arch
 
-Uso: python3 tests/mutations/run_mutations.py [-k filtro] [-j N]
+Uso: python3 tests/mutations/run_mutations.py [-k filtro] [-j N] [--container]
+(--container ejecuta solo las mutaciones de tests/container; tiene que correr
+dentro del contenedor de build, como ./churros test --container.)
 """
 from __future__ import annotations
 
@@ -121,9 +124,16 @@ def main() -> int:
     parser.add_argument("-k", dest="filter", default="", help="solo mutaciones cuyo nombre contenga esto")
     parser.add_argument("-j", dest="jobs", type=int, default=min(4, os.cpu_count() or 1))
     parser.add_argument("--timeout", type=float, default=300)
+    parser.add_argument("--container", action="store_true",
+                        help="solo las mutaciones que requieren el contenedor Arch")
     args = parser.parse_args()
 
-    mutations = [m for m in load_mutations() if args.filter in m["name"]]
+    layer = "container" if args.container else None
+    every = [m for m in load_mutations() if args.filter in m["name"]]
+    mutations = [m for m in every if m.get("requires") == layer]
+    if len(mutations) < len(every):
+        others = "las del host" if layer else "las de tests/container (--container)"
+        print(f"{len(every) - len(mutations)} mutaciones son de otra capa ({others}) y no se ejecutan aquí")
     if not mutations:
         print("no hay mutaciones que ejecutar")
         return 1
