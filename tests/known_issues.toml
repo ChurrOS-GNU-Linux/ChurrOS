@@ -347,3 +347,20 @@ note = "El bucle de bsdtar del paso 2 de scripts/cli/build.sh recorre siempre ar
 [[issue]]
 id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
 note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."
+
+# --- tests/iso/check_iso.py (confirmado en una ISO niri x86_64 construida) ---
+[[issue]]
+id = "iso-niri:not-executable:/usr/local/bin/livecd-sound"
+note = "En la ISO, /usr/local/bin/livecd-sound tiene modo 644: mkarchiso no conserva el +x de git y profiledef.sh no lo declara en file_permissions. En la entrada Accessibility, livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC. Mismo fallo que exec-mode:/usr/local/bin/livecd-sound."
+
+[[issue]]
+id = "iso-niri:not-executable:/usr/local/bin/Installation_guide"
+note = "En la ISO, /usr/local/bin/Installation_guide tiene modo 644 (sin entrada en file_permissions): 'permission denied' al ejecutarlo en el Live. Mismo fallo que exec-mode:/usr/local/bin/Installation_guide."
+
+[[issue]]
+id = "iso-niri:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
+note = "En la ISO, multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, que no existe: modemmanager no está en ninguna lista. Mismo fallo que unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service."
+
+[[issue]]
+id = "iso-niri:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
+note = "En la ISO, el alias dbus-org.freedesktop.ModemManager1.service apunta a una unidad que no existe (modemmanager no se instala). Mismo fallo que unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service."

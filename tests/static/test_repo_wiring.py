@@ -1248,7 +1248,7 @@ class KnownIssuesTest(unittest.TestCase):
         self.assertFalse(problems, "\n".join(problems))
 
     def test_categories_have_a_test(self):
-        used = set()
+        used, prefixes = set(), set()
         for path in testlib.repo_files():
             rel = testlib.rel(path)
             if not rel.startswith("tests/") or path.suffix != ".py" or path.name == "testlib.py":
@@ -1258,7 +1258,10 @@ class KnownIssuesTest(unittest.TestCase):
             used |= set(re.findall(r"f?[\"']([a-z][a-z0-9-]*):", text))
             # category = "calamares-yaml"; assert_findings(self, category, ...)
             used |= set(re.findall(r"\bcategory\s*=\s*[\"']([a-z][a-z0-9-]*)[\"']", text))
-        orphans = sorted({str(e.get("id", "")).split(":", 1)[0] for e in self.entries() if isinstance(e, dict)} - used)
+            # category = f"iso-{edition}" (tests/iso, tests/vm): vale cualquier sufijo.
+            prefixes |= set(re.findall(r"\bcategory\s*=\s*f[\"']([a-z][a-z0-9-]*-)\{", text))
+        categories = {str(e.get("id", "")).split(":", 1)[0] for e in self.entries() if isinstance(e, dict)}
+        orphans = sorted(c for c in categories - used if not c.startswith(tuple(prefixes)))
         self.assertFalse(orphans, f"categorías de tests/known_issues.toml que ninguna prueba de tests/ "
                                   f"produce (entradas que ya no silencian nada): {orphans}")
 

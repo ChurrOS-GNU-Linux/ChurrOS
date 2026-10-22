@@ -76,7 +76,7 @@ Manual verification in QEMU (what is not automated yet: the Calamares install to
 - VM disk: `vm/ChurrOS.qcow2` (64G qcow2, created on first run)
 - EFI vars: `vm/OVMF_VARS.fd` (copied from `/usr/share/edk2/x64/OVMF_VARS.4m.fd`)
 - Serial log: `vm_serial.log` (in root, gitignored)
-- 4 GB RAM, 4 cores + `-cpu host` with KVM (2 cores, plain q35 without). niri needs 3D: build.sh picks `virtio-vga-gl` if `/dev/dri` exists, else `virtio-gpu` (niri falls back to llvmpipe).
+- 4 GB RAM, 4 cores + `-cpu host` with KVM (2 cores, plain q35 without). niri needs 3D: run.sh picks `virtio-vga-gl` if `/dev/dri` exists, else `virtio-gpu`. niri 26.04 does NOT fall back to llvmpipe ("software EGL renderers are skipped"): without virgl it starts with no output and the screen stays black. `tests/vm` gives the guest virgl even on a GPU-less host (Mesa in a private Xvfb).
 
 ## Project Layout
 
