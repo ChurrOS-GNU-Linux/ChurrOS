@@ -1,164 +1,62 @@
-# Vision
+# Visión
 
-## Nuestra visión
-
-ChurrOS nació con una idea muy simple:
+ChurrOS nació con una idea simple:
 
 > Construir una distribución Linux moderna, elegante y con identidad propia.
 
-No buscamos crear otra personalización de Arch Linux.
+No buscamos hacer otra personalización de Arch Linux, sino una distribución que ofrezca una experiencia coherente desde que se arranca la ISO hasta el primer inicio de sesión en el sistema instalado.
 
-Nuestro objetivo es construir una distribución completa que ofrezca una experiencia consistente desde el momento en que el usuario inicia la ISO hasta el primer inicio de sesión en su sistema instalado.
-
----
-
-# Nuestra filosofía
-
-Creemos que una buena distribución Linux debe ser:
-
-- Rápida.
-- Moderna.
-- Sencilla.
-- Elegante.
-- Fácil de mantener.
-
-Cada decisión dentro del proyecto intenta respetar estos principios.
+ChurrOS también es un proyecto para aprender: entender cómo se construye una distribución Linux y compartir lo aprendido con quien quiera hacer lo mismo.
 
 ---
 
-# Calidad antes que cantidad
+## A quién va dirigida
 
-Preferimos incorporar pocas características bien implementadas antes que muchas funcionalidades incompletas.
+- Usuarios nuevos que quieren Arch Linux sin configurarlo desde cero.
+- Desarrolladores.
+- Personas que quieren un escritorio cuidado desde el primer inicio.
 
-Cada nueva característica debe aportar valor real al usuario.
-
-La estabilidad y la experiencia del usuario siempre tendrán prioridad.
-
----
-
-# Automatización
-
-Toda tarea repetitiva debería poder automatizarse.
-
-Nuestro objetivo es que el desarrollo de ChurrOS sea sencillo y reproducible.
-
-Por esta razón el proyecto incorpora herramientas como la CLI oficial (`./churros`), que centraliza las tareas de construcción y prueba de la distribución.
-
-Con el tiempo esta herramienta seguirá creciendo para automatizar aún más procesos.
+La edición por defecto usa Niri, un compositor Wayland de mosaico con desplazamiento, que necesita aceleración 3D para ir fluido. La edición XFCE ofrece un escritorio tradicional. Todas las ediciones y arquitecturas, y cuáles tienen ISO publicada, están en el [README](../README.md#ediciones).
 
 ---
 
-# Organización
+## Qué ofrece hoy
 
-Creemos que un proyecto bien organizado es más fácil de mantener.
-
-Por ello mantenemos una separación clara entre:
-
-- Código.
-- Documentación.
-- Recursos gráficos.
-- Configuraciones.
-- Scripts.
-
-Esta organización facilita la colaboración y el crecimiento del proyecto.
+- Instalador gráfico Calamares, con branding y parches de ChurrOS (el port i686 no lo lleva).
+- En la edición Niri, Noctalia hace de barra, lanzador, notificaciones, OSD y centro de control, y foot es la terminal. Waybar, Fuzzel y Mako siguen instalados como alternativa.
+- Apps propias en Rust: `churros-welcome`, `churros-settings`, `churros-tour`, `churros-control-center` y `churros-popup`. En Niri, el centro de control de Noctalia cubre lo que hacen las dos últimas. Detalle en [Apps](apps.md).
+- greetd con ReGreet como pantalla de inicio de sesión, con autologin en el Live.
+- Actualizador y rollback con snapshots Btrfs ([Rollback](rollback.md)).
+- GPU AMD e Intel con Mesa desde la ISO. Los controladores propietarios de NVIDIA no vienen en la ISO ni los instala Calamares.
 
 ---
 
-# Identidad propia
+## Identidad propia
 
-Aunque ChurrOS utiliza Arch Linux como base, el objetivo es desarrollar una identidad completamente propia.
-
-Esto incluye:
-
-- Branding oficial.
-- Logo.
-- Mascota.
-- Wallpapers.
-- Fastfetch.
-- Plymouth.
-- Tema del escritorio.
-- Instalador gráfico.
-- Herramientas propias.
-
-Queremos que ChurrOS sea reconocible por su identidad y no únicamente por la distribución en la que se basa.
+ChurrOS usa Arch Linux como base y quiere ser reconocible por sí misma. Hoy tiene logo, wallpapers, configuración de Fastfetch, tema de GRUB y branding propio en Calamares y en ReGreet. Faltan la mascota, un Plymouth gráfico y un cursor propio: el estado de cada pieza está en el [roadmap](roadmap.md) y dónde vive cada una, en [Branding](branding.md).
 
 ---
 
-# Experiencia del usuario
+## Principios
 
-El usuario siempre será el centro del proyecto.
-
-Nuestro objetivo es ofrecer una experiencia coherente y agradable desde el primer momento.
-
-Cada detalle, por pequeño que parezca, contribuye a esa experiencia.
+Las decisiones del proyecto se toman según los [principios de ChurrOS](principios.md): cinco principios ordenados, cada uno con una pregunta para revisar cambios, la regla para añadir programas nuevos y el proceso para decidir cambios grandes.
 
 ---
 
-# Software libre
+## Software libre y comunidad
 
-ChurrOS se desarrolla siguiendo los principios del software libre.
+El código de ChurrOS se publica bajo GPL-3.0 ([LICENSE](../LICENSE)). Las licencias del arte y de los componentes de terceros están en [Licencias](licencias.md).
 
-Creemos en:
-
-- Compartir conocimiento.
-- Aprender en comunidad.
-- Colaborar.
-- Mejorar continuamente.
-
-Toda persona interesada es bienvenida a contribuir al proyecto.
+Cualquiera puede contribuir, programando o no: la guía está en [Contribuir](contributing.md), y la convivencia se rige por el [código de conducta](../CODE_OF_CONDUCT.md). El foro público (GitHub Discussions) todavía no está activado; mientras tanto, las preguntas llegan por los [issues](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues).
 
 ---
 
-# Comunidad
+## Objetivos a largo plazo
 
-Una distribución no es únicamente código.
+- Una distribución estable y fácil de mantener.
+- Una identidad visual completa.
+- Documentación para usuarios, no solo para quien desarrolla.
+- Una comunidad activa, con un foro público.
+- Publicaciones periódicas, con sumas de verificación y réplicas (mirrors) para descargar.
 
-También es su comunidad.
-
-Queremos construir un espacio donde los usuarios puedan aprender, colaborar y compartir ideas.
-
-Cada contribución, por pequeña que sea, ayuda al crecimiento del proyecto.
-
----
-
-# Objetivos a largo plazo
-
-Nuestra visión para el futuro incluye:
-
-- Una distribución estable y madura.
-- Un instalador gráfico desarrollado por el proyecto.
-- Un ecosistema de herramientas propias.
-- Una identidad visual reconocible.
-- Documentación completa.
-- Una comunidad activa.
-- Publicaciones periódicas.
-- Un proyecto mantenible a largo plazo.
-
----
-
-# Nuestro compromiso
-
-Nos comprometemos a desarrollar ChurrOS de forma abierta, organizada y transparente.
-
-Cada nueva versión deberá representar una mejora respecto a la anterior, manteniendo siempre la calidad como prioridad.
-
----
-
-# Una distribución hecha con pasión
-
-ChurrOS es un proyecto nacido del interés por aprender, experimentar y crear.
-
-Más allá del código, representa el deseo de construir algo propio, comprender cómo funciona un sistema operativo moderno y compartir ese conocimiento con la comunidad.
-
-Esperamos que ChurrOS inspire a otras personas a explorar el mundo del software libre, aprender cómo se construye una distribución Linux y, por qué no, crear la suya propia.
-
----
-
-> "Las mejores distribuciones no se construyen únicamente con código.
->
-> Se construyen con tiempo, dedicación, curiosidad y una comunidad que comparte la misma visión."
-
-**Bienvenido a ChurrOS.**
-
-
-....hoyuse....
+El instalador es Calamares. Sustituirlo por uno propio, o añadir otras herramientas propias, pasa por la [regla para programas nuevos](principios.md#regla-para-programas-nuevos). Hoy no hay ninguna propuesta abierta para un instalador propio.
