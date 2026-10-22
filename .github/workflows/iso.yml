@@ -32,7 +32,9 @@ on:
       - scripts/container-entrypoint.sh
       - tests/iso/**
       - tests/vm/**
+      - tests/testlib.py
       - tests/known_issues.toml
+      - VERSION
       - .github/workflows/iso.yml
   schedule:
     - cron: '17 3 * * *'
@@ -48,7 +50,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: iso-${{ github.ref }}-${{ github.event_name }}
+  # La edición va en la clave: dos ejecuciones manuales de ediciones distintas
+  # no se cancelan entre sí.
+  group: iso-${{ github.ref }}-${{ github.event_name }}-${{ inputs.edition }}
   cancel-in-progress: true
 
 jobs:
@@ -110,6 +114,7 @@ jobs:
           ls -l /dev/kvm
 
       - name: Build ISO
+        id: build
         run: ./churros build --container --edition ${{ matrix.edition }}
 
       - name: Audit ISO content
@@ -118,10 +123,11 @@ jobs:
           python3 tests/iso/check_iso.py out/*.iso --edition ${{ matrix.edition }} --report out/reports/iso-content.json
 
       - name: Boot ISO in QEMU (UEFI)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --artifacts out/reports/boot-uefi
 
       - name: Boot ISO in QEMU (BIOS)
-        if: github.event_name != 'pull_request'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name != 'pull_request' }}
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --firmware bios --artifacts out/reports/boot-bios
 
       # Consola serie, diario, captura de pantalla e informe JSON: con esto se
@@ -135,8 +141,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      # Aunque la auditoría o el arranque fallen: la ISO sirve para investigarlo.
       - name: Upload ISO
-        if: github.event_name != 'pull_request'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: churros-${{ matrix.edition }}-x86_64-iso

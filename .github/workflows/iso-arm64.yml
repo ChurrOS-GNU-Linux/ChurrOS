@@ -40,6 +40,9 @@ on:
       - scripts/patch-mkarchiso-grubmodules.sh
       - installer/apply-calamares.sh
       - tests/iso/**
+      - tests/testlib.py
+      - tests/known_issues.toml
+      - VERSION
       - .github/workflows/iso-arm64.yml
   # Semanal: el resto del airootfs, rust/ y Arch Linux ARM cambian sin tocar
   # los ficheros de arriba.
@@ -50,8 +53,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: iso-arm64-${{ github.ref }}
-  cancel-in-progress: true
+  group: iso-arm64-${{ github.ref }}-${{ github.event_name }}
+  # Solo los PR se cancelan entre sí: una ejecución manual no tira la semanal
+  # (hasta 6 horas de build) ni al revés.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   iso:
@@ -65,6 +70,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build ISO
+        id: build
         run: ./churros build --container --arch arm64
 
       # La misma auditoría de contenido que la ISO x86_64 (iso.yml): permisos
@@ -73,9 +79,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xorriso squashfs-tools
-          python3 tests/iso/check_iso.py out/*.iso
+          mkdir -p out/reports
+          python3 tests/iso/check_iso.py out/*.iso --report out/reports/iso-content.json
 
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: churros-aarch64-reports
+          path: out/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # La ISO se sube aunque la auditoría falle: hace falta para investigarlo.
       - name: Upload ISO
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: churros-aarch64-iso

@@ -155,10 +155,12 @@ fn gtk_selection_preview_and_installation_failures() {
     assert!(autostart.exists());
 
     // Simulate a terminal startup error without falling back to a real terminal.
-    let which = bin.join("which");
-    std::fs::write(&which, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&which, std::fs::Permissions::from_mode(0o700)).unwrap();
-    std::fs::remove_file(bin.join("xterm")).unwrap();
+    // churros_services::which() looks for PATH/<bin> (it never runs `which`),
+    // so every fake terminal has to go: with one left, start() spawns it
+    // asynchronously and the synchronous assert below sees None.
+    for name in ["foot", "konsole", "xfce4-terminal", "xterm"] {
+        std::fs::remove_file(bin.join(name)).unwrap();
+    }
     unsafe {
         std::env::set_var("PATH", &bin);
     }

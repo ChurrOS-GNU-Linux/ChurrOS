@@ -17,7 +17,8 @@ Formato de cada entrada:
   name = "descripción corta"
   file = "ruta/relativa"
   find = "texto exacto, que aparece una sola vez"   # o delete = true
-  replace = "texto nuevo"
+  find_re = "^foot\\n"   # en vez de find: regex (re.MULTILINE) con una sola coincidencia
+  replace = "texto nuevo"   # con find_re admite \\1, \\g<nombre>
   caught_by = "tests.static.test_x"   # módulo unittest, "check" o comando de shell
   expect = "texto que debe salir en el fallo"
   requires = "container"   # opcional: solo con --container, dentro del contenedor Arch
@@ -33,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -57,8 +59,8 @@ def load_mutations() -> list[dict]:
         for key in ("name", "file", "caught_by", "expect"):
             if not mutation.get(key):
                 raise SystemExit(f"mutación sin '{key}': {mutation}")
-        if not mutation.get("delete") and "find" not in mutation:
-            raise SystemExit(f"mutación sin 'find' ni 'delete': {mutation['name']}")
+        if not mutation.get("delete") and ("find" in mutation) == ("find_re" in mutation):
+            raise SystemExit(f"mutación sin 'find', 'find_re' ni 'delete' (o con los dos): {mutation['name']}")
     return mutations
 
 
@@ -97,21 +99,38 @@ def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
         return 124, (exc.stdout or "") + f"\n[timeout tras {timeout:.0f} s]"
 
 
-def apply(mutation: dict, copy: Path) -> str | None:
-    """Aplica la mutación. Devuelve un error si ya no se puede aplicar."""
-    target = copy / mutation["file"]
-    if mutation.get("delete"):
-        if not target.exists():
-            return f"{mutation['file']} no existe"
-        target.unlink()
-        return None
+def mutated_text(mutation: dict, root: Path) -> tuple[str | None, str | None]:
+    """(texto mutado, None) o (None, motivo por el que ya no se puede aplicar)."""
+    target = root / mutation["file"]
     if not target.exists():
-        return f"{mutation['file']} no existe"
+        return None, f"{mutation['file']} no existe"
+    if mutation.get("delete"):
+        return "", None
     text = target.read_text(encoding="utf-8")
+    replace = mutation.get("replace", "")
+    if "find_re" in mutation:
+        matches = list(re.finditer(mutation["find_re"], text, re.MULTILINE))
+        if len(matches) != 1:
+            return None, (f"'find_re' coincide {len(matches)} veces en {mutation['file']} "
+                          "(tiene que ser 1): actualiza la mutación")
+        match = matches[0]
+        return text[:match.start()] + match.expand(replace) + text[match.end():], None
     count = text.count(mutation["find"])
     if count != 1:
-        return f"'find' aparece {count} veces en {mutation['file']} (tiene que ser 1): actualiza la mutación"
-    target.write_text(text.replace(mutation["find"], mutation.get("replace", ""), 1), encoding="utf-8")
+        return None, f"'find' aparece {count} veces en {mutation['file']} (tiene que ser 1): actualiza la mutación"
+    return text.replace(mutation["find"], replace, 1), None
+
+
+def apply(mutation: dict, copy: Path) -> str | None:
+    """Aplica la mutación. Devuelve un error si ya no se puede aplicar."""
+    text, error = mutated_text(mutation, copy)
+    if error:
+        return error
+    target = copy / mutation["file"]
+    if mutation.get("delete"):
+        target.unlink()
+    else:
+        target.write_text(text, encoding="utf-8")
     return None
 
 

@@ -1238,7 +1238,7 @@ class KnownIssuesTest(unittest.TestCase):
         for number, entry in enumerate(self.entries(), 1):
             key = entry.get("id") if isinstance(entry, dict) else None
             note = entry.get("note") if isinstance(entry, dict) else None
-            if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9-]*:\S.*", key):
+            if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*:\S.*", key):
                 problems.append(f"entrada {number}: id {key!r} no es 'categoria:detalle'")
             if not isinstance(note, str) or not note.strip() or note.strip().upper() in {"TODO", "FIXME", "TBD", "XXX"}:
                 problems.append(f"entrada {number} ({key}): falta `note` con qué falla y dónde")
@@ -1318,3 +1318,25 @@ class CodeOwnersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ------------------------------------------------------------ mutaciones
+
+class MutationsTest(unittest.TestCase):
+    """tests/mutations/mutations.toml sigue aplicándose al árbol actual.
+
+    El job de mutaciones de ci.yml falla con 'OBSOLETA' si el texto que busca
+    una mutación ya no está (o está dos veces). Aquí se ve en segundos y con
+    el nombre de la mutación, en el mismo PR que movió ese texto.
+    """
+
+    def test_mutations_still_apply(self):
+        from tests.mutations import run_mutations
+        problems = []
+        for mutation in run_mutations.load_mutations():
+            _, error = run_mutations.mutated_text(mutation, testlib.ROOT)
+            if error:
+                problems.append(f"{mutation['name']}: {error}")
+        self.assertFalse(problems, "mutaciones obsoletas: el texto que buscan cambió. Actualiza su "
+                                   "`find`/`find_re` en tests/mutations/mutations.toml para que siga "
+                                   "describiendo la misma regresión:\n  " + "\n  ".join(problems))

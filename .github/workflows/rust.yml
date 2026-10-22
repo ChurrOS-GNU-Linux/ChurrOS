@@ -116,6 +116,9 @@ jobs:
       # esta arquitectura (pacman), la tabla comando -> paquete (pacman -F) y
       # `niri validate` sobre la configuración que se instala.
       - name: ./churros test --container
+        # No depende de la prueba del tour: que esta falle no puede esconder
+        # la capa de contenedor.
+        if: ${{ !cancelled() }}
         env:
           CHURROS_STRICT: 1
         run: ./churros test --container

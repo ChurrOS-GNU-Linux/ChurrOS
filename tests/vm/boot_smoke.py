@@ -18,7 +18,7 @@ y comprueba desde dentro lo que una persona vería al arrancar:
 
 Deja en el directorio de artefactos serial.log, journal.txt, screen.png,
 report.json y la línea de QEMU. Los fallos ya conocidos de una edición se
-apuntan en tests/known_issues.toml con la categoría boot-<edición>.
+apuntan en tests/known_issues.toml con la categoría boot-<edición>-<arquitectura>.
 
 Uso:
   python3 tests/vm/boot_smoke.py out/ChurrOS-....iso [--firmware uefi|bios]
@@ -347,7 +347,7 @@ def main() -> int:
         if not args.keep:
             vm.stop()
 
-    category = f"boot-{edition_name or 'unknown'}"
+    category = f"boot-{edition_name or 'unknown'}-{arch}"
     findings = {f"{category}:{key}": msg for key, msg in report.findings.items()}
     known = {k: v for k, v in testlib.known_issues().items() if k.startswith(category + ":")}
     new = {k: v for k, v in findings.items() if k not in known}

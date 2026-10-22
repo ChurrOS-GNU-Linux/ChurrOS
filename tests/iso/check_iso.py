@@ -23,7 +23,7 @@ final (ISO9660 + airootfs.sfs):
 
 Uso: python3 tests/iso/check_iso.py out/ChurrOS-....iso [--edition niri]
 Necesita xorriso y unsquashfs (squashfs-tools). Los fallos ya conocidos se
-apuntan en tests/known_issues.toml con la categoría iso-<edición>.
+apuntan en tests/known_issues.toml con la categoría iso-<edición>-<arquitectura>.
 """
 from __future__ import annotations
 
@@ -404,7 +404,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="churros-iso-") as tmp:
         edition_name = audit(args.iso.resolve(), args.edition, audit_, Path(tmp))
 
-    category = f"iso-{edition_name}"
+    match = re.search(r"-(x86_64|aarch64|i686)(?:-|\.iso)", args.iso.name)
+    # Una categoría por edición y arquitectura: la ISO aarch64 no puede dar
+    # por arreglado un fallo que solo tiene la x86_64.
+    category = f"iso-{edition_name}-{match.group(1) if match else 'x86_64'}"
     findings = {f"{category}:{key}": msg for key, msg in audit_.findings.items()}
     known = {k for k in testlib.known_issues() if k.startswith(category + ":")}
     new = {k: v for k, v in findings.items() if k not in known}
