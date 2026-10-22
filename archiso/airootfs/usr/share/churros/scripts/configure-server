@@ -46,7 +46,20 @@ log "display manager desactivado; target por defecto multi-user"
 # ---------------------------------------------------- 2. quitar escritorio
 
 # Escritorio de la ISO (XFCE), que solo estaba para el instalador.
-DESKTOP_PKGS="xfce4-session xfce4-panel xfce4-settings xfce4-notifyd xfce4-power-manager xfce4-pulseaudio-plugin xfce4-screenshooter xfce4-taskmanager xfce4-terminal xfce4-whiskermenu-plugin xfconf xfdesktop mousepad ristretto light-locker picom redshift thunar gvfs cage greetd greetd-regreet"
+#
+# pacman -R rechaza la transacción entera si un paquete que se queda depende
+# de uno que se quita ("removing xfconf breaks dependency 'xfconf' required by
+# xfwm4"), y entonces no quita nada. Por eso la lista lleva también los
+# paquetes de packages.server.x86_64 que dependen de los de escritorio:
+# xfwm4 (xfconf), thunar-archive-plugin y thunar-volman (thunar) y gvfs-mtp
+# (gvfs). libxfce4ui, exo, garcon y greetd-agreety no se listan: son
+# dependencias, no paquetes explícitos, y -s los quita solo.
+DESKTOP_PKGS="xfce4-session xfce4-panel xfce4-settings xfce4-notifyd \
+xfce4-power-manager xfce4-pulseaudio-plugin xfce4-screenshooter \
+xfce4-taskmanager xfce4-terminal xfce4-whiskermenu-plugin xfconf xfdesktop \
+xfwm4 mousepad ristretto light-locker picom redshift \
+thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp \
+cage greetd greetd-regreet"
 
 # Las apps propias son binarios en /usr/bin, no paquetes: se borran aparte.
 CHURROS_APPS="/usr/bin/churros-welcome /usr/bin/churros-settings \
