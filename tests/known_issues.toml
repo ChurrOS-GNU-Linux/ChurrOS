@@ -491,3 +491,11 @@ note = "archiso/airootfs/etc/mkinitcpio.d/linux-churrosvyper.preset está en el 
 [[issue]]
 id = "kernel:packages.server.x86_64:linux-churrosvyper"
 note = "archiso/airootfs/etc/mkinitcpio.d/linux-churrosvyper.preset está en el airootfs común, pero archiso/packages.server.x86_64 no instala linux-churrosvyper (solo packages.x86_64 lo trae). initcpio.conf usa kernel: all (mkinitcpio -P), que recorre todos los presets: el de linux-churrosvyper apunta a /boot/vmlinuz-linux-churrosvyper, que no existe, y mkinitcpio -P falla, con él la instalación. Decidir dónde vive el preset (solo con el paquete, o que build.sh lo quite en las ediciones sin ese kernel)."
+
+[[issue]]
+id = "ref:niri/x86_64:rust/preferences:gamemoded"
+note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/x86_64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
+
+[[issue]]
+id = "ref:niri/aarch64:rust/preferences:gamemoded"
+note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
