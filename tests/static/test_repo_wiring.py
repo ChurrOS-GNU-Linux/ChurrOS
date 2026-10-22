@@ -348,9 +348,55 @@ def edges_from_text(text: str, *, python: bool = False) -> set[str]:
                 continue
             if in_command_position(before) and match.group("cmd") in public:
                 targets.add(f"scripts/cli/{match.group('cmd')}.sh")
+                if match.group("cmd") == "test":
+                    targets |= test_sh_edges(line[match.end():])
+        for match in PATH_RE.finditer(line):
+            if match.group("path") == TEST_SH and in_command_position(line[:match.start("pre")]):
+                targets |= test_sh_edges(line[match.end():])
         for item in parse_unittest(line):
             targets |= discovered_files(item)
     return targets
+
+
+# ./churros test corre una capa u otra según sus opciones: `./churros test
+# --container` en un workflow no ejecuta lo que test.sh hace con --gui. Sin
+# esto, quitar del CI un paso de prueba quedaba tapado por cualquier otro paso
+# que llame a test.sh con otras opciones.
+TEST_SH = "scripts/cli/test.sh"
+
+
+@lru_cache(maxsize=None)
+def test_sh_layers() -> tuple[dict[str, int], dict[str, tuple[tuple[str, int], ...]], tuple[tuple[frozenset, str], ...]]:
+    """(RUN_* por defecto, RUN_* que pone cada opción, (RUN_* que guardan la línea, línea))."""
+    text = read(TEST_SH)
+    defaults = {var: int(value) for var, value in re.findall(r"^RUN_(\w+)=(\d)\s*$", text, re.M)}
+    options: dict[str, tuple[tuple[str, int], ...]] = {}
+    for flags, body in re.findall(r"^\s*((?:--[\w-]+)(?:\|--[\w-]+)*)\)(.*?);;", text, re.M | re.S):
+        sets = tuple((var, int(value)) for var, value in re.findall(r"\bRUN_(\w+)=(\d)", body))
+        for flag in flags.split("|"):
+            options[flag] = sets
+    lines, guard = [], frozenset()
+    for raw in text.splitlines():
+        opened = re.match(r"if (\[ \"\$RUN_\w+\" -eq 1 \](?: \|\| )?)+; then$", raw)
+        if opened:
+            guard = frozenset(re.findall(r"\$RUN_(\w+)", raw))
+        elif raw == "fi":
+            guard = frozenset()
+        lines.append((guard, raw))
+    return defaults, options, tuple(lines)
+
+
+def test_sh_edges(args: str | None) -> set[str]:
+    """Lo que ejecuta test.sh con las opciones de `args` (None: solo lo común)."""
+    defaults, options, lines = test_sh_layers()
+    enabled = dict(defaults)
+    if args is not None:
+        words = re.split(r"[;&|)`]", args, maxsplit=1)[0].split()
+        for flag in (w for w in words if w.startswith("--")):
+            enabled.update(options.get(flag, ()))
+    text = "\n".join(raw for guard, raw in lines
+                     if not guard or (args is not None and any(enabled.get(var) for var in guard)))
+    return edges_from_text(text)
 
 
 @lru_cache(maxsize=None)
@@ -358,6 +404,9 @@ def file_edges(rel_path: str) -> frozenset[str]:
     path = ROOT / rel_path
     if not path.is_file() or path.resolve() == THIS_FILE:
         return frozenset()
+    if rel_path == TEST_SH:
+        # Lo de cada capa lo añade quien llama a test.sh, con sus opciones.
+        return frozenset(test_sh_edges(None))
     if path.suffix == ".py":
         return frozenset(edges_from_text(testlib.read_text(path), python=True))
     if is_shell(path):
@@ -935,17 +984,35 @@ class AntiWeakeningTest(unittest.TestCase):
         # Las pruebas de contenedor no heredan CI=true del runner: si un
         # workflow las lanza a través de scripts/lib/container.sh, el modo
         # estricto tiene que entrar en el contenedor.
+        def suite(line: str) -> bool:
+            return any(item.start.startswith("tests/container") for item in parse_unittest(line))
+
         def runs_container_suite(rel: str) -> bool:
-            return any(item.start.startswith("tests/container") for line in code_lines(read(rel))
-                       for item in parse_unittest(line))
+            return any(map(suite, code_lines(read(rel))))
+
+        def suite_launchers(rel: str) -> list[str]:
+            """Los container_run de `rel` que lanzan tests/container, directamente
+            o con una variable que lo hace (CONTAINER_CMD=(python3 -m unittest ...)).
+            Que otro container_run del mismo script (el de --gui) pase
+            CHURROS_STRICT no cuenta para este."""
+            lines = code_lines(read(rel))
+            variables = {m.group(1) for line in lines if suite(line)
+                         for m in [re.match(r"\s*(\w+)=", line)] if m}
+            return [line for line in lines if re.search(r"\bcontainer_run\b", line)
+                    and (suite(line) or any(re.search(rf"\$\{{?{var}\b", line) for var in variables))]
 
         for step in steps():
             hit = reached(step)
             shells = [rel for rel in hit if is_shell(ROOT / rel)]
             if "scripts/lib/container.sh" in hit and any(map(runs_container_suite, shells)):
-                forwards = any(re.search(r"container_run\b.*\bCHURROS_STRICT\b", line)
-                               or (rel == "scripts/lib/container.sh" and "CHURROS_STRICT" in line)
+                launchers = [line for rel in shells for line in suite_launchers(rel)]
+                forwards = any(rel == "scripts/lib/container.sh" and "CHURROS_STRICT" in line
                                for rel in shells for line in code_lines(read(rel)))
+                if launchers:
+                    forwards = forwards or all("CHURROS_STRICT" in line for line in launchers)
+                else:
+                    forwards = forwards or any(re.search(r"container_run\b.*\bCHURROS_STRICT\b", line)
+                                               for rel in shells for line in code_lines(read(rel)))
                 if not forwards:
                     problems.append(f"{step.label}: lanza tests/container en el contenedor sin pasarle CHURROS_STRICT "
                                     "(container_run -e CHURROS_STRICT=1): una herramienta que falte sería un SKIP")
@@ -1144,9 +1211,10 @@ class DocsDriftTest(unittest.TestCase):
         template = ROOT / ".github/PULL_REQUEST_TEMPLATE.md"
         if not template.is_file():
             self.skipTest("no hay .github/PULL_REQUEST_TEMPLATE.md")
-        commands = set(re.findall(r"\./churros\s+([a-z][\w-]*)", testlib.read_text(template)))
-        runs_check = [c for c in commands & set(public_commands())
-                      if CHECK_SH in reach_from_file(f"scripts/cli/{c}.sh")]
+        # Con sus opciones: `./churros test --container` no pasa por check.sh.
+        commands = set(re.findall(r"\./churros\s+([a-z][\w-]*)([^`\n]*)", testlib.read_text(template)))
+        runs_check = [c for c, args in commands if c in set(public_commands())
+                      and CHECK_SH in reach(f"./churros {c}{args}")]
         self.assertTrue(runs_check, "la plantilla de PR no pide ningún comando que ejecute scripts/cli/check.sh")
 
     def test_cli_md_documents_public_commands(self):

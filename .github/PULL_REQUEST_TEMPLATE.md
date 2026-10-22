@@ -14,7 +14,7 @@
 ## Cómo se probó
 
 - [ ] `./churros test` (capa estática: `check.sh` + `tests/static`) en verde
-- [ ] `./churros rust` (si toca `rust/`)
+- [ ] `./churros rust` y `./churros test --gui` (si toca `rust/`)
 - [ ] `./churros test --container` (si toca listas de paquetes o configuración de niri)
 - [ ] `./churros build` + `./churros test --iso --boot` (si toca escritorio, instalador o build)
 - [ ] Probado a mano en `./churros run` (qué se comprobó: …)
