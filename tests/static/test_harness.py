@@ -120,6 +120,14 @@ class PickEditionsTest(unittest.TestCase):
                 self.assertEqual(pick_editions.pick([path])[0], ["niri", "xfce", "server"])
         self.assertEqual(pick_editions.pick(["README.md", "docs/testing.md"])[0], ["niri"],
                          "la documentación no construye ediciones")
+        # Un script común que solo decide por $EDITION (sin nombrar XFCE).
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "archiso/airootfs/usr/share/churros/scripts/nuevo"
+            script.parent.mkdir(parents=True)
+            script.write_text('#!/usr/bin/env bash\nif [ "$EDITION" = niri ]; then exit 0; fi\n')
+            self.assertEqual(pick_editions.pick(["archiso/airootfs/usr/share/churros/scripts/nuevo"],
+                                                root=Path(tmp))[0], ["niri", "xfce", "server"],
+                             "un script que decide por $EDITION no construye todas las ediciones")
         self.assertEqual(sorted(pick_editions.pick(["x"])[0] + [e.name for e in pick_editions.editions()
                                                                  if e.name != "niri"]),
                          sorted(e.name for e in testlib.EDITIONS if e.arch == "x86_64"))

@@ -37,7 +37,7 @@ ALL_EDITIONS_PATHS = ("scripts/cli/build.sh", "tests/iso/pick_editions.py", "rus
                       "tests/known_issues.toml")
 # Un fichero común que decide según la edición (desktop.sh, customize_airootfs.sh,
 # edition-session.sh...) afecta a todas, aunque su ruta no nombre ninguna.
-BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition")
+BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition", re.IGNORECASE)
 # Lo que solo se ejecuta arrancando por BIOS (syslinux) o lo cambia todo.
 BIOS_PATHS = ("archiso/syslinux/", "archiso/profiledef.sh", "tests/vm/", ".github/workflows/iso.yml")
 

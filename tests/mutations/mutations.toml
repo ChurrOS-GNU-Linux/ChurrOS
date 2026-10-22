@@ -2234,3 +2234,12 @@ caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p ch
 expect = "el formulario de pavucontrol no es el de un formulario vacío"
 requires = "container"
 why = "form_values must give every control the value of an empty form when the rule does not have it (the old on_edit_rule left the opacity of the rule edited before, so pavucontrol got `opacity 0.8` from foot). unwrap_or_default() gives 0: saving pavucontrol would write `opacity 0.0`, an invisible window. niri validate accepts it."
+
+[[mutation]]
+name = "test_harness: pick_editions busca $EDITION en el texto ya pasado a minúsculas"
+file = "tests/iso/pick_editions.py"
+find = 'BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition", re.IGNORECASE)'
+replace = 'BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition")'
+caught_by = "tests.static.test_harness"
+expect = "un script que decide por $EDITION no construye todas las ediciones"
+why = "content() pasa el texto a minúsculas: sin IGNORECASE, un script común que solo decide por $EDITION no construye XFCE ni server en el PR."
