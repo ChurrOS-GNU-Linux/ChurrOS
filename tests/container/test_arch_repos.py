@@ -42,6 +42,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 
 from tests import testlib
@@ -124,6 +125,10 @@ def list_name(item: testlib.Edition) -> str:
     return Path(item.package_list).name
 
 
+# Segundos de espera antes de cada intento de pacman -Sy/-Fy.
+SYNC_WAITS = (0, 30, 120)
+
+
 class Repos:
     """Copia privada de las bases de datos de pacman de una arquitectura."""
 
@@ -149,12 +154,16 @@ class Repos:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def sync(self, operation: str) -> str | None:
-        """pacman -Sy o -Fy, con un reintento: la red del CI falla a veces.
+        """pacman -Sy o -Fy, con reintentos espaciados: la red del CI y los
+        mirrors fallan a veces. i686 tiene un solo mirror y en el CI dio
+        "Connection timed out" dos veces seguidas: un reintento inmediato cae
+        en el mismo corte.
 
         Devuelve el error, o None. Se guarda: un mirror caído no se reintenta
         en cada prueba.
         """
-        for _ in range(2):
+        for wait in SYNC_WAITS:
+            time.sleep(wait)
             result = self.pacman(operation, root=True, timeout=1200)
             if result.returncode == 0:
                 return None

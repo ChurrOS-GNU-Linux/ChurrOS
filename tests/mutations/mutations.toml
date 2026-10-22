@@ -1724,6 +1724,15 @@ why = "Envolver waybar en una función de reinicio (`f &`) no puede esconder una
 # ---- Arnés robusto y comprobaciones nuevas tras la revisión adversarial
 
 [[mutation]]
+name = "test_harness: la sincronización de los repos del contenedor reintenta al momento"
+file = "tests/container/test_arch_repos.py"
+find = "SYNC_WAITS = (0, 30, 120)"
+replace = "SYNC_WAITS = (0, 0)"
+caught_by = "tests.static.test_harness"
+expect = "esperas entre intentos"
+why = "El único mirror de i686 dio 'Connection timed out' dos veces seguidas en el CI: sin espera entre intentos, un corte de un minuto pone en rojo cualquier PR y tienta a desactivar la prueba."
+
+[[mutation]]
 name = "test_harness: run_mutations acepta un `requires` con errata"
 file = "tests/mutations/run_mutations.py"
 find_re = '^        if mutation\.get\("requires"\) not in LAYERS:$'

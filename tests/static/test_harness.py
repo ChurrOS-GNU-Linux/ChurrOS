@@ -1,7 +1,7 @@
 """Pruebas unitarias del propio arnés: lo que lee la ISO, la VM y las mutaciones.
 
-tests/iso, tests/vm y tests/mutations solo se ejecutan con una ISO, con QEMU o
-en el job de mutaciones. Un error en su análisis (una columna mal leída, una
+tests/iso, tests/vm, tests/mutations y tests/container solo se ejecutan con una
+ISO, con QEMU, en el job de mutaciones o en el contenedor. Un error en su análisis (una columna mal leída, una
 cabecera XWD mal interpretada) haría que una comprobación no pudiera fallar
 nunca, y nadie lo notaría: aquí se prueban sus funciones puras con entradas
 conocidas, en segundos y sin ISO.
@@ -25,6 +25,7 @@ from unittest import mock
 import zlib
 
 from tests import testlib
+from tests.container import test_arch_repos
 from tests.iso import check_iso, pick_editions
 from tests.mutations import run_mutations
 from tests.vm import boot_smoke, qemu
@@ -307,6 +308,29 @@ class QemuTest(unittest.TestCase):
         rgb[(1 * width + 1) * 3:(1 * width + 3) * 3] = b"\x10\x20\x30\x40\x50\x60"
         self.assertEqual(qemu.crop_to_content(width, height, bytes(rgb)), (2, 1, b"\x10\x20\x30\x40\x50\x60"))
         self.assertEqual(qemu.crop_to_content(2, 2, bytes(12))[:2], (1, 1))
+
+
+class ContainerReposTest(unittest.TestCase):
+    def test_sync_waits_before_retrying(self):
+        """Un mirror que no responde dos veces seguidas no tumba la capa del
+        contenedor: los reintentos esperan minutos en vez de repetirse al
+        momento, y si todos fallan el error nombra la arquitectura y la causa."""
+        repos = test_arch_repos.Repos.__new__(test_arch_repos.Repos)
+        repos.arch, repos.names = "i686", ["core", "extra"]
+        timed_out = subprocess.CompletedProcess([], 1, "", "error: Connection timed out after 10000 milliseconds\n")
+        synced = subprocess.CompletedProcess([], 0, "", "")
+        waits: list[float] = []
+        with mock.patch.object(test_arch_repos.time, "sleep", waits.append), \
+                mock.patch.object(repos, "pacman", side_effect=[timed_out, timed_out, synced]) as pacman:
+            error = repos.sync("-Sy")
+        self.assertGreaterEqual(sum(waits), 120, f"esperas entre intentos: {waits}")
+        self.assertIsNone(error)
+        self.assertEqual(pacman.call_count, 3)
+        with mock.patch.object(test_arch_repos.time, "sleep", lambda _: None), \
+                mock.patch.object(repos, "pacman", return_value=timed_out):
+            error = repos.sync("-Sy")
+        self.assertIn("Connection timed out", error)
+        self.assertIn("i686", error)
 
 
 class MutationsTest(unittest.TestCase):
