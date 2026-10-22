@@ -7,8 +7,7 @@ y comprueba desde dentro lo que una persona vería al arrancar:
 
 - systemd termina el arranque y no hay unidades fallidas;
 - greetd, NetworkManager y pacman-init funcionan;
-- hay una sesión gráfica activa del usuario churros, del tipo de su
-  edición (wayland con niri o labwc, x11 con XFCE);
+- greetd abre la sesión del usuario churros (autologin) y está activa;
 - los procesos del escritorio siguen vivos (niri + noctalia + bienvenida,
   o xfce4-session + xfwm4 + panel...) y, en niri, la ventana de la
   bienvenida existe (niri msg windows);
@@ -46,17 +45,14 @@ from tests.vm.qemu import VM, VMError, kvm_available  # noqa: E402
 # nombre de proceso de 15 caracteres como mucho).
 DESKTOPS = {
     "niri": {
-        "session_type": "wayland",
         "processes": ["niri", "noctalia", "churros-welcome"],
         "windows": ["org.churros.welcome"],
     },
     "xfce": {
-        "session_type": "x11",
         "processes": ["xfce4-session", "xfwm4", "xfce4-panel", "churros-welcome"],
         "windows": [],
     },
     "labwc": {
-        "session_type": "wayland",
         "processes": ["labwc"],
         "windows": [],
     },
@@ -194,14 +190,18 @@ def check_session(agent, report: Report, desktop: str, timeout: float) -> str | 
         "for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do "
         "loginctl show-session \"$s\" -p Name -p Type -p Class -p Active -p State --value | paste -sd' '; done"
     )
+    # logind guarda el Type que hay en el entorno PAM al abrir la sesión, y
+    # greetd no exporta XDG_SESSION_TYPE: sus sesiones salen como 'tty'
+    # aunque lancen niri o XFCE. Lo gráfico se comprueba después por los
+    # procesos, el IPC del compositor y la pantalla.
     ok, sessions = poll(
         agent, script,
-        lambda out: any(line.split()[:5] == ["churros", expected["session_type"], "user", "yes", "active"]
-                        for line in out.splitlines() if line.strip()),
+        lambda out: any(line.split()[:1] == ["churros"] and line.split()[2:5] == ["user", "yes", "active"]
+                        for line in out.splitlines() if len(line.split()) >= 5),
         timeout,
     )
     report.facts["sessions"] = sessions.splitlines()
-    report.check(f"sesión {expected['session_type']} activa de churros", ok, sessions or "sin sesiones")
+    report.check("sesión activa de churros (autologin de greetd)", ok, sessions or "sin sesiones")
 
     uid_code, uid = guest_sh(agent, "id -u churros")
     uid = uid if uid_code == 0 else "1000"

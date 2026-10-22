@@ -20,3 +20,313 @@ note = "archiso/profiledef.sh no declara /usr/local/bin/livecd-sound en file_per
 [[issue]]
 id = "exec-mode:/usr/local/bin/Installation_guide"
 note = "archiso/profiledef.sh no declara /usr/local/bin/Installation_guide (resto de la releng de archiso, abre la guía de instalación de Arch con xdg-open). Sale 0644: escribir Installation_guide en la terminal del Live da 'permission denied'. Arreglo: añadir [\"/usr/local/bin/Installation_guide\"]=\"0:0:755\" o borrar el fichero si ChurrOS no lo quiere."
+
+# --- tests/static/test_release_bundle.py ---
+
+[[issue]]
+id = "release:manifest:files:updates.json"
+note = "build-churros-release.sh x86_64 copia release/x86_64/updates.json a release/updates.json («alias para clientes antiguos»), pero los bundles que nombra se quedan en release/x86_64/. churros-update-utils descarga ${BASE}<file> del mismo directorio que ${BASE}updates.json: si se publica release/ tal cual en download.churroslinux.org/churros/, todas las instalaciones fallan con 'descarga fallida' (404). Solo funciona si alguien copia a mano los bundles x86_64 a la raíz, y entonces aarch64/i686 reciben x86_64 (release:client:arch:*)."
+
+[[issue]]
+id = "release:bundle-elf:aarch64"
+note = "build-churros-release.sh aarch64 solo usa la arquitectura para nombrar el bundle: `cargo build --release` va sin --target, compila para el equipo que publica y el script copia rust/target/release/*. churros-utils-*-aarch64.tar.zst lleva binarios x86_64 (o los de la máquina donde se genere)."
+
+[[issue]]
+id = "release:bundle-elf:i686"
+note = "build-churros-release.sh i686 solo usa la arquitectura para nombrar el bundle: `cargo build --release` va sin --target, compila para el equipo que publica y el script copia rust/target/release/*. churros-utils-*-i686.tar.zst lleva binarios x86_64 (o los de la máquina donde se genere)."
+
+[[issue]]
+id = "release:client:arch:aarch64"
+note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}updates.json (el alias x86_64 que deja build-churros-release.sh), ignora su campo 'arch' y validate_tarball no comprueba la máquina ELF. Una instalación aarch64 que use «Actualizar utilidades» de Ajustes o churros-update-auto instala churros-settings, churros-welcome... x86_64 en /usr/bin y las apps dejan de arrancar (Exec format error). aa8a233 leía ${BASE}${ARCH}/updates.json y comprobaba 'arch'; el cliente actual ya no."
+
+[[issue]]
+id = "release:client:arch:i686"
+note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}updates.json (el alias x86_64 que deja build-churros-release.sh), ignora su campo 'arch' y validate_tarball no comprueba la máquina ELF. Una instalación i686 que use «Actualizar utilidades» de Ajustes o churros-update-auto instala churros-settings, churros-welcome... x86_64 en /usr/bin y las apps dejan de arrancar (Exec format error)."
+
+[[issue]]
+id = "release:assets:churros-welcome"
+note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-welcome/ (donde la app lee sus assets) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. Iconos y CSS nuevos no llegan a las instalaciones."
+
+[[issue]]
+id = "release:assets:churros-settings"
+note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-settings/ (donde Ajustes lee sus assets) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. Iconos y CSS nuevos no llegan a las instalaciones."
+
+[[issue]]
+id = "release:assets:churros-popup"
+note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-popup/ (donde los popups leen su CSS) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos."
+
+[[issue]]
+id = "release:assets:churros-control-center"
+note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-control-center/ (donde el control center lee iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. El usr/share/churros/control-center/ versionado no lo lee nadie."
+
+[[issue]]
+id = "release:bundle:mode:usr/share/churros/scripts/configure-greeter-locale"
+note = "Está en git con modo 644 y profiledef.sh le da 755 en la ISO. El bundle lleva el modo de git e install_stage lo instala 0644: tras una actualización OTA deja de ser ejecutable. Impacto bajo hoy (solo lo ejecuta Calamares desde la ISO, shellprocess-cleanup.conf); se arregla con git update-index --chmod=+x."
+
+[[issue]]
+id = "release:cargo-target-dir:stale-binaries"
+note = "build-churros-release.sh busca los binarios en rust/target/release aunque CARGO_TARGET_DIR (lo exporta scripts/lib/container.sh; build-rust.sh sí lo respeta) mande la compilación a otro directorio, y `[ -x \"$binary\" ]` salta sin error lo que no encuentra: el bundle sale con los binarios de una compilación anterior, o sin ellos, y el script dice «listo»."
+
+[[issue]]
+id = "release:signing:unsigned-manifest"
+note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el bundle, build-churros-release.sh no firma y minisign no está en ninguna lista de paquetes (TODO #139, #141 en churros-update-utils). verify_manifest solo avisa por stdout y sigue: quien controle lo que sirve download.churroslinux.org/churros/ instala ficheros como root en /usr/bin de todas las instalaciones, porque el sha256 del bundle viene del mismo manifiesto sin autenticar."
+
+# --- test_calamares_config ---
+[[issue]]
+id = "calamares-yaml:modules/shellprocess-cleanup.conf:duplicate:script[].timeout"
+note = "El último comando de installer/calamares/modules/shellprocess-cleanup.conf (el sed de password_pbkdf2 en grub.cfg) lleva 'timeout: 5' dos veces, resto de un comando borrado. yaml-cpp se queda con uno y hoy no cambia nada, pero muestra que nadie valida estos YAML. Arreglo: borrar la línea repetida."
+
+[[issue]]
+id = "calamares-sequence:ignored-conf:modules/hwclock.conf"
+note = "hwclock es noconfig en Calamares 3.4.2 (src/modules/hwclock/module.desc): installer/calamares/modules/hwclock.conf no se lee nunca y el módulo siempre corre hwclock --systohc --utc. Fichero muerto que hace creer que se configura algo. Arreglo: borrarlo."
+
+[[issue]]
+id = "calamares-sequence:ignored-conf:modules/localecfg.conf"
+note = "localecfg es noconfig en Calamares 3.4.2: installer/calamares/modules/localecfg.conf (region, zone, defaultLanguage) no se lee nunca; localecfg usa lo que se eligió en la página locale. Arreglo: borrarlo (los valores por defecto van en locale.conf)."
+
+[[issue]]
+id = "calamares-sequence:ignored-conf:modules/networkcfg.conf"
+note = "networkcfg es noconfig en Calamares 3.4.2: installer/calamares/modules/networkcfg.conf (replaceHosts, preferGeoIP) no se lee nunca, y esas claves no existen en networkcfg. Arreglo: borrarlo."
+
+[[issue]]
+id = "calamares-sequence:initcpiocfg-overwrites:modules/shellprocess-fixboot.conf"
+note = "fix-boot añade virtio-gpu vmwgfx bochs-drm qxl a MODULES de /etc/mkinitcpio.conf, pero initcpiocfg corre después y reescribe la línea con MODULES=() a partir del mkinitcpio.conf del Live (src/modules/initcpiocfg/main.py, write_mkinitcpio_lines). El sed no llega al sistema instalado. Arreglo: moverlo a un shellprocess entre initcpiocfg e initcpio, o quitarlo (el hook kms ya mete los drivers DRM)."
+
+[[issue]]
+id = "calamares-sequence:initcpiocfg-overwrites:modules/aarch64/shellprocess-fixboot.conf"
+note = "Igual que en modules/shellprocess-fixboot.conf: los módulos virtio_* que aarch64/shellprocess-fixboot.conf añade a MODULES se pierden porque initcpiocfg reescribe esa línea después."
+
+[[issue]]
+id = "calamares-sequence:initcpiocfg-overwrites:modules/i686/shellprocess-fixboot.conf"
+note = "Igual que en modules/shellprocess-fixboot.conf (la copia i686; hoy i686 se construye sin Calamares)."
+
+[[issue]]
+id = "calamares-sim:fix-boot:aarch64:command-fails:publish-aarch64-kernel"
+note = "fix-boot en aarch64 termina con '/usr/share/churros/scripts/publish-aarch64-kernel --require' (sin '-'), que exige /boot/Image en el destino. mkarchiso vacía /boot del squashfs (_cleanup_pacstrap_dir) y modules/aarch64/unpackfs.conf solo copia vmlinuz-linux-aarch64 e initramfs-linux-aarch64.img, así que el comando sale con 1 y la instalación aarch64 se aborta en fix-boot. Arreglo: copiar también el kernel del ISO a /boot/Image en aarch64/unpackfs.conf, o no usar --require en el destino."
+
+[[issue]]
+id = "calamares-sim:fix-boot:aarch64:kver-missing:linux-aarch64.preset"
+note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no existe en el destino. Aunque fix-boot pasara, 'mkinitcpio -P' (paso initcpio) saldría con 'specified kernel image does not exist'. Arreglo: el de calamares-sim:fix-boot:aarch64:command-fails, o ALL_kver='/boot/vmlinuz-linux-aarch64' en el sistema instalado."
+
+[[issue]]
+id = "calamares-xref:initcpio-hook:plymouth:pi/aarch64"
+note = "installer/calamares/modules/initcpiocfg.conf antepone el hook plymouth, pero archiso/packages.pi.aarch64 no instala plymouth: mkinitcpio sale con 1 ('Hook plymouth cannot be found') y el paso initcpio aborta la instalación de la edición pi. Arreglo: añadir plymouth a la lista pi, o quitar el prepend (initcpiocfg ya añade plymouth solo cuando está instalado)."
+
+[[issue]]
+id = "calamares-xref:users-shell:pi/aarch64"
+note = "installer/calamares/modules/users.conf crea la cuenta con shell /bin/zsh y archiso/packages.pi.aarch64 no incluye zsh: el único usuario de una instalación pi no puede iniciar sesión. Arreglo: añadir zsh a la lista pi."
+
+[[issue]]
+id = "calamares-xref:sudo:pi/aarch64"
+note = "users.conf mete al usuario en wheel (sudoersGroup) y Calamares escribe /etc/sudoers.d/10-installer, pero archiso/packages.pi.aarch64 no instala sudo: el usuario de la edición pi no tiene sudo. Arreglo: añadir sudo a la lista pi."
+
+# --- test_references ---
+[[issue]]
+id = "ref:niri/i686:scripts/cli/build.sh:initial_session:niri"
+note = "La ISO i686 arranca greetd con [initial_session] command = \"niri\" (SESSION_CMD de scripts/cli/build.sh), pero archlinux32 no empaqueta niri y packages.i686 no lo lista (lo dice su cabecera): la sesión Live autologin falla y la edición por defecto i686 no tiene escritorio."
+
+[[issue]]
+id = "ref:niri/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "livecd-talk.service (entrada Accessibility de GRUB/syslinux, accessibility=on) hace ExecStartPost=systemctl start espeakup.service, pero espeakup solo está en packages.aarch64: en la ISO x86_64 la unidad falla y no hay lector de pantalla. Falta espeakup en archiso/packages.x86_64."
+
+[[issue]]
+id = "ref:niri/i686:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "Igual que en x86_64: livecd-talk.service arranca espeakup.service y packages.i686 no trae espeakup; la entrada Accessibility arranca sin lector de pantalla."
+
+[[issue]]
+id = "ref:xfce/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "livecd-talk.service arranca espeakup.service y packages.xfce.x86_64 no trae espeakup: la entrada Accessibility de la ISO XFCE no tiene lector de pantalla."
+
+[[issue]]
+id = "ref:server/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "livecd-talk.service arranca espeakup.service y packages.server.x86_64 no trae espeakup: la entrada Accessibility de la ISO server no tiene lector de pantalla."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "livecd-talk.service arranca espeakup.service y packages.pi.aarch64 no trae espeakup (la lista niri de aarch64 sí): la entrada Accessibility de la ISO Pi no tiene lector de pantalla."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/etc/passwd:/usr/bin/zsh"
+note = "etc/passwd da a root la shell /usr/bin/zsh, pero packages.pi.aarch64 no trae zsh (ni llega como dependencia): en la ISO Pi el login de root en otra consola o por serie no tiene shell (y root/.zlogin, el respaldo que arranca greetd, nunca se ejecuta)."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/root/scripts/users.sh:/bin/zsh"
+note = "users.sh crea el usuario Live churros con -s /bin/zsh y packages.pi.aarch64 no trae zsh: en la ISO Pi churros queda con una shell que no existe (login en consola, su, terminal)."
+
+[[issue]]
+id = "ref:pi/aarch64:installer/calamares/modules/users.conf:/bin/zsh"
+note = "Calamares (users.conf user.shell) crea el usuario del sistema instalado con /bin/zsh, que no está en packages.pi.aarch64: en la Pi instalada el usuario no puede entrar por consola ni SSH."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/etc/xdg/labwc/rc.xml:foot"
+note = "rc.xml de labwc lanza foot con W-Return y desde el menú raíz, pero packages.pi.aarch64 solo trae foot-terminfo: en la edición Pi el atajo y la entrada Terminal no hacen nada."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/etc/xdg/labwc/menu.xml:foot"
+note = "menu.xml de labwc tiene la entrada Terminal con foot, que no está en packages.pi.aarch64 (solo foot-terminfo): la entrada no hace nada."
+
+[[issue]]
+id = "ref:pi/aarch64:archiso/airootfs/usr/share/churros/pi/waybar/config.jsonc:foot"
+note = "La waybar de Pi abre foot con clic derecho en custom/launcher, pero packages.pi.aarch64 solo trae foot-terminfo: el clic no hace nada."
+
+[[issue]]
+id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
+note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefox, pero packages.server.x86_64 no trae firefox: en la sesión Live de la ISO server el botón no hace nada."
+
+[[issue]]
+id = "ref-not-executable:/usr/local/bin/livecd-sound"
+note = "livecd-alsa-unmuter.service y livecd-talk.service ejecutan /usr/local/bin/livecd-sound, que no tiene entrada en file_permissions de archiso/profiledef.sh: mkarchiso lo copia como 0644 y las dos unidades fallan con 203/EXEC en la entrada Accessibility."
+
+[[issue]]
+id = "ref-args:archiso/airootfs/etc/skel/.config/autostart/churros-welcome.desktop:churros-welcome"
+note = "El autostart XFCE lanza `churros-welcome --live-only`, pero rust/churros-welcome/src/main.rs termina en app.run(), que pasa argv a GApplication: en la sesión Live XFCE sale con 'Unknown option --live-only' (exit 1) y la bienvenida (con el botón del instalador) no aparece. Hay que usar run_with_args."
+
+# --- test_rust_contract ---
+[[issue]]
+id = "deploy:gitignore:churros-tour"
+note = ".gitignore lista los binarios y assets que scripts/build-rust.sh escribe en archiso/airootfs para welcome, settings, popup y control-center, pero no archiso/airootfs/usr/bin/churros-tour ni archiso/airootfs/usr/share/churros/churros-tour/. Por eso los assets del tour están versionados (una copia de rust/churros-tour/assets que cada build sobrescribe y que se queda vieja en cuanto cambie el crate) y el binario aparece en git status si un build no llega al trap. Arreglo: añadir las dos rutas a .gitignore y `git rm -r --cached archiso/airootfs/usr/share/churros/churros-tour`."
+
+[[issue]]
+id = "deploy:clean:churros-tour"
+note = "scripts/cli/clean.sh (./churros clean) borra los binarios Rust generados uno a uno y le falta archiso/airootfs/usr/bin/churros-tour (el trap de build.sh sí lo borra): tras un build cortado antes del trap, clean no lo quita y, como tampoco está en .gitignore, queda un ELF sin versionar en el árbol. Arreglo: añadir `rm -f archiso/airootfs/usr/bin/churros-tour` a clean.sh (mejor: recorrer los crates con deploy = true)."
+
+[[issue]]
+id = "rust-asset:churros-settings:theme.svg"
+note = "rust/preferences/src/pages/users.rs pasa Some(\"theme.svg\") a Row::new en la fila 'Mensaje de bienvenida', pero rust/preferences/assets/icons/ no tiene theme.svg: gtk::Image::from_file muestra el icono de imagen rota en Ajustes > Usuarios, sin ningún error. Arreglo: usar un icono que exista (p. ej. users.svg o palette.svg) o añadir assets/icons/theme.svg."
+
+[[issue]]
+id = "rust-cli:churros-welcome --live-only"
+note = "archiso/airootfs/etc/skel/.config/autostart/churros-welcome.desktop (OnlyShowIn=XFCE) ejecuta `churros-welcome --live-only`. rust/churros-welcome/src/main.rs mira la opción con std::env::args().any() y después llama a app.run(), que entrega argv a GApplication; como no la registra, GLib imprime 'Unknown option --live-only' y sale con 1 (reproducido con GLib 2.80). En el Live de las ediciones xfce y server (existe /run/archiso, así que no sale antes) la bienvenida, que es la entrada al instalador, nunca se abre sola. Arreglo: app.run_with_args(&[] as &[&str]) como popups y tour, o registrar la opción con add_main_option."
+
+# --- test_editions / test_systemd_units ---
+[[issue]]
+id = "pkg-list:packages.pi.aarch64:sin-salto-final"
+note = "archiso/packages.pi.aarch64 termina en 'waybar' sin salto de línea. Hoy funciona, pero `echo paquete >> archiso/packages.pi.aarch64` (como se suele añadir un paquete) crea la línea 'waybarpaquete' y pacstrap aborta con 'target not found'. Arreglo: añadir el salto de línea final."
+
+[[issue]]
+id = "pkg-list:packages.pi.aarch64:duplicado:fuzzel"
+note = "fuzzel está dos veces en archiso/packages.pi.aarch64. pacstrap lo tolera, pero es la única lista con duplicados (check.sh no la revisa) y señala ediciones a mano sin control. Arreglo: borrar una de las líneas."
+
+[[issue]]
+id = "pkg-list:packages.pi.aarch64:duplicado:iwd"
+note = "iwd está dos veces en archiso/packages.pi.aarch64. pacstrap lo tolera, pero es la única lista con duplicados (check.sh no la revisa). Arreglo: borrar una de las líneas."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:archlinuxarm-keyring"
+note = "installer/calamares/modules/aarch64/shellprocess-pacman.conf ejecuta `pacman-key --populate archlinuxarm` en el sistema instalado, pero archiso/packages.pi.aarch64 no trae archlinuxarm-keyring (en ALARM base solo arrastra archlinux-keyring; packages.aarch64 sí lo lista). El paso shellprocess@pacman-init falla y la instalación de la pi se para; además pacman en la Live pi no puede verificar los paquetes de Arch Linux ARM. Arreglo: añadir archlinuxarm-keyring a packages.pi.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:kcoreaddons"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kcoreaddons y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:kcrash"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kcrash y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:kpmcore"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kpmcore y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:libpwquality"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae libpwquality y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:os-prober"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae os-prober y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que el particionado de Calamares y grub-mkconfig no detectan otros sistemas (sin arranque dual). Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:polkit-qt6"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae polkit-qt6 y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:qt6-declarative"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-declarative y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:qt6-svg"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-svg y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:qt6-translations"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-translations y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que Calamares sale sin traducir. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:yaml-cpp"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae yaml-cpp y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:zenity"
+note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae zenity y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares no puede mostrar el diálogo de error cuando faltan librerías. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:plymouth"
+note = "installer/calamares/modules/initcpiocfg.conf antepone el hook 'plymouth' en todas las ediciones con instalador, pero archiso/packages.pi.aarch64 no trae plymouth: mkinitcpio falla con \"Hook 'plymouth' cannot be found\" en el paso initcpio y la instalación de la pi se para. Arreglo: añadir plymouth a packages.pi.aarch64 (o no añadir el hook en aarch64)."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:qemu-guest-agent"
+note = "archiso/packages.pi.aarch64 no trae qemu-guest-agent, que traen las demás listas: la prueba de arranque (tests/vm/boot_smoke.py) espera al guest agent y no puede inspeccionar la Live pi. No afecta a quien usa la ISO; deja la edición pi sin prueba de arranque. Arreglo: añadir qemu-guest-agent a packages.pi.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:sudo"
+note = "root/scripts/users.sh escribe /etc/sudoers.d/churros y /usr/local/bin/calamares se eleva con `exec sudo -n`, pero archiso/packages.pi.aarch64 no trae sudo (ni le llega como dependencia): en la Live pi no hay sudo y el instalador no puede arrancar como root. Arreglo: añadir sudo a packages.pi.aarch64."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:zsh"
+note = "root/scripts/users.sh crea churros con `-s /bin/zsh` y archiso/airootfs/etc/passwd da /usr/bin/zsh a root, pero archiso/packages.pi.aarch64 no trae zsh: los dos usuarios de la Live pi tienen una shell que no existe (el login en consola, su y sudo -i fallan). Arreglo: añadir zsh a packages.pi.aarch64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:kpmcore"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae kpmcore y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:polkit-qt6"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae polkit-qt6 y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:qt6-declarative"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae qt6-declarative y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:qt6-svg"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae qt6-svg y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:yaml-cpp"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae yaml-cpp y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:zenity"
+note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae zenity y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares no puede mostrar el diálogo de error cuando faltan librerías. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
+
+[[issue]]
+id = "unit-dep:niri/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
+
+[[issue]]
+id = "unit-dep:niri/i686:etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.i686 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
+
+[[issue]]
+id = "unit-dep:xfce/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.xfce.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
+
+[[issue]]
+id = "unit-dep:server/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.server.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
+
+[[issue]]
+id = "unit-dep:pi/aarch64:etc/systemd/system/livecd-talk.service:espeakup.service"
+note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.pi.aarch64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
+
+[[issue]]
+id = "unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service"
+note = "etc/systemd/system/multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, del paquete modemmanager, que no está en ninguna lista ni llega como dependencia (comprobado con pacman -Sp de las seis listas). El enlace queda colgando: la Live no arranca ModemManager (módems 3G/4G) aunque el perfil lo pretende, y scripts/test-network-services.py exige el enlace. Arreglo: añadir modemmanager a las listas, o borrar multi-user.target.wants/ModemManager.service y el alias dbus-org.freedesktop.ModemManager1.service."
+
+[[issue]]
+id = "unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
+note = "El alias etc/systemd/system/dbus-org.freedesktop.ModemManager1.service apunta a /usr/lib/systemd/system/ModemManager.service, del paquete modemmanager, que no está en ninguna lista ni llega como dependencia (comprobado con pacman -Sp de las seis listas). El enlace queda colgando: la Live no arranca ModemManager (módems 3G/4G) aunque el perfil lo pretende, y scripts/test-network-services.py exige el enlace. Arreglo: añadir modemmanager a las listas, o borrar multi-user.target.wants/ModemManager.service y el alias dbus-org.freedesktop.ModemManager1.service."
+
+[[issue]]
+id = "unit-enable:pi/aarch64:ufw.service"
+note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-systemd.conf activan ufw.service, pero archiso/packages.pi.aarch64 no trae ufw: enable_unit solo avisa, Calamares lo salta (no es mandatory) y la Live y el sistema instalado de la pi quedan sin cortafuegos; Ajustes > Privacidad ejecuta ufw y falla. Arreglo: añadir ufw a packages.pi.aarch64."
