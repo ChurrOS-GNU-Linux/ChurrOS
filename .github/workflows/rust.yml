@@ -2,8 +2,18 @@ name: Rust
 
 # La CI de ./churros (ci.yml) solo compila churros-services, porque es el
 # único crate sin dependencias de GTK. Aquí se compila y se prueba el
-# workspace completo: hasta ahora un error en welcome, settings, control
-# center, popups o tour solo aparecía al construir la ISO.
+# workspace completo (cargo build, test y clippy): un error de compilación
+# en welcome, settings, control center, popups o tour ya no espera a la ISO.
+#
+# Compilar no es arrancar. cargo test no abre ninguna ventana: los fallos en
+# tiempo de ejecución solo se ven en las pruebas que ejecutan las apps en
+# Broadway (gtk4-broadwayd), dentro del contenedor:
+#   - scripts/test-tour.py: los tests #[ignore] de widgets del recorrido;
+#   - scripts/test-gui-smoke.py: arranca cada binario desplegado (y
+#     churros-popup con cada popup) en release y falla si muere o entra en
+#     pánico en los primeros segundos.
+# Ninguna de las dos pulsa botones ni recorre páginas: un pánico al usar
+# la app, después del arranque, sigue sin verse hasta probarla a mano.
 #
 # gtk4-rs 0.11 pide GTK >= 4.22 y libadwaita-rs 0.9 pide libadwaita >= 1.9.
 # Ubuntu no llega a esas versiones, así que el job usa la imagen del
@@ -111,6 +121,19 @@ jobs:
           source scripts/lib/container.sh
           container_engine_init
           container_run -- python3 scripts/test-tour.py
+
+      # Arranque de cada app GTK desplegada (deploy = true) y de churros-popup
+      # con cada nombre de POPUPS, compiladas en release como en la ISO
+      # (panic = "abort"): falla si una muere o entra en pánico en sus
+      # primeros segundos. Ni cargo test ni el arranque de la ISO en QEMU (que
+      # solo mira la bienvenida) ejecutan settings, control center o popups.
+      - name: GUI startup smoke test (Broadway)
+        # Independiente de la prueba del tour: que esa falle no esconde esta.
+        if: ${{ !cancelled() }}
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -e CHURROS_STRICT=1 -- python3 scripts/test-gui-smoke.py
 
       # tests/container: las listas de paquetes contra los repos reales de
       # esta arquitectura (pacman), la tabla comando -> paquete (pacman -F) y
