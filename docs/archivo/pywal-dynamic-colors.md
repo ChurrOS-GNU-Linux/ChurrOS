@@ -1,3 +1,5 @@
+> **Documento histórico.** Nota de traspaso de la rama `fix/pywal-dynamic-colors`. Los commits que lista entraron en `main` con la PR #72. No describe el estado actual del código. Para el tema, el acento y los colores dinámicos, consulta [preferences.md](../preferences.md).
+
 # Guía de Desarrollo — Rama `fix/pywal-dynamic-colors`
 
 Este documento está dirigido al desarrollador que continúe el trabajo en esta rama. Explica el contexto de la rama, la arquitectura implementada, qué se ha hecho hasta el momento, los puntos críticos a tener en cuenta y las tareas pendientes antes de abrir el Pull Request a `main`.

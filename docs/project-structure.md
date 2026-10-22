@@ -1,80 +1,95 @@
-# Project Structure
+# Estructura del proyecto
 
-Este documento describe la organización del repositorio de ChurrOS y el propósito de cada directorio.
+Mapa de carpetas y ficheros del repositorio. Cómo encajan las piezas se explica en [Arquitectura](../ARCHITECTURE.md); varias carpetas tienen además su propio README con más detalle.
 
-Mantener una estructura clara facilita el mantenimiento, el desarrollo y la incorporación de nuevos colaboradores.
-
----
-
-# Estructura general
+## Raíz
 
 ```text
-ChurrOS
-├── archiso/
-├── branding/
-├── docs/
-├── installer/
-├── po/
-├── rust/
-├── scripts/
-├── out/
-├── vm/
-├── work/
-├── churros
-├── VERSION
-├── LICENSE
-└── README.md
+ChurrOS/
+├── .github/                 # CI (workflows/), plantillas de issues, discusiones y PR
+├── archiso/                 # Perfil de ArchISO (ver archiso/README.md)
+├── branding/                # Identidad visual y script de personalización del Live
+├── docs/                    # Documentación (índice en docs/README.md)
+├── installer/               # Configuración y parches de Calamares
+├── po/                      # Catálogos gettext heredados
+├── rust/                    # Workspace Cargo de las apps propias
+├── scripts/                 # CLI, scripts de build y pruebas (ver scripts/README.md)
+├── churros                  # Dispatcher de la CLI: ./churros <comando>
+├── Containerfile            # Imagen Arch para ./churros build --container y ./churros rust
+├── Containerfile.aarch64    # Imagen Arch Linux ARM para la ISO aarch64
+├── install-deps.sh          # Instala dependencias de desarrollo (pacman, apt o dnf)
+├── VERSION                  # Versión de la distro
+├── LICENSE                  # GPL-3.0
+├── LICENSES/                # Textos de las demás licencias (ver docs/licencias.md)
+├── README.md
+├── ARCHITECTURE.md
+├── AGENTS.md                # Guía para agentes de IA (build, convenciones, rutas protegidas)
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── MAINTAINERS              # Quién responde por cada área
+├── .gitignore
+└── .clang-format, .clangd   # Configuración para C++; el repositorio no tiene código C/C++
 ```
 
-`out/`, `vm/` y `work/` no forman parte del código fuente: se generan al construir o probar.
-
----
-
-# Directorios
+Se generan y no se versionan: `out/` (ISO), `work/` (temporal de ArchISO), `vm/` (discos y variables UEFI de QEMU), `release/` (bundles OTA e ISO preparadas para publicar), `rust/target/`, los paquetes y bases de datos de `archiso/packages/` y `vm_serial.log`.
 
 ## archiso/
 
-Perfil de ArchISO usado para construir la ISO Live.
+Perfil de ArchISO. Detalle en [archiso/README.md](../archiso/README.md).
 
-Incluye:
+```text
+archiso/
+├── profiledef.sh            # Metadatos, arquitectura (CHURROS_ARCH), modos de arranque, compresión y permisos
+├── packages.x86_64          # Edición niri en x86_64
+├── packages.aarch64         # Edición niri en aarch64
+├── packages.i686            # Edición niri en i686 (Arch Linux 32)
+├── packages.xfce.x86_64     # Edición xfce
+├── packages.server.x86_64   # Edición server
+├── packages.pi.aarch64      # Edición pi
+├── pacman.x86_64.conf       # Repositorios del bootstrap (Arch Linux) + [churros]
+├── pacman.aarch64.conf      # Arch Linux ARM + [churros]
+├── pacman.i686.conf         # Arch Linux 32 + [churros]
+├── pacman-build.conf        # Sin uso: ningún script lo lee
+├── pacman-local.conf        # Sin uso: ningún script lo lee
+├── bootstrap_packages       # Solo para el modo bootstrap de archiso; el perfil construye únicamente la ISO
+├── grub/                    # Menú GRUB de la ISO (UEFI)
+├── syslinux/                # Menú Syslinux de la ISO (BIOS; x86_64 e i686)
+├── efiboot/                 # Entradas de systemd-boot del perfil releng; sin uso con uefi.grub
+├── mkinitcpio/aarch64/      # Preset y hooks de mkinitcpio para el kernel de Arch Linux ARM
+├── packages/                # Repositorio local [churros] (generado; aarch64/ para ARM)
+└── airootfs/                # Sistema de archivos del Live
+```
 
-- `packages.x86_64`, `packages.xfce.x86_64`, `packages.server.x86_64` — una lista de paquetes por edición
-- `profiledef.sh` — metadatos, arquitectura (`CHURROS_ARCH`), bootmodes (`bios.syslinux` + `uefi.grub` en x86_64) y permisos
-- `pacman.x86_64.conf` y `pacman.aarch64.conf` — repositorios del bootstrap de cada arquitectura
-- `airootfs/` — overlay del sistema Live (skel, servicios, assets)
-- `grub/` y `syslinux/` — cargadores de la ISO
-- `packages/` — repo pacman local (Calamares y extras AUR construidos en el host)
+Arranque de la ISO según la arquitectura: Syslinux (BIOS) + GRUB (UEFI) en x86_64 e i686, solo GRUB (UEFI) en aarch64.
 
-Es el corazón de la distribución.
-
----
+`packages/` lo llenan los scripts `build-*.sh` (en el host o en el contenedor) con calamares, bazaar, yay, wlogout y python-pywal, y en aarch64 también libdex.
 
 ## rust/
 
-Workspace Cargo de las apps oficiales (gtk4-rs + libadwaita):
+Workspace Cargo de las apps propias. Detalle en [rust/README.md](../rust/README.md) y [Apps](apps.md).
 
-| Crate | Binario | `deploy` |
-|-------|---------|----------|
-| `churros-welcome` | `churros-welcome` | sí |
-| `preferences` | `churros-settings` | sí |
-| `control-center` | `churros-control-center` | sí |
-| `popups` | `churros-popup` | sí |
-| `churros-tour` | `churros-tour` | sí |
-| `services` | librería `churros_services` | no (la usan las demás) |
+| Crate | Binario | `deploy` | GTK |
+|-------|---------|----------|-----|
+| `churros-welcome` | `churros-welcome` | sí | gtk4 |
+| `preferences` | `churros-settings` | sí | gtk4 + libadwaita |
+| `control-center` | `churros-control-center` | sí | gtk4 |
+| `popups` | `churros-popup` | sí | gtk4 |
+| `churros-tour` | `churros-tour` | sí | gtk4 |
+| `services` | librería `churros_services` | no (la usan las demás) | — |
 
-`scripts/build-rust.sh` (lo invoca `./churros build`) compila en release y copia los binarios con `deploy = true` a `archiso/airootfs/usr/bin/`. Esos binarios no se versionan. Los assets de runtime viven en `archiso/airootfs/usr/share/churros/<app>/`.
+`scripts/build-rust.sh` copia los binarios con `deploy = true` a `archiso/airootfs/usr/bin/` durante el build; no se versionan. Los recursos de cada app se editan en `rust/<crate>/assets/` y el build los copia a `archiso/airootfs/usr/share/churros/<binario>/assets/`. La hoja de estilos común es `archiso/airootfs/usr/share/churros/styles/churros.css`.
 
----
+Dos copias versionadas en `archiso/airootfs/usr/share/churros/` no son la fuente: `control-center/` es antigua y el código ya no la lee (busca `churros-control-center/`), y `churros-tour/` la sobrescribe el build desde `rust/churros-tour/assets/`.
 
 ## branding/
 
-Identidad de la distribución y script que se aplica al arrancar el Live.
-
 ```text
-branding
-├── customize_airootfs.sh
-├── files/          # os-release, issue, motd
-├── grub-theme/     # tema del GRUB instalado
+branding/
+├── customize_airootfs.sh    # mkarchiso lo ejecuta en el chroot durante el build
+├── stamp-os-release.sh      # Escribe VERSION y la edición en os-release
+├── files/                   # os-release, issue, motd
+├── grub-theme/              # Tema GRUB (ISO y sistema instalado)
+├── README.md
 ├── colors.md
 ├── typography.md
 ├── logo-guidelines.md
@@ -82,153 +97,56 @@ branding
 └── ui-guidelines.md
 ```
 
-`customize_airootfs.sh` se copia al airootfs en cada build; editar la copia en `archiso/airootfs/root/` no tiene efecto.
+`customize_airootfs.sh` no se ejecuta al arrancar el Live: el build lo copia a `archiso/airootfs/root/` y mkarchiso lo ejecuta dentro del chroot, después de pacstrap. Editar esa copia no sirve. archiso marca esta forma de personalizar como obsoleta.
 
-Los wallpapers y el resto de assets de escritorio viven en `archiso/airootfs/usr/share/churros/`, no en carpetas `branding/wallpapers/` o `branding/logos/`.
-
----
-
-## docs/
-
-Documentación oficial del proyecto. Toda funcionalidad importante debe estar documentada.
-
----
+Los fondos y demás recursos del escritorio están en `archiso/airootfs/usr/share/churros/`, no en `branding/`. Detalle en [Branding](branding.md).
 
 ## installer/
 
-Configuración de Calamares (no un instalador propio todavía):
+Configuración de Calamares. Detalle en [installer/README.md](../installer/README.md) e [Installer](installer.md).
 
 ```text
-installer
-├── apply-calamares.sh
+installer/
+├── apply-calamares.sh       # Copia la configuración y la regla polkit al airootfs durante el build
+├── patches/                 # calamares-*.patch, aplicados por scripts/build-calamares.sh
 └── calamares/
-    ├── settings.conf
-    ├── branding/churros/
-    ├── preview/            # solo ./churros apps calamares; no va a la ISO
-    └── modules/
+    ├── settings.conf        # Instancias y secuencia de módulos
+    ├── modules/             # Un .conf por módulo; aarch64/ e i686/ sobrescriben algunos por arquitectura
+    ├── branding/churros/    # Slideshow, QSS y logo
+    └── preview/             # Solo para ./churros apps calamares; no va a la ISO
 ```
-
-`apply-calamares.sh` despliega la config y la regla polkit al airootfs durante el build. `preview/` no se copia.
-
----
 
 ## po/
 
-Traducciones gettext (`*.po`). `./churros check` las valida con `msgfmt --check`.
-
----
+`churros.pot`, `en.po` y `es.po`: catálogos gettext de la antigua interfaz en Python. Ninguna app actual los carga (las apps Rust llevan sus textos en el código). `./churros check` los valida con `msgfmt --check` y `scripts/build-i18n.sh` regenera a mano los `.mo` versionados en `archiso/airootfs/usr/share/locale/`.
 
 ## scripts/
 
-Scripts de desarrollo. No forman parte del sistema instalado.
+Scripts de desarrollo; no forman parte del sistema instalado. Detalle en [scripts/README.md](../scripts/README.md).
 
-- `scripts/cli/` — subcomandos de `./churros` (`build`, `run`, `check`, `apps`, `doctor`, …)
-- `scripts/build-rust.sh`, `build-calamares.sh`, `build-aur.sh`, `build-grub-theme.sh`
+- `cli/`: un script por subcomando de `./churros` (`build`, `run`, `check`, `rust`, `apps`, `doctor`, `clean`, `info`, `version`, `logo`).
+- `build-*.sh`: paquetes locales (Calamares, AUR, Bazaar), apps Rust, tema GRUB, catálogos `.mo` y bundle OTA.
+- `lib/`: funciones compartidas (contenedor, detección del host, repositorio local, firmware OVMF).
+- `container-entrypoint.sh`, `apply-aarch64-mkinitcpio.sh` y `patch-mkarchiso-grubmodules.sh`: apoyo al build en contenedor y en aarch64.
+- `host/grub-mkstandalone`: envoltorio de un build ARM anterior hecho en el host (busca los módulos en `/opt/grub-aarch64`). Ningún script lo usa hoy.
+- `test-*`: pruebas (reglas polkit, helpers privilegiados, pkexec real, tour, servicios de red, fondo de pantalla).
 
----
+## docs/
 
-## out/
+Documentación del proyecto, en español. El índice es [docs/README.md](README.md); `docs/archivo/` guarda documentos que ya no describen el estado actual.
 
-ISO generada (`ChurrOS-*.iso`). Se puede borrar sin afectar el proyecto.
+## Ficheros de la raíz
 
----
+- `churros`: CLI de desarrollo. Despacha a `scripts/cli/<comando>.sh`.
+- `VERSION`: versión de la distro. La leen `./churros version`, `./churros info`, el build (os-release), `build-churros-release.sh` y las apps Rust al compilar (`churros-services`). Al publicar hay que cambiarla también en otros ficheros (ver [Release](release.md)).
+- `LICENSE`: GPL-3.0. Los crates declaran `GPL-3.0-only` en `rust/Cargo.toml`. Licencias de terceros y del arte: [Licencias](licencias.md).
 
-## work/
+## Flujo de trabajo
 
-Directorio temporal de ArchISO. No forma parte del repositorio.
-
----
-
-## vm/
-
-Disco QEMU (`ChurrOS.qcow2`) y variables UEFI (`OVMF_VARS.fd`). Gitignorados; cada desarrollador los genera con `./churros run`.
-
----
-
-# Archivos principales
-
-## churros
-
-CLI oficial de desarrollo. Despacha a `scripts/cli/<comando>.sh`.
-
-```bash
-./churros build
-./churros run
-./churros check
-./churros clean
-```
-
-## VERSION
-
-Número de versión del proyecto. Lo leen `./churros version` y `./churros info`.
-
-## README.md
-
-Página principal del proyecto.
-
-## LICENSE
-
-GNU General Public License v3.0 (GPL-3.0).
-
----
-
-# Flujo del proyecto
+Cada cambio va en una rama y llega a `main` por pull request:
 
 ```text
-Modificar código
-        ↓
-./churros check
-        ↓
-./churros build
-        ↓
-./churros run
-        ↓
-Commit en una rama
-        ↓
-Pull request hacia main
+cambio -> ./churros check -> ./churros build -> ./churros run -> commit en una rama -> pull request
 ```
 
-No se trabaja directo en `main`.
-
----
-
-# Organización del repositorio
-
-Cada carpeta tiene una única responsabilidad.
-
-❌ Incorrecto
-
-```
-branding/
-    wallpaper.png
-    build.sh
-```
-
-✅ Correcto
-
-```
-branding/
-    files/os-release
-
-scripts/
-    build-rust.sh
-
-archiso/airootfs/usr/share/churros/wallpapers/
-    fondo.png
-```
-
----
-
-# Convenciones
-
-- Mantener una estructura simple.
-- Utilizar nombres descriptivos.
-- Evitar duplicar archivos.
-- Separar código, documentación y recursos gráficos.
-- Documentar cualquier cambio importante.
-
----
-
-# Objetivo
-
-La estructura del proyecto debe permanecer organizada incluso cuando ChurrOS crezca. Una buena organización facilita el mantenimiento, reduce errores y mejora la colaboración.
+Detalle en [Contributing](contributing.md).

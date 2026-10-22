@@ -1,61 +1,71 @@
-# Instalador Gráfico — Calamares para ChurrOS
+# Instalador gráfico — Calamares para ChurrOS
 
-Este directorio contiene toda la configuración, personalización, branding y scripts de despliegue del instalador gráfico de ChurrOS, basado en **Calamares 3.4**.
+Este directorio contiene la configuración, el branding y los scripts de despliegue del instalador gráfico de ChurrOS, basado en **Calamares 3.4** (paquete del AUR compilado por `scripts/build-calamares.sh` con los parches de `patches/`). La ISO i686 no lleva instalador: Arch Linux 32 no empaqueta `polkit-qt6`.
 
 ---
 
-## 📁 Estructura del Directorio
+## Estructura del directorio
 
 ```text
 installer/
-├── apply-calamares.sh         # Despliega módulos, branding y reglas polkit al airootfs
+├── apply-calamares.sh         # Copia configuración, módulos, branding y regla polkit al airootfs durante el build
 ├── calamares/
-│   ├── settings.conf          # Secuencia oficial de ejecución y módulos
+│   ├── settings.conf          # Instancias shellprocess y secuencia de módulos
 │   ├── branding/churros/      # Identidad visual, slideshow QML y estilos QSS
-│   ├── modules/               # Configuraciones .conf y .yaml de cada módulo
-│   └── preview/               # Overlay aislado para previsualizar en el host
-└── patches/                   # Parches aplicados sobre Calamares al compilar
+│   ├── modules/               # Un .conf (o .yaml) por módulo
+│   │   ├── aarch64/           # Variantes ARM64 (unpackfs, fix-boot, pacman-init, grubcfg)
+│   │   └── i686/              # Variantes i686 (unpackfs, fix-boot, pacman-init)
+│   └── preview/               # Configuración aislada para previsualizar en el host
+└── patches/                   # Parches aplicados sobre Calamares al compilarlo
 ```
+
+`apply-calamares.sh` copia primero los módulos comunes y después, encima, los de `modules/<arch>/`.
 
 ---
 
-## ⚙️ Secuencia de Instalación (`settings.conf`)
+## Secuencia de instalación (`settings.conf`)
 
-La instalación en disco sigue una secuencia validada y crítica que incluye 6 hooks `shellprocess`:
+`settings.conf` define cinco instancias `shellprocess` (`boot-nocow`, `pacman-init`, `fix-boot`, `grub-theme` y `post-install`). La fase de ejecución sigue este orden, y el orden importa:
 
 ```text
-1. shellprocess@boot-nocow      -> Aplica chattr +C en /boot para evitar zstd en GRUB.
-2. unpackfs                     -> Extrae la imagen squashfs del Live al disco destino.
-3. shellprocess@pacman-init     -> Inicializa y puebla el keyring de pacman en el sistema instalado.
-4. shellprocess@fix-boot        -> Regenera presets de mkinitcpio y módulos del kernel.
-5. shellprocess@churros-repo    -> Registra el repositorio local [churros] temporalmente.
-6. netinstall / packages        -> Instala paquetes adicionales y extras AUR locales; sin Internet, Calamares omite este paso y conserva la instalación base de la ISO.
-7. bootloader                   -> Instala GRUB (UEFI) / Syslinux (BIOS).
-8. shellprocess@grub-theme      -> Aplica el tema GRUB centrado y hook de lectura Btrfs.
-9. shellprocess@post-install    -> Elimina el repo local, sudoers NOPASSWD, reglas polkit de Calamares y
-                                ajustes de ssh del Live, y limpia rastros del usuario Live.
-10. umount                      -> Desmonta las particiones instaladas.
+partition                    -> Crea y formatea las particiones (btrfs por defecto).
+mount                        -> Monta las particiones del destino.
+shellprocess@boot-nocow      -> chattr +C y sin compresión en /boot, para que GRUB lea el kernel.
+unpackfs                     -> Copia la imagen squashfs del Live (y el kernel) al disco.
+machineid, fstab, locale, keyboard, localecfg
+shellprocess@pacman-init     -> Inicializa y puebla el keyring de pacman.
+shellprocess@fix-boot        -> Cambia el preset de mkinitcpio de archiso por el normal y añade módulos de vídeo.
+initcpiocfg, initcpio        -> Genera el initramfs.
+users, displaymanager, networkcfg, hwclock, services-systemd
+grubcfg, bootloader          -> Instala GRUB.
+shellprocess@grub-theme      -> Copia el tema GRUB, regenera grub.cfg y deja /boot legible para GRUB.
+shellprocess@post-install    -> Limpieza: quita el repo [churros], Calamares y su regla polkit, el sudo
+                                sin contraseña, la configuración ssh del Live y el usuario churros.
+umount                       -> Desmonta las particiones.
 ```
+
+`pacman-init` tiene que ir antes que `fix-boot`, y `boot-nocow` antes que `unpackfs`. No hay paso `netinstall` ni `packages`: las aplicaciones opcionales las instala [ChurrOS Tour](../docs/churros-tour.md) en el primer inicio del sistema instalado.
 
 ---
 
-## 🔒 Regla Polkit (`49-calamares.rules`)
+## Regla polkit (`49-calamares.rules`)
 
-`apply-calamares.sh` instala automáticamente una regla en `/etc/polkit-1/rules.d/49-calamares.rules` que autoriza al usuario de la sesión Live (`churros`) a ejecutar Calamares como superusuario sin solicitud interactiva de contraseña:
+`apply-calamares.sh` instala en `/etc/polkit-1/rules.d/49-calamares.rules` una regla que permite al usuario del Live (`churros`) ejecutar Calamares como root sin pedir contraseña:
 
 ```javascript
 polkit.addRule(function(action, subject) {
-    if ((action.id == "org.freedesktop.policykit.exec" &&
-         action.lookup("program") == "/usr/bin/calamares") &&
-        subject.isInGroup("wheel")) {
+    if (action.id == "io.calamares.calamares.pkexec.run" &&
+        subject.user == "churros") {
         return polkit.Result.YES;
     }
 });
 ```
 
+El paso `post-install` la borra del sistema instalado.
+
 ---
 
-## 🖼️ Vista Previa en el Host
+## Vista previa en el host
 
 Puedes previsualizar el diseño del instalador y el carrusel de diapositivas en el sistema anfitrión sin riesgo de modificar discos reales:
 
@@ -63,15 +73,16 @@ Puedes previsualizar el diseño del instalador y el carrusel de diapositivas en 
 ./churros apps calamares
 ```
 
-Este comando utiliza el overlay en `calamares/preview/`:
+Este comando utiliza la configuración de `calamares/preview/`:
 - No toca `/etc/calamares` del host.
-- Omite el módulo de particionado real para proteger los discos.
-- Simula la fase de instalación con un temporizador para apreciar el slideshow.
+- No incluye el módulo de particionado.
+- Simula la fase de instalación con una pausa (`sleep 8`) para ver el slideshow.
 
 ---
 
-## 📖 Documentación Relacionada
+## Documentación relacionada
 
-- [Roadmap de la Fase 4: Instalador](../docs/roadmap.md)
-- [Documentación del Sistema de Arranque](../docs/boot.md)
-- [Documentación de Snapshots y Rollback Btrfs](../docs/rollback.md)
+- [Instalador (Calamares)](../docs/installer.md)
+- [Sistema de compilación](../docs/build-system.md)
+- [Sistema de arranque](../docs/boot.md)
+- [Snapshots y rollback con Btrfs](../docs/rollback.md)

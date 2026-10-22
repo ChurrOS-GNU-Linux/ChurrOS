@@ -1,62 +1,62 @@
-# Pantalla de Inicio de Sesión (Login Screen / Greeter)
+# Pantalla de inicio de sesión (greetd + ReGreet)
 
-ChurrOS utiliza una arquitectura gráfica moderna y ultraligera para la pantalla de bienvenida e inicio de sesión basada en **`greetd`** + **`ReGreet`** + **`cage`**.
+ChurrOS usa **`greetd`** como gestor de sesiones y **`ReGreet`**, dentro del compositor **`cage`**, como pantalla de inicio de sesión. Este documento es la referencia única de cómo se configura greetd en el Live y en el sistema instalado.
 
 ---
 
 ## 1. Arquitectura
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     greetd.service                      │
-│                (Ejecutándose en VT7)                    │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-               Lanza [default_session]
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                          cage                           │
-│       (Compositor kiosko Wayland en modo seguro)        │
-│       env WLR_NO_HARDWARE_CURSORS=1 XCURSOR_THEME=Adwaita│
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                      Abre interfaz
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                     greetd-regreet                      │
-│             (Greeter gráfico en GTK4 / Rust)            │
-│       Tema: macOS Liquid Glass (/etc/greetd/regreet.css)│
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                 Autenticación PAM / Sesión
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                     Sesión de Usuario                   │
-│     churros-niri-session / churros-xfce-session         │
-└─────────────────────────────────────────────────────────┘
+```text
+greetd.service (VT7)
+ │
+ ├─ [initial_session]  autologin, una sola vez al arrancar
+ │     Live: churros + la sesión de la edición
+ │     Instalado: solo si se eligió inicio automático
+ │
+ └─ [default_session]  usuario greeter
+       cage -s -- regreet
+        │  autenticación PAM
+        ▼
+     sesión del usuario (la de la edición)
 ```
 
-- **`greetd`**: Demonio del gestor de sesiones. Administra terminales virtuales, sesiones PAM e IPC.
-- **`cage`**: Compositor kiosko Wayland de una sola ventana (< 1MB de RAM), configurado con `WLR_NO_HARDWARE_CURSORS=1` para evitar artefactos en tarjetas gráficas virtuales y reales.
-- **`ReGreet`**: Greeter gráfico nativo escrito en Rust y GTK4. Lee la configuración desde `/etc/greetd/regreet.toml` y estilos CSS desde `/etc/greetd/regreet.css`.
+- **`greetd`**: demonio que gestiona el inicio de sesión. Administra el terminal virtual, las sesiones PAM y el IPC con el greeter.
+- **`cage`**: compositor Wayland de tipo kiosko, de una sola ventana. Se lanza con `WLR_NO_HARDWARE_CURSORS=1` para evitar artefactos del cursor en tarjetas gráficas virtuales y reales.
+- **`ReGreet`**: greeter gráfico escrito en Rust y GTK4. Lee su configuración de `/etc/greetd/regreet.toml` y sus estilos de `/etc/greetd/regreet.css`.
+
+Si existe `[initial_session]`, greetd la lanza al arrancar sin pedir credenciales. Cuando esa sesión termina (al cerrar sesión), greetd pasa a `[default_session]` y muestra ReGreet.
+
+### Sesión de cada edición
+
+| Edición | Live (`[initial_session]`, usuario `churros`) | Sistema instalado |
+|---|---|---|
+| niri | `niri` | `/usr/bin/churros-niri-session` |
+| xfce | `/usr/bin/churros-xfce-session` | `/usr/bin/churros-xfce-session` |
+| pi | `/usr/bin/churros-pi-session` | `/usr/bin/churros-pi-session` |
+| server | `/usr/bin/churros-xfce-session` (solo para el instalador) | Sin greeter: `greetd` queda deshabilitado ([server.md](server.md)) |
+
+En i686 la ISO se construye como edición niri, pero `archiso/packages.i686` no incluye el paquete `niri`, así que esa sesión no puede arrancar.
 
 ---
 
-## 2. Diseño Estilo macOS Liquid Glass
+## 2. Diseño
 
-El greeter implementa una estética de cristal esmerilado inspirada en macOS con detalles de acento naranja ChurrOS:
+El tema (`/etc/greetd/regreet.css`) es de cristal esmerilado con el acento naranja de ChurrOS:
 
-- **Fondo de Pantalla**: Carga `/usr/share/churros/wallpapers/default.png` o el fondo personalizado configurado por el usuario.
-- **Campos de Entrada y Botones en Píldora (`border-radius: 9999px`)**: Entradas de contraseña y selector de sesión translúcidos (`rgba(255, 255, 255, 0.16)`).
-- **Efectos de Foco**: Resplandor dinámico en color acento naranja ChurrOS (`#F97316`).
-- **Avatar Circular**: Con bordes luminosos y sombras suaves.
-- **Reloj y Saludo**: Tipografía `Inter` con renderizado limpio.
+- **Fondo de pantalla**: `/usr/share/churros/wallpapers/default.png`, o el que se sincronice desde Ajustes (ver la sección 5).
+- **Campos de entrada y botones en píldora** (`border-radius: 9999px`): entrada de contraseña y selector de sesión translúcidos (`rgba(255, 255, 255, 0.16)`).
+- **Foco**: resplandor en el naranja de ChurrOS (`#F97316`).
+- **Avatar circular** con borde y sombra suave.
+- **Reloj y saludo** con la tipografía `Inter`. El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
 
 ---
 
-## 3. Archivos de Configuración
+## 3. Archivos de configuración
 
 ### `/etc/greetd/config.toml`
+
+En el Live este archivo lo genera `scripts/cli/build.sh` según `--edition`. El que está en `archiso/airootfs/etc/greetd/config.toml` es la versión niri: el build lo sobrescribe y lo restaura al terminar, así que editarlo a mano no cambia la ISO. El que genera `build.sh`:
+
 ```toml
 [terminal]
 vt = 7
@@ -66,14 +66,17 @@ command = "env WLR_NO_HARDWARE_CURSORS=1 XCURSOR_THEME=Adwaita XCURSOR_SIZE=24 c
 user = "greeter"
 
 [initial_session]
-command = "niri"
+command = "<comando de la edición, ver la tabla de la sección 1>"
 user = "churros"
 ```
 
-- En la sesión **Live ISO**, `initial_session` permite entrar directamente al escritorio del usuario `churros`.
-- En el **sistema instalado**, `default_session` lanza la interfaz gráfica de `regreet` para solicitar credenciales.
+- En el **Live**, `[initial_session]` entra directamente al escritorio del usuario `churros`.
+- En el **sistema instalado**, el archivo lo reescribe `configure-greetd-session` (sección 6): `[default_session]` siempre lanza ReGreet para pedir credenciales y `[initial_session]` solo aparece si se eligió el inicio automático.
+
+`getty@tty1` está enmascarado (lo hace `services.sh` en el Live y el módulo `services-systemd` de Calamares en el sistema instalado): el único inicio de sesión gráfico es el de greetd.
 
 ### `/etc/greetd/regreet.toml`
+
 ```toml
 [background]
 path = "/usr/share/churros/wallpapers/default.png"
@@ -99,6 +102,7 @@ resolution = "1s"
 ```
 
 ### `/etc/pam.d/greetd`
+
 ```pam
 #%PAM-1.0
 
@@ -111,19 +115,29 @@ session    include      system-local-login
 
 ---
 
-## 4. Integración con Preferencias (`churros-settings`)
+## 4. Usuarios
 
-En el crate `preferences` (`churros-settings` -> *Usuarios y Login*):
-- **Inicio Automático (Autologin)**: Permite activar o desactivar el autologin en vivo con `churros-write-root-config greetd-autologin on|off` vía `churros-pkexec` (pide la contraseña de administrador). El helper genera `/etc/greetd/config.toml`: el usuario es quien lo pide y la sesión, la de la edición instalada, con la misma tabla que usa el instalador (`/usr/share/churros/scripts/edition-session.sh`; en Niri, `/usr/bin/churros-niri-session`).
-- **Sincronizar Fondo**: Pone el wallpaper actual del escritorio como fondo en `/etc/greetd/regreet.toml` (`regreet-wallpaper`). Solo admite fondos del sistema (`/usr/share/churros/wallpapers`, `/usr/share/backgrounds`, `/usr/share/wallpapers`): uno del home no lo puede leer el greeter. Si no se puede, la fila lo indica.
-- **Mensaje de Bienvenida**: Muestra el saludo configurado en la pantalla de inicio.
+- **`churros`** (solo Live): sin contraseña y con autologin. Lo crea `archiso/airootfs/root/scripts/users.sh` (detalle en [live-services.md](live-services.md#usuario-live)).
+- **`greeter`**: usuario de sistema con el que corren `cage` y ReGreet. `users.sh` le añade los grupos `video`, `input`, `render` y `tty`.
 
 ---
 
-## 5. Integración con el Instalador Calamares
+## 5. Integración con Ajustes (`churros-settings`)
 
-- **Módulo `displaymanager`**: Configurado para `greetd`.
-- **Checkbox de Inicio Automático**:
-  - Si se marca *"Iniciar sesión automáticamente"*, Calamares genera `[initial_session]` con el usuario creado.
-  - Si se desmarca, Calamares deja `[default_session]` apuntando a `regreet` para solicitar usuario y contraseña.
-- **Sincronización de Idioma**: El script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta automáticamente el saludo (`greeting_msg`) y el formato de fecha (`format`) de `regreet.toml` según el idioma seleccionado por el usuario en Calamares.
+En el crate `preferences` (`churros-settings` → *Usuarios y Login*):
+
+- **Inicio automático (autologin)**: activa o desactiva el autologin en el sistema instalado con `churros-write-root-config greetd-autologin on|off` vía `churros-pkexec` (pide la contraseña de administrador). El helper genera `/etc/greetd/config.toml`: el usuario es quien lo pide y la sesión, la de la edición instalada, con la misma tabla que usa el instalador (`/usr/share/churros/scripts/edition-session.sh`; en Niri, `/usr/bin/churros-niri-session`).
+- **Sincronizar fondo**: pone el wallpaper actual del escritorio como fondo en `/etc/greetd/regreet.toml` (`regreet-wallpaper`). Solo admite fondos del sistema (`/usr/share/churros/wallpapers`, `/usr/share/backgrounds`, `/usr/share/wallpapers`): uno del home no lo puede leer el greeter. Si no se puede, la fila lo indica.
+- **Mensaje de bienvenida**: muestra el saludo configurado en la pantalla de inicio.
+
+Los permisos de `churros-write-root-config` están en [privileged-execution.md](privileged-execution.md).
+
+---
+
+## 6. Integración con el instalador Calamares
+
+1. **Módulo `displaymanager`** (`installer/calamares/modules/displaymanager.conf`): configurado para `greetd`, con `churros-xsession` como ejecutable de sesión (este script lee `/etc/churros-edition` y lanza la sesión de la edición). `customize_airootfs.sh` parchea el módulo DMgreetd de Calamares para que use `cage` + `regreet` como `[default_session]`.
+2. **Casilla de inicio automático**: viene desmarcada (`doAutologin: false` en `users.conf`). Si se marca, Calamares escribe `[initial_session]` con el usuario creado.
+3. **`/usr/share/churros/scripts/configure-greetd-session`** (paso `shellprocess@post-install`): reescribe `/etc/greetd/config.toml` con la sesión de la edición (tabla de `edition-session.sh`), conserva el usuario de autologin que dejó Calamares, si lo hay, y escribe `/etc/greetd/environments`. En la edición server sale sin hacer nada.
+4. **XFCE, sesión X11**: ReGreet no usa el comando de `[initial_session]`; descubre las sesiones en `/usr/share/xsessions` y `/usr/share/wayland-sessions`. `xfce4-session` trae una sesión `xfce-wayland` que exige labwc y una `xfce.desktop` que lanza `startxfce4` sin el wrapper. En la edición xfce, `configure-greetd-session` ejecuta `/usr/share/churros/scripts/fix-xfce-sessions` para dejar solo la sesión X11 con `churros-xfce-session`; sin eso, iniciar sesión sin autologin vuelve al greeter en bucle. El hook de pacman `92-churros-xfce-x11-session.hook` lo vuelve a aplicar cuando una actualización reinstala esos ficheros.
+5. **Idioma**: el script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta el saludo (`greeting_msg`) y el formato de fecha (`format`) de `regreet.toml` según el idioma elegido en Calamares.

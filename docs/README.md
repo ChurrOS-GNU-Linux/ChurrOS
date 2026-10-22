@@ -12,7 +12,7 @@ Todavía no hay un manual de usuario completo (está en el [roadmap](roadmap.md)
 |-----------|----------------|
 | [Rollback](rollback.md) | Recuperar el sistema con los snapshots Btrfs cuando una actualización falla. |
 | [Server](server.md) | Qué instala y qué activa la edición servidor, y qué tienes que configurar tú. |
-| [Login Greeter](login-greeter.md) | Pantalla de inicio de sesión (greetd + ReGreet) y cómo cambiar la sesión. |
+| [Login Greeter](login-greeter.md) | Pantalla de inicio de sesión (greetd + ReGreet): qué sesión arranca cada edición y dónde se configura. |
 
 Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues) y, cuando esté activado, [GitHub Discussions](https://github.com/ChurrOS-GNU-Linux/ChurrOS/discussions).
 
@@ -65,7 +65,7 @@ Documentos que ya no describen el estado actual y se conservan como referencia h
 
 | Documento | Contenido |
 |-----------|-----------|
-| [Pywal dynamic colors](archivo/pywal-dynamic-colors.md) | Nota de traspaso de la rama `fix/pywal-dynamic-colors` (PR #74). |
+| [Pywal dynamic colors](archivo/pywal-dynamic-colors.md) | Nota de traspaso de la rama `fix/pywal-dynamic-colors` (entró en `main` con la PR #72). |
 | [ChurrOS.pptx](ChurrOS.pptx) | Presentación de una charla sobre el proyecto; puede contener datos desactualizados. |
 
 ## Cómo mantener esta documentación
