@@ -169,8 +169,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
               /dev/nvme0n1p2). Si cifraste el disco, ábrela antes con \
               cryptsetup open y usa /dev/mapper/<nombre>.\n\
               <stamp> es el nombre del snapshot en la lista de abajo (p. ej. \
-              20260824-163000). En la ISO list no funciona: monta la partición \
-              con mount -o subvolid=5 y cada carpeta de @snapshots es un stamp."),
+              20260824-163000). Desde la ISO, churros-snapshot list no \
+              funciona: monta la partición con mount -o subvolid=5 y cada \
+              carpeta de @snapshots es un stamp."),
         Some("system.svg"),
         None,
         None,
