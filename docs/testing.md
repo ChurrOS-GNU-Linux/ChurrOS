@@ -8,8 +8,9 @@ detecta fallos que la anterior no puede ver.
 |------|---------|-------|--------|----|
 | Estática | `./churros test` | ~1 min | el repo: cada referencia entre ficheros | `ci.yml`, cada PR |
 | Autoprueba | `./churros test --mutations` | ~5 min | si las pruebas siguen detectando lo que dicen | `ci.yml`, cada PR |
-| Rust | `./churros rust` | ~10 min | compila y prueba `rust/`; `scripts/test-tour.py` en Broadway | `rust.yml` |
-| Contenedor Arch | `./churros test --container` | ~5 min | los repos reales de Arch (`pacman`), `niri validate` | `rust.yml` |
+| Rust | `./churros rust` | ~10 min | compila y prueba `rust/` (build, test, clippy) | `rust.yml` |
+| Apps GTK | `./churros test --gui` | ~5 min | cada app y cada popup arrancan en release sin morir (`scripts/test-gui-smoke.py`); los tests de widgets del recorrido (`scripts/test-tour.py`) | `rust.yml` |
+| Contenedor Arch | `./churros test --container` | ~5 min | los repos reales de Arch (`pacman`), `niri validate` (también de lo que escribe Ajustes) | `rust.yml` |
 | ISO | `./churros test --iso [ISO]` | ~2 min | el producto final, sin arrancarlo | `iso.yml`, `iso-arm64.yml` |
 | Arranque | `./churros test --boot [ISO]` | 3 min con KVM | la sesión Live en QEMU, desde dentro | `iso.yml` |
 | Manual | `./churros run` | — | lo que todavía no se automatiza (ver abajo) | — |
@@ -21,9 +22,10 @@ obligar a instalarlo todo: `./install-deps.sh` instala lo necesario.
 ## Qué ejecutar antes de abrir un PR
 
 - Siempre: `./churros test`.
-- Si tocas `rust/`: `./churros rust`.
-- Si tocas listas de paquetes (`archiso/packages.*`) o la configuración de
-  niri: `./churros test --container`.
+- Si tocas `rust/`: `./churros rust` y `./churros test --gui`.
+- Si tocas listas de paquetes (`archiso/packages.*`), la configuración de
+  niri o lo que Ajustes escribe en ella (`rust/preferences/src/services/`):
+  `./churros test --container`.
 - Si tocas el escritorio, el instalador, el arranque o el build:
   `./churros build`, luego `./churros test --iso --boot`, y un vistazo en
   `./churros run`.
@@ -91,6 +93,59 @@ debilitado.
 Cada vez que se arregla un fallo, la prueba que lo habría detectado lleva su
 mutación.
 
+`./churros test --container --mutations` ejecuta las de `requires =
+"container"` dentro del contenedor (semanal en `rust.yml`). Las mutaciones de
+`rust/` compilan en las copias: cada copia (la base y cada worker) usa su
+propio `CARGO_TARGET_DIR`, una copia del compartido. Cargo identifica los
+crates del workspace por su ruta relativa a la raíz y decide por fecha: con un
+target común, un worker ejecutaría el binario que acaba de compilar otro, y el
+`build-rust.sh` del repo original metería en la ISO un binario compilado desde
+una copia mutada. Por eso en el contenedor van 2 workers por defecto. Una
+prueba que agota su plazo recibe SIGTERM (para cerrar lo que abrió) y, 15 s
+después, SIGKILL a todo su grupo.
+
+## Apps GTK en Broadway: `./churros test --gui`
+
+`cargo test` no abre ninguna ventana. `./churros test --gui` ejecuta en el
+contenedor Arch, cada una sobre su `gtk4-broadwayd` privado, dos pruebas (que
+falle una no impide la otra; en `rust.yml` son dos pasos):
+
+- `scripts/test-tour.py`: los tests `#[ignore]` del recorrido, que manejan por
+  API sus páginas de personalización e instalación (con un `yay` y terminales
+  falsos).
+- `scripts/test-gui-smoke.py`: compila el workspace en release (el perfil de
+  la ISO, con `panic = "abort"`) y arranca cada binario desplegado
+  (`deploy = true`) y `churros-popup` con cada nombre de `POPUPS`, dentro de
+  `dbus-run-session`, con HOME (copia del skel) y `/tmp/churros` propios.
+  Cada arranque se hace dos veces: tal cual (en el contenedor faltan nmcli,
+  wpctl, upower, niri...) y `[herramientas fallan]`, con cada programa que
+  lanzan las apps (el escaneo de `test_references.py`) sustituido por uno que
+  escribe un error y sale con 1, como `wpctl` antes de que arranque PipeWire.
+  Falla si la app termina antes de 5 s (con cualquier código o señal) o si su
+  salida o su log de `/tmp/churros` contiene `panicked at`; un `Gtk-CRITICAL`
+  solo se avisa. `-k <texto>` arranca solo los que lo contienen
+  (`python3 scripts/test-gui-smoke.py -k churros-settings`).
+
+Ninguna de las dos usa la bienvenida, los ajustes, el centro de control o los
+popups después de abrirlos; el arranque en QEMU abre además Ajustes y el centro
+de control en la sesión niri real.
+
+## Lo que Ajustes escribe en el config de niri
+
+`churros-settings` reescribe `~/.config/niri/config.kdl` (`niri_config.rs`,
+`keyboard.rs`, `window_rules_service.rs` y `cursor.rs` de
+`rust/preferences/src/services`). niri rechaza el fichero entero por un escape
+inválido en una regex, un entero donde espera un decimal o un atajo repetido, y
+la sesión siguiente arranca sin la configuración de ChurrOS. El test de cargo
+`services::niri_writers` aplica cada llamada que hacen las páginas, con los
+extremos de sus controles, a una copia del config del skel: comprueba que
+cambia lo que debe, que no borra nodos de primer nivel ajenos y que guardar sin
+tocar nada deja el fichero byte a byte igual. `tests/container/test_niri_config.py`
+lo ejecuta y pasa `niri validate` por cada resultado (id
+`niri-writers:<llamada>`). Un servicio nuevo que escribe `config.kdl` entra
+solo en la comprobación: cada llamada de una página a él necesita un caso en
+`niri_writers.rs`, o declararse en `NOT_NIRI_WRITERS` si no escribe el config.
+
 ## Capas que necesitan la ISO
 
 `tests/iso/check_iso.py` audita la ISO sin arrancarla: entradas El Torito,
@@ -151,3 +206,6 @@ equipo x86_64 va por TCG aunque haya `/dev/kvm`.
   sistema instalado (con ReGreet, sin autologin).
 - Las ediciones `pi` (aarch64) e i686 no se arrancan en CI.
 - Hardware real: Wi-Fi, Bluetooth, audio, suspensión.
+- Usar la bienvenida, los ajustes, el centro de control y los popups (pulsar,
+  cambiar de página): `./churros test --gui` y el arranque solo comprueban que
+  abren.

@@ -28,13 +28,13 @@ Uso: python3 tests/mutations/run_mutations.py [-k filtro] [-j N] [--container]
 dentro del contenedor de build, como ./churros test --container.)
 
 Cargo: con un CARGO_TARGET_DIR absoluto (el contenedor exporta
-/churros/rust/target/container), las copias compilan en otro target,
-<CARGO_TARGET_DIR>-mutations, nunca en el del repo original: cargo reconoce
-los crates del workspace en cualquier ruta y decide por fecha, así que el
-build-rust.sh del original reutilizaría (y metería en la ISO) un binario
-compilado desde una copia mutada, aunque el runner muera a medias. Antes de
-la línea base y después de cada mutación se olvida lo que las copias
-compilaron del workspace en ese target (testlib.forget_workspace_build).
+/churros/rust/target/container), cada copia (la base y cada worker) compila
+en su propio target, una copia del compartido (worker_target), nunca en el
+del repo original: cargo reconoce los crates del workspace en cualquier ruta
+y decide por fecha, así que el build-rust.sh del original reutilizaría (y
+metería en la ISO) un binario compilado desde una copia mutada, y dos workers
+con un target común se prestarían los binarios mutados. En el contenedor van
+2 workers por defecto: cada uno lleva su copia del target.
 """
 from __future__ import annotations
 
@@ -116,35 +116,44 @@ def make_copy(source: Path, target: Path) -> None:
 # Lo que tiene una prueba, tras SIGTERM, para cerrar lo que abrió (las apps
 # de scripts/test-gui-smoke.py viven en su propia sesión) antes del SIGKILL.
 GRACE_SECONDS = 15
-# La línea base compila en frío el target de las copias (copies_target): las
-# dependencias de GTK en release y en debug tardan minutos.
+# La línea base puede compilar en frío (un target vacío o un Cargo.lock
+# nuevo): las dependencias de GTK en release y en debug tardan minutos.
 BASELINE_TIMEOUT = 1800
 
 
-def copies_target() -> Path | None:
-    """CARGO_TARGET_DIR de las copias, o None si cada copia usa el suyo (sin
-    CARGO_TARGET_DIR, o relativo: cargo lo resuelve dentro de la copia)."""
-    value = os.environ.get("CARGO_TARGET_DIR", "")
-    if not value or not os.path.isabs(value):
+def worker_target(tmp: Path, copy: Path) -> Path | None:
+    """CARGO_TARGET_DIR propio de la copia `copy`, sembrado con el compartido.
+
+    cargo identifica los miembros del workspace por su ruta relativa a la
+    raíz: todas las copias (base, workerN) comparten artefactos y fingerprints
+    en un CARGO_TARGET_DIR absoluto común. Si un worker escribe su mutación
+    mientras otro compila, sus ficheros quedan más viejos que el fingerprint
+    del otro, cargo los da por compilados y ejecuta el binario del otro: la
+    mutación sobrevive, o se le cuenta a otra, al azar. Y lo que compila una
+    copia mutada lo reutilizaría el build del repo original. Sin
+    CARGO_TARGET_DIR (o relativo) cada copia ya usa el suyo. La primera vez
+    se copia el compartido, sin incremental/ (solo acelera recompilar el
+    workspace), para no recompilar GTK en cada worker. Dentro de un worker,
+    restaurar el fichero mutado le da una fecha nueva: cargo lo recompila.
+    """
+    shared = os.environ.get("CARGO_TARGET_DIR", "")
+    if not os.path.isabs(shared):
         return None
-    return Path(value.rstrip("/") + "-mutations")
+    target = tmp / f"target-{copy.name}"
+    if not target.exists():
+        if Path(shared).is_dir():
+            shutil.copytree(shared, target, symlinks=True, ignore=shutil.ignore_patterns("incremental"))
+        else:
+            target.mkdir()
+    return target
 
 
-def forget_copies_build() -> None:
-    """Olvida lo que las copias compilaron del workspace en su target común."""
-    target = copies_target()
-    if target is not None:
-        with testlib.file_lock(target / testlib.CARGO_LOCK):
-            testlib.forget_workspace_build(target)
-
-
-def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
+def run(cmd: list[str], cwd: Path, timeout: float, target: Path | None = None) -> tuple[int, str]:
     """(código, salida). Al vencer el plazo termina el grupo entero (SIGTERM
     y, tras GRACE_SECONDS, SIGKILL): check.sh y el build.sh del dry run
     dejarían nietos vivos en la copia del worker, y un cargo huérfano seguiría
     compilando la copia mutada."""
     env = testlib.scratch_env(PYTHONDONTWRITEBYTECODE="1")
-    target = copies_target()
     if target is not None:
         env["CARGO_TARGET_DIR"] = str(target)
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, text=True, start_new_session=True,
@@ -213,7 +222,7 @@ def restore(mutation: dict, copy: Path) -> None:
                    env=testlib.scratch_env())
 
 
-def evaluate(mutation: dict, copy: Path, timeout: float) -> dict:
+def evaluate(mutation: dict, copy: Path, timeout: float, target: Path | None = None) -> dict:
     """Aplica la mutación en `copy`, ejecuta su prueba y deja la copia como estaba."""
     error = apply(mutation, copy)
     if error:
@@ -221,12 +230,9 @@ def evaluate(mutation: dict, copy: Path, timeout: float) -> dict:
         # existe ni siquiera se podría).
         return {"mutation": mutation, "status": "stale", "detail": error}
     try:
-        code, output = run(command_for(mutation["caught_by"]), copy, timeout)
+        code, output = run(command_for(mutation["caught_by"]), copy, timeout, target)
     finally:
-        try:
-            restore(mutation, copy)
-        finally:
-            forget_copies_build()
+        restore(mutation, copy)
     if code == 0:
         status = "survived"
     elif mutation["expect"] not in output:
@@ -239,12 +245,15 @@ def evaluate(mutation: dict, copy: Path, timeout: float) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-k", dest="filter", default="", help="solo mutaciones cuyo nombre contenga esto")
-    parser.add_argument("-j", dest="jobs", type=int, default=min(4, os.cpu_count() or 1))
+    parser.add_argument("-j", dest="jobs", type=int, default=None,
+                        help="en paralelo (4 en el host; 2 con --container, cada uno con su copia del target)")
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--container", action="store_true",
                         help="solo las mutaciones que requieren el contenedor Arch")
     args = parser.parse_args()
 
+    if args.jobs is None:
+        args.jobs = min(2 if args.container else 4, os.cpu_count() or 1)
     layer = "container" if args.container else None
     every = [m for m in load_mutations() if args.filter in m["name"]]
     mutations = [m for m in every if m.get("requires") == layer]
@@ -261,12 +270,12 @@ def main() -> int:
 
         # Sin una línea base en verde, que una mutación "falle" no demuestra nada.
         print("== Línea base (repo sin mutar)")
-        if copies_target() is not None:
-            print(f"  (cargo de las copias: {copies_target()})")
-        forget_copies_build()
+        base_target = worker_target(Path(tmp), base)
+        if base_target is not None:
+            print(f"  (cada copia compila en su propio CARGO_TARGET_DIR, como {base_target})")
         broken = False
         for caught_by in sorted({m["caught_by"] for m in mutations}):
-            code, output = run(command_for(caught_by), base, max(args.timeout, BASELINE_TIMEOUT))
+            code, output = run(command_for(caught_by), base, max(args.timeout, BASELINE_TIMEOUT), base_target)
             print(f"  {'✓' if code == 0 else '✗'} {caught_by}")
             if code != 0:
                 broken = True
@@ -284,7 +293,7 @@ def main() -> int:
         def in_worker(mutation: dict) -> dict:
             copy = workers.get()
             try:
-                return evaluate(mutation, copy, args.timeout)
+                return evaluate(mutation, copy, args.timeout, worker_target(Path(tmp), copy))
             finally:
                 # Siempre de vuelta a la cola: una copia perdida bloquea a
                 # las mutaciones que esperan en workers.get().

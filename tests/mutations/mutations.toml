@@ -1893,3 +1893,184 @@ replace = "DESKTOP_WORDS = {}"
 caught_by = "tests.static.test_harness"
 expect = "Xwrapper"
 why = "Un PR que toca /etc/X11 construiría solo niri y la rotura de XFCE aparecería de madrugada."
+
+# ---- Arranque de las apps GTK (scripts/test-gui-smoke.py) y aislamiento del target de cargo
+
+[[mutation]]
+name = "test-gui-smoke: churros-settings entra en pánico al construir la ventana (RefCell prestado dos veces)"
+file = "rust/preferences/src/main.rs"
+find_re = '^    logging::log\("activate"\);$'
+replace = "    logging::log(\"activate\");\n    let pages = std::cell::RefCell::new(Vec::<String>::new());\n    let _visible = pages.borrow();\n    pages.borrow_mut().push(\"system\".into());"
+caught_by = "python3 scripts/test-gui-smoke.py -k churros-settings"
+expect = "FALLO churros-settings"
+requires = "container"
+why = "Compila y pasa cargo test, clippy, la auditoría de la ISO y el arranque en QEMU (que solo mira la bienvenida); en la ISO (panic = \"abort\") Ajustes no se abre nunca."
+
+[[mutation]]
+name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante reload)"
+file = "rust/popups/src/network.rs"
+find_re = '^        \*self\.last\.borrow_mut\(\) = wifi::get\(\);$'
+replace = "        let mut last = self.last.borrow_mut();\n        *last = wifi::get();"
+caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
+expect = "FALLO churros-popup network"
+requires = "container"
+why = "El RefMut vive hasta el final de reload() y el self.last.borrow() de unas líneas más abajo aborta el popup: compila y ninguna otra capa ejecuta los popups."
+
+[[mutation]]
+name = "test-gui-smoke: el volumen hace unwrap de la salida de wpctl"
+file = "rust/services/src/audio.rs"
+find_re = '^        \.unwrap_or\(0\.0\);$'
+replace = "        .expect(\"wpctl get-volume prints 'Volume: <float>'\");"
+caught_by = "python3 scripts/test-gui-smoke.py -k churros-control-center"
+expect = "FALLO churros-control-center [herramientas fallan]"
+requires = "container"
+why = "Con wpctl ausente run() devuelve None y el parseo no corre; en la ISO wpctl existe y falla (PipeWire aún no arrancó, sin micrófono): el centro de control y los popups de audio abortan al abrirse."
+
+[[mutation]]
+name = "test_harness: las copias de run_mutations compilan en el target de cargo del repo original"
+file = "tests/mutations/run_mutations.py"
+find_re = '^    target = tmp / f"target-\{copy\.name\}"$'
+replace = "    target = Path(shared)"
+caught_by = "tests.static.test_harness"
+expect = "las copias compilan en el CARGO_TARGET_DIR del repo original"
+why = "Cargo reconoce los crates del workspace en cualquier ruta y decide por fecha: el build-rust.sh del repo original reutilizaría un binario compilado desde una copia mutada y lo metería en la ISO."
+
+[[mutation]]
+name = "test_harness: el timeout de run_mutations mata sin dejar que la prueba cierre lo suyo"
+file = "tests/mutations/run_mutations.py"
+find_re = '^            os\.killpg\(proc\.pid, signal\.SIGTERM\)$'
+replace = "            pass"
+caught_by = "tests.static.test_harness"
+expect = "el timeout no deja a la prueba cerrar lo que abrió"
+why = "test-gui-smoke.py arranca las apps en su propia sesión: con un SIGKILL directo quedan vivas con su pidfile en /tmp/churros del contenedor, junto a gtk4-broadwayd, y el popup del mismo nombre de la ejecución siguiente se apaga (toggle) en vez de abrirse."
+
+[[mutation]]
+name = "test_harness: testlib.workspace_build reutiliza el build del workspace de otra copia"
+file = "tests/testlib.py"
+find_re = '^        forget_workspace_build\(target\)$'
+replace = "        pass"
+caught_by = "tests.static.test_harness"
+expect = "una copia compilaría reutilizando el build de otra copia"
+why = "Con un CARGO_TARGET_DIR fuera del árbol (compartido entre checkouts), cargo da por compilado el workspace con el binario de otro árbol de fechas más nuevas."
+
+[[mutation]]
+name = "test_harness: mutation workers share one CARGO_TARGET_DIR"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        env\["CARGO_TARGET_DIR"\] = str\(target\)$'
+replace = "        pass"
+caught_by = "tests.static.test_harness"
+expect = "run() no pasa el CARGO_TARGET_DIR del worker"
+why = "Cargo fingerprints workspace members by their path relative to the workspace root, so with one shared target dir a worker's mutated tree passes as already built by another worker's binary: container mutations survive, or are credited to the wrong mutation, at random in the parallel weekly run."
+
+# ---- churros-settings: lo que escribe en ~/.config/niri/config.kdl
+
+[[mutation]]
+name = "churros-settings: window-rule regexes written as plain quoted strings"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^    if !value\\.contains\\(.*\\) \\{$"
+replace = "    if true {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "la regex del app-id no vuelve igual"
+requires = "container"
+why = "The original bug: a regex such as ^org\\.churros\\.popup written as \"^org\\.churros\\.popup\" is an invalid KDL escape, and niri rejects the whole config.kdl after saving any window rule in churros-settings."
+
+[[mutation]]
+name = "churros-settings: update_rule re-serializes the whole window-rule"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^        Some\\(rule\\) => update_block\\(&lines\\[start\\.\\.=end\\], rule\\),$"
+replace = "        Some(rule) => serialize_rule(rule).lines().map(String::from).collect(),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "guardar sin cambios la regla"
+requires = "container"
+why = "A 'simpler' update_rule that rebuilds the rule from the form drops what the form does not model (draw-border-with-background false on foot and every ChurrOS app) and reorders it, just by pressing save."
+
+[[mutation]]
+name = "churros-settings: list_rules reads the last match of a window-rule, update_rule edits the first"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^            if let Some\\(\\(key, field\\)\\) = matched\\.filter\\(\\|\\(key, _\\)\\| !seen\\.contains\\(key\\)\\) \\{$"
+replace = "            if let Some((key, field)) = matched {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "guardar sin cambios la regla"
+requires = "container"
+why = "Reading every match line (last one wins) while update_block edits the first: saving unchanged a hand-written rule with two `match app-id=` lines (an OR) copies the second app-id over the first, and that app silently leaves the rule."
+
+[[mutation]]
+name = "churros-settings: add_keybind stops copying config.kdl at the end of binds"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^(                insert_pos = Some\\(out_lines\\.len\\(\\) - 1\\);)$"
+replace = "\\1\n                break;"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_keeps_what_follows_binds"
+expect = "add_keybind perdió lo que va detrás del bloque binds"
+requires = "container"
+why = "The old add_keybind: every new or renamed shortcut deleted the spawn-at-startup lines after binds (Noctalia, portals, polkit agent). niri validate accepts the result, so only the unit test sees it."
+
+[[mutation]]
+name = "churros-settings: add_keybind writes a key that is already bound"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^            if in_binds && same_key\\(bound, key\\) \\{$"
+replace = "            if false && same_key(bound, key) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_refuses_a_key_already_bound"
+expect = "duplica un atajo"
+requires = "container"
+why = "Adding (or renaming to) a key that already has a shortcut writes a second bind; niri rejects the whole config with 'duplicate keybind'."
+
+[[mutation]]
+name = "churros-settings: saving a shortcut unchanged rewrites it from the dialog"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^            let unchanged = new_key == key$"
+replace = "            let unchanged = false && new_key == key"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings saving_a_keybind_unchanged_keeps_the_skel_byte_for_byte"
+expect = "guardar sin cambios el atajo"
+requires = "container"
+why = "The edit dialog has no allow-when-locked, allow-inhibiting or spawn arguments after the first: rewriting an untouched shortcut from it made the media keys stop working on the lock screen and left the brightness keys running `brightnessctl --class=backlight` without `set +10%`. niri validate accepts it."
+
+[[mutation]]
+name = "churros-settings: renaming a shortcut to the same key in another case is refused"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^        if same_key\\(old, new\\) \\{$"
+replace = "        if false && same_key(old, new) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings rename_keybind_to_the_same_key_in_another_case"
+expect = "rename_keybind(Mod+w -> Mod+W) se niega"
+requires = "container"
+why = "Mod+w -> Mod+W is the same key for niri: going through add_keybind, its duplicate check refuses the rename because of the shortcut being renamed, and the dialog only says 'No se pudo guardar el atajo' (it also drops the new command typed in the same dialog)."
+
+[[mutation]]
+name = "churros-settings: the cursor size rewrite drops everything before `cursor {`"
+file = "rust/preferences/src/services/cursor.rs"
+find_re = "^            &content\\[\\.\\.=brace_open\\],$"
+replace = "            &content[line_start..=brace_open],"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings set_niri_cursor_size_keeps_the_rest_of_the_config"
+expect = "set_niri_cursor_size cambió algo más que xcursor-size"
+requires = "container"
+why = "The bug the new cursor cases of niri_writers found: moving the cursor size slider rebuilt config.kdl from the `cursor {` line, so the environment block before it (QT_QPA_PLATFORM, GDK_BACKEND, MOZ_ENABLE_WAYLAND) vanished. niri validate accepts the result."
+
+[[mutation]]
+name = "test_niri_config: churros-settings writes blur passes as a decimal"
+file = "rust/preferences/src/services/niri_config.rs"
+find_re = "^            \\(\"passes\", passes\\.to_string\\(\\)\\),$"
+replace = "            (\"passes\", py_float_str(passes as f64)),"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-writers:NiriConfig::set_blur("
+requires = "container"
+why = "Formatting every blur value with py_float_str looks consistent, but niri reads passes as an integer: `passes 3.0` makes it reject the whole config.kdl as soon as the Niri page applies its sliders. No unit test parses what niri accepts."
+
+[[mutation]]
+name = "test_niri_config: an invented niri action in the shortcut dialog list"
+file = "rust/preferences/src/pages/keyboard.rs"
+find_re = "^    \"toggle-window-floating\",$"
+replace = "    \"toggle-floating\","
+caught_by = "tests.container.test_niri_config"
+expect = "niri-writers:KeyboardService::add_keybind(\"Mod+Ctrl+Alt+Z\", \"builtin\", \"toggle-floating\""
+requires = "container"
+why = "A wrong action name (an AI writing from memory) in BUILTIN_ACTIONS: adding that shortcut from churros-settings writes an action niri does not know and it rejects the whole config.kdl."
+
+[[mutation]]
+name = "test_niri_config: a page calls a config.kdl writer that niri_writers.rs does not exercise"
+file = "rust/preferences/src/services/niri_writers.rs"
+find_re = "^        \\[niri_config_cases\\(\\), keyboard_cases\\(\\), window_rules_cases\\(\\), cursor_cases\\(\\)\\]\\.into_iter\\(\\)\\.flatten\\(\\)\\.collect\\(\\);$"
+replace = "        [niri_config_cases(), keyboard_cases(), window_rules_cases()].into_iter().flatten().collect();"
+caught_by = "tests.container.test_niri_config"
+expect = "llama a CursorService::set_size"
+requires = "container"
+why = "Cases dropped (or a writer that never had any): the cursor size slider would go back to having no niri validate check. The guard derives the writer services from the services/*.rs that name config.kdl and write files, so CursorService counts without being listed anywhere."
+

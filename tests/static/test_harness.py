@@ -294,17 +294,16 @@ class MutationsTest(unittest.TestCase):
             self.assertEqual(run_mutations.evaluate(killed, root, 5)["status"], "killed")
             self.assertEqual((root / "a").read_text(), "x\n", "la copia no vuelve a su estado tras la mutación")
 
-    def test_copies_never_leave_workspace_builds_in_a_shared_target(self):
+    def test_copies_never_build_in_the_original_target(self):
         # En el contenedor, CARGO_TARGET_DIR es el target del repo original.
         # Cargo reconoce los crates del workspace en cualquier ruta y decide
         # por fecha: lo que compila una copia mutada lo reutilizaría el
-        # build-rust.sh del original (y lo metería en la ISO), y la copia
-        # siguiente también.
+        # build-rust.sh del original (y lo metería en la ISO).
         crate = sorted(testlib.crates(), key=lambda c: c.name)[0].name
         workspace = f"release/.fingerprint/{crate}-0123456789abcdef"
-        dependency = "release/.fingerprint/glib-0123456789abcdef"
         with tempfile.TemporaryDirectory() as tmp:
-            root, original = Path(tmp) / "copia", Path(tmp) / "target"
+            tmp = Path(tmp)
+            root, original = tmp / "worker0", tmp / "target"
             root.mkdir()
             (root / "a").write_text("x\n")
             env = testlib.scratch_env()
@@ -315,17 +314,14 @@ class MutationsTest(unittest.TestCase):
             # CARGO_TARGET_DIR y falla.
             mutation = {"name": "n", "file": "a", "find": "x", "replace": "y", "expect": "roto",
                         "caught_by": f'printf "%s" "$CARGO_TARGET_DIR" > visto; '
-                                     f'mkdir -p "$CARGO_TARGET_DIR/{workspace}" "$CARGO_TARGET_DIR/{dependency}"; '
-                                     'echo roto; false'}
+                                     f'mkdir -p "$CARGO_TARGET_DIR/{workspace}"; echo roto; false'}
             with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(original)}):
-                self.assertEqual(run_mutations.evaluate(mutation, root, 30)["status"], "killed")
+                result = run_mutations.evaluate(mutation, root, 30, run_mutations.worker_target(tmp, root))
+            self.assertEqual(result["status"], "killed")
             seen = Path((root / "visto").read_text())
             self.assertFalse(seen.resolve().is_relative_to(original.resolve()),
                              f"las copias compilan en el CARGO_TARGET_DIR del repo original ({seen})")
             self.assertFalse((original / workspace).exists(), "una copia mutada dejó su build en el target original")
-            self.assertFalse((seen / workspace).exists(),
-                             "el runner deja en el target de las copias lo que compiló una copia mutada")
-            self.assertTrue((seen / dependency).exists(), "el runner borra también las dependencias (caché)")
 
     def test_validate_rejects_entries_that_would_never_run(self):
         base = {"name": "n", "file": "f", "find": "x", "caught_by": "check", "expect": "e"}
@@ -335,6 +331,36 @@ class MutationsTest(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(SystemExit) as raised:
                 run_mutations.validate([bad])
             self.assertIn(message, str(raised.exception))
+    def test_each_worker_gets_its_own_cargo_target(self):
+        # Con un CARGO_TARGET_DIR común, cargo da por compilada la mutación de
+        # un worker con el binario que acaba de compilar otro: sobreviven
+        # mutaciones al azar en la ejecución paralela del contenedor.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            shared = tmp / "shared"
+            (shared / "debug/deps").mkdir(parents=True)
+            (shared / "debug/incremental/x").mkdir(parents=True)
+            built = shared / "debug/deps/churros_settings-1234"
+            built.write_text("binario")
+            os.utime(built, ns=(1_600_000_000_123_456_789, 1_600_000_000_123_456_789))
+            workers = [tmp / "worker0", tmp / "worker1"]
+            with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(shared)}):
+                targets = [run_mutations.worker_target(tmp, copy) for copy in workers]
+                self.assertEqual(run_mutations.worker_target(tmp, workers[0]), targets[0], "cambia de un uso a otro")
+            self.assertEqual(len({*targets, shared}), 3, f"los workers comparten CARGO_TARGET_DIR: {targets}")
+            for target in targets:
+                copied = target / "debug/deps/churros_settings-1234"
+                self.assertEqual(copied.read_text(), "binario", "el target del worker no parte del compartido")
+                self.assertEqual(copied.stat().st_mtime_ns, built.stat().st_mtime_ns,
+                                 "la copia cambia las fechas: cargo lo recompilaría todo")
+                self.assertFalse((target / "debug/incremental").exists())
+            code, output = run_mutations.run([sys.executable, "-c", "import os; print(os.environ['CARGO_TARGET_DIR'])"],
+                                             tmp, 30, targets[1])
+            self.assertEqual((code, output.strip()), (0, str(targets[1])), "run() no pasa el CARGO_TARGET_DIR del worker")
+            for value in ("", "rust/target/container"):
+                with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": value}):
+                    self.assertIsNone(run_mutations.worker_target(tmp, workers[0]),
+                                      f"con CARGO_TARGET_DIR={value!r} cada copia ya usa el suyo")
 
 
 class TestlibTest(unittest.TestCase):
