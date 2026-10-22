@@ -6,13 +6,14 @@
 
 use crate::services::applications::ApplicationsService;
 use crate::widgets::group::Group;
+use crate::widgets::navigation_row;
 use crate::widgets::page::Page;
 use crate::widgets::row::Row;
 use crate::widgets::switch_row::SwitchRow;
 
 pub fn build(navigator: gtk::Stack) -> Page {
     let page = Page::new(
-        Some(navigator),
+        Some(navigator.clone()),
         "Aplicaciones",
         Some("Administrar aplicaciones instaladas"),
         None,
@@ -65,6 +66,19 @@ pub fn build(navigator: gtk::Stack) -> Page {
     ));
 
     page.add(options.widget());
+
+    // ============ Gestión ============
+    let mut manage = Group::new("Gestión");
+
+    manage.add(&navigation_row::new(
+        navigator,
+        "Desinstalar aplicaciones",
+        "applications.svg",
+        "uninstall-apps",
+        Some("Buscar y eliminar programas instalados"),
+    ));
+
+    page.add(manage.widget());
 
     page
 }

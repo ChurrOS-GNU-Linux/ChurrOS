@@ -1,0 +1,43 @@
+# ==============================================================================
+# ChurrOS Distributed Compilation Cluster Configuration
+# ==============================================================================
+# Copia este archivo a 'cluster.conf' y configúralo con los datos de tu cluster:
+#   cp cluster.conf.example cluster.conf
+#
+# Este archivo está en .gitignore para no compartir IPs ni credenciales en git.
+# ==============================================================================
+
+# Lista de nodos del cluster (formato: "USUARIO@IP[,THREADS]" o "IP[,THREADS]")
+# Si no especificas los hilos, se autodetectarán con 'nproc' al sondear el nodo.
+# Por ejemplo, para 10 PCs con Intel Core i9 Ultra (24 núcleos):
+NODES=(
+    "usuario@192.168.1.101,24"
+    "usuario@192.168.1.102,24"
+    "usuario@192.168.1.103,24"
+    "usuario@192.168.1.104,24"
+    "usuario@192.168.1.105,24"
+    "usuario@192.168.1.106,24"
+    "usuario@192.168.1.107,24"
+    "usuario@192.168.1.108,24"
+    "usuario@192.168.1.109,24"
+    "usuario@192.168.1.110,24"
+)
+
+# Motor de ejecución en los nodos remotos:
+# - "podman": Recomendado para Rocky Linux (corre rootless sin permisos de root).
+# - "docker": Si los nodos tienen el daemon de Docker accesible.
+# - "native": Si los nodos ya tienen distccd instalado directamente en el sistema operativo.
+CLUSTER_RUNNER="podman"
+
+# Puerto en el que distccd escuchará en los nodos (3632 es el puerto estándar de distcc)
+DISTCCD_PORT=3632
+
+# Redes permitidas para conectarse a distccd (separadas por espacio)
+# Se pasa al flag --allow de distccd en cada worker
+ALLOWED_NETS="0.0.0.0/0"
+
+# Incluir los núcleos de la máquina local en la compilación
+INCLUDE_LOCALHOST=true
+
+# Opciones adicionales de SSH (tiempo de espera, llaves, etc.)
+SSH_OPTS="-o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new"

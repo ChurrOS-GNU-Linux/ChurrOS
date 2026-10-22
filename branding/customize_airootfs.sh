@@ -150,6 +150,25 @@ if [ -f /boot/Image ]; then
     /usr/share/churros/scripts/publish-aarch64-kernel --require
 fi
 
+if [ -f /boot/vmlinuz-linux-churrosvyper ]; then
+    if [ -f /etc/mkinitcpio.d/linux-churrosvyper.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-churrosvyper.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-churrosvyper.preset
+# mkinitcpio preset file for the 'linux-churrosvyper' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-churrosvyper'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-churrosvyper.img"
+EOF
+            mkinitcpio -p linux-churrosvyper
+        fi
+    fi
+    ln -sfn /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
+    if [ -f /boot/initramfs-linux-churrosvyper.img ]; then
+        ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
+    fi
+fi
+
 echo "Cleaning..."
 bash /root/scripts/cleanup.sh
 

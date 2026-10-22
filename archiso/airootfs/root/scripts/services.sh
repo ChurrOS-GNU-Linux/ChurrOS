@@ -38,5 +38,6 @@ systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 enable_unit NetworkManager.service
 enable_unit greetd.service
 enable_unit ufw.service
+enable_unit ananicy-cpp.service
 
 echo "✓ Services enabled."
