@@ -238,7 +238,7 @@ fn update_block(block: &[String], rule: &Value) -> Vec<String> {
     let indent = format!("{}{INDENT}", leading_space(&block[0]));
     let last = block.len() - 1;
     let mut out = vec![block[0].clone()];
-    // Nodos ya tratados: solo se edita la primera aparición, como lee list_rules.
+    // Nodos ya tratados: solo se edita la primera aparición, la que lee read_rule.
     let mut seen: Vec<&str> = Vec::new();
     // Los match que falten van tras el último que haya.
     let mut match_end = 1;
@@ -416,6 +416,76 @@ fn rewrite_rule(index: usize, rule: Option<&Value>) {
     write_atomic(&text);
 }
 
+/// La regla del bloque window-rule `block` (líneas de apertura a cierre).
+/// De cada match y cada propiedad cuenta la primera aparición en el primer
+/// nivel del bloque, la misma que edita update_block: si no, guardar sin
+/// cambios una regla con dos `match app-id=` (un O) copiaba el segundo
+/// sobre el primero y esa app salía de la regla.
+fn read_rule(index: usize, block: &[String]) -> Value {
+    let mut rule = empty_rule(index);
+    let mut seen: Vec<&str> = Vec::new();
+    let last = block.len() - 1;
+    let mut depth = 0usize;
+    let mut i = 1;
+
+    while i < last {
+        let stripped = block[i].trim();
+        let mut words = stripped.split_whitespace();
+        let name = words.next().unwrap_or("");
+        let value = words.next();
+        i += 1;
+
+        if depth == 0 {
+            let matched = MATCHES.into_iter().find(|(key, _)| stripped.starts_with(&format!("match {key}=")));
+            if let Some((key, field)) = matched.filter(|(key, _)| !seen.contains(key)) {
+                seen.push(key);
+                if let Some((_, _, m)) = string_prop(stripped, key) {
+                    rule[field] = json!(m);
+                }
+                continue;
+            }
+
+            if let Some((key, field)) = PROPERTIES.into_iter().find(|(key, _)| *key == name && !seen.contains(key)) {
+                seen.push(key);
+                let parsed = match field {
+                    "opacity" | "corner_radius" => value.and_then(|v| v.parse::<f64>().ok()).map(|v| json!(v)),
+                    _ => value.map(|v| json!(v == "true")),
+                };
+                if let Some(parsed) = parsed {
+                    rule[field] = parsed;
+                }
+                continue;
+            }
+
+            if name == "background-effect"
+                && stripped.ends_with('{')
+                && !seen.contains(&"blur")
+                && let Some(close) = closing_line(block, i - 1).filter(|close| *close < last)
+            {
+                // Bloque background-effect { ... blur true ... }
+                seen.push("blur");
+                let blur = block[i..close]
+                    .iter()
+                    .map(|l| l.split_whitespace().collect::<Vec<_>>())
+                    .find(|words| words.first() == Some(&"blur"));
+                if let Some([_, v]) = blur.as_deref() {
+                    rule["blur"] = json!(*v == "true");
+                }
+                i = close + 1;
+                continue;
+            }
+        }
+
+        if stripped.ends_with('{') {
+            depth += 1;
+        } else if stripped.starts_with('}') {
+            depth = depth.saturating_sub(1);
+        }
+    }
+
+    rule
+}
+
 /// Comentario que add_rule pone encima de cada regla nueva.
 const CUSTOM_RULE_COMMENT: &str = "// Window rule (custom)";
 
@@ -424,71 +494,11 @@ impl WindowRulesService {
     pub fn list_rules() -> Vec<Value> {
         let content = read();
         let (blocks, lines) = find_all_blocks(&content, "window-rule");
-        let mut rules = Vec::new();
-
-        for (idx, (start, end)) in blocks.iter().enumerate() {
-            let mut rule = empty_rule(idx);
-
-            for j in start + 1..*end {
-                let stripped = lines[j].trim().to_string();
-
-                if stripped.starts_with("match app-id") {
-                    if let Some((_, _, m)) = string_prop(&stripped, "app-id") {
-                        rule["app_id"] = json!(m);
-                        continue;
-                    }
-                }
-                if stripped.starts_with("match title") {
-                    if let Some((_, _, m)) = string_prop(&stripped, "title") {
-                        rule["title"] = json!(m);
-                        continue;
-                    }
-                }
-
-                if stripped.starts_with("opacity") {
-                    if let Some(v) = stripped.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()) {
-                        rule["opacity"] = json!(v);
-                    }
-                } else if stripped.starts_with("open-floating") {
-                    if let Some(v) = stripped.split_whitespace().nth(1) {
-                        rule["open_floating"] = json!(v == "true");
-                    }
-                } else if stripped.starts_with("geometry-corner-radius") {
-                    if let Some(v) = stripped.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()) {
-                        rule["corner_radius"] = json!(v);
-                    }
-                } else if stripped.starts_with("clip-to-geometry") {
-                    if let Some(v) = stripped.split_whitespace().nth(1) {
-                        rule["clip_to_geometry"] = json!(v == "true");
-                    }
-                } else if stripped.starts_with("background-effect") {
-                    // Bloque background-effect { ... blur true ... }
-                    let mut inner_end = None;
-                    for k in j + 1..*end {
-                        let s = lines[k].trim();
-                        if s == "}" || s.starts_with('}') {
-                            inner_end = Some(k);
-                            break;
-                        }
-                    }
-                    if let Some(inner_end) = inner_end {
-                        for k in j + 1..inner_end {
-                            let s = lines[k].trim();
-                            if s.starts_with("blur") {
-                                let parts: Vec<&str> = s.split_whitespace().collect();
-                                if parts.len() == 2 {
-                                    rule["blur"] = json!(parts[1] == "true");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            rules.push(rule);
-        }
-
-        rules
+        blocks
+            .iter()
+            .enumerate()
+            .map(|(idx, &(start, end))| read_rule(idx, &lines[start..=end]))
+            .collect()
     }
 
     /// Añade una regla al final del config (equivalente a add_rule).
@@ -596,15 +606,43 @@ mod tests {
 
     #[test]
     fn saving_a_rule_unchanged_keeps_the_skel_byte_for_byte() {
+        // El skel, y detrás una regla escrita a mano con dos match de cada
+        // (un O), dos opacidades y dos background-effect: de cada uno se lee
+        // y se edita el primero.
         let skel = skel_niri_config();
-        let home = TempHome::new("rules-noop", &skel);
-        let rules = WindowRulesService::list_rules();
-        assert!(rules.len() > 5, "el skel debería tener varias window-rule: {rules:?}");
-        for (index, rule) in rules.iter().enumerate() {
-            WindowRulesService::update_rule(index, &rule_form(rule)).unwrap();
-            let after = home.read();
-            assert_eq!(after, skel, "guardar sin cambios la regla {index} ({}) cambia config.kdl", rule["app_id"]);
+        let extra = [
+            "window-rule {",
+            "    match app-id=\"a\"",
+            "    match app-id=\"b\"",
+            "    match title=\"x\"",
+            "    match title=\"y\"",
+            "    opacity 0.9",
+            "    opacity 0.5",
+            "    background-effect {",
+            "        blur false",
+            "    }",
+            "    background-effect {",
+            "        blur true",
+            "    }",
+            "}",
+        ];
+        for config in [skel.clone(), format!("{skel}\n\n{}\n", extra.join("\n"))] {
+            let home = TempHome::new("rules-noop", &config);
+            let rules = WindowRulesService::list_rules();
+            assert!(rules.len() > 5, "el skel debería tener varias window-rule: {rules:?}");
+            for (index, rule) in rules.iter().enumerate() {
+                WindowRulesService::update_rule(index, &rule_form(rule)).unwrap();
+                let after = home.read();
+                assert_eq!(after, config, "guardar sin cambios la regla {index} ({}) cambia config.kdl", rule["app_id"]);
+            }
         }
+        let _home = TempHome::new("rules-dup", &format!("{}\n", extra.join("\n")));
+        let rule = &WindowRulesService::list_rules()[0];
+        assert_eq!(
+            (&rule["app_id"], &rule["title"], &rule["opacity"], &rule["blur"]),
+            (&json!("a"), &json!("x"), &json!(0.9), &json!(false)),
+            "list_rules no lee la primera aparición, la que edita update_rule"
+        );
     }
 
     #[test]
@@ -645,9 +683,13 @@ mod tests {
         for (index, (start, end)) in blocks.iter().enumerate() {
             home.write(&skel);
             WindowRulesService::delete_rule(index).unwrap();
-            let expected: Vec<&str> =
+            let kept: Vec<&str> =
                 lines.iter().enumerate().filter(|(i, _)| i < start || i > end).map(|(_, l)| l.as_str()).collect();
-            assert_eq!(home.read(), expected.join("\n"), "delete_rule({index}) tocó otras líneas");
+            let mut expected = kept.join("\n");
+            if skel.ends_with('\n') {
+                expected.push('\n');
+            }
+            assert_eq!(home.read(), expected, "delete_rule({index}) tocó otras líneas");
         }
     }
 
@@ -706,8 +748,9 @@ mod tests {
         assert_eq!(rule["title"], r#"x "y""#);
 
         // Borrar la regla añadida deja el config como estaba (más el salto
-        // de línea final que añade add_rule).
+        // de línea final que añade add_rule si no lo tenía).
         WindowRulesService::delete_rule(index).unwrap();
-        assert_eq!(home.read(), format!("{skel}\n"));
+        let expected = if skel.ends_with('\n') { skel.clone() } else { format!("{skel}\n") };
+        assert_eq!(home.read(), expected);
     }
 }

@@ -89,8 +89,35 @@ def make_copy(source: Path, target: Path) -> None:
                     "commit", "-q", "-m", "base"], cwd=target, check=True, **quiet)
 
 
-def run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
+def worker_target(tmp: Path, copy: Path) -> Path | None:
+    """CARGO_TARGET_DIR propio de la copia `copy`, sembrado con el compartido.
+
+    cargo identifica los miembros del workspace por su ruta relativa a la
+    raíz: todas las copias (base, workerN) comparten artefactos y fingerprints
+    en un CARGO_TARGET_DIR absoluto común. Si un worker escribe su mutación
+    mientras otro compila, sus ficheros quedan más viejos que el fingerprint
+    del otro, cargo los da por compilados y ejecuta el binario del otro: la
+    mutación sobrevive, o se le cuenta a otra, al azar. Sin CARGO_TARGET_DIR
+    (o relativo) cada copia ya usa el suyo. La primera vez se copia el
+    compartido, sin incremental/ (solo acelera recompilar el workspace), para
+    no recompilar GTK en cada worker.
+    """
+    shared = os.environ.get("CARGO_TARGET_DIR", "")
+    if not os.path.isabs(shared):
+        return None
+    target = tmp / f"target-{copy.name}"
+    if not target.exists():
+        if Path(shared).is_dir():
+            shutil.copytree(shared, target, symlinks=True, ignore=shutil.ignore_patterns("incremental"))
+        else:
+            target.mkdir()
+    return target
+
+
+def run(cmd: list[str], cwd: Path, timeout: float, target: Path | None = None) -> tuple[int, str]:
     env = testlib.scratch_env(PYTHONDONTWRITEBYTECODE="1")
+    if target is not None:
+        env["CARGO_TARGET_DIR"] = str(target)
     try:
         result = subprocess.run(cmd, cwd=cwd, env=env, text=True, timeout=timeout,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -187,7 +214,8 @@ def main() -> int:
                 error = apply(mutation, copy)
                 if error:
                     return {"mutation": mutation, "status": "stale", "detail": error}
-                code, output = run(command_for(mutation["caught_by"]), copy, args.timeout)
+                code, output = run(command_for(mutation["caught_by"]), copy, args.timeout,
+                                   worker_target(Path(tmp), copy))
                 if code == 0:
                     status = "survived"
                 elif mutation["expect"] not in output:

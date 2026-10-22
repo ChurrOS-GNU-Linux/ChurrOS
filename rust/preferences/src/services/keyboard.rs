@@ -194,6 +194,81 @@ fn parse_bind_line(line: &str) -> Option<Bind> {
     })
 }
 
+/// Reescribe en su sitio la línea del atajo `key` con la tecla `new_key` y
+/// la acción nueva (set_keybind, y rename_keybind cuando es la misma tecla).
+fn replace_bind(key: &str, new_key: &str, action_type: &str, command: &str, args: &str) -> bool {
+    let path = config_path();
+    if !path.exists() {
+        return false;
+    }
+    // copia de seguridad previa (shutil.copyfile)
+    let _ = fs::copy(&path, backup_path());
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let new_action = make_action_line(action_type, command, args);
+    // Sin indent aquí: se conserva el indent original de la línea
+    // reemplazada (el Python duplicaba la indentación).
+    let new_line = format!("{new_key} {{ {new_action}; }}");
+
+    let mut out = String::new();
+    let mut in_binds = false;
+    let mut replaced = false;
+
+    for line in content.lines() {
+        let stripped = line.trim();
+        if stripped.starts_with("binds") {
+            in_binds = true;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if in_binds && stripped == "}" {
+            out.push_str(line);
+            out.push('\n');
+            in_binds = false;
+            continue;
+        }
+        if in_binds && !replaced && line_matches_key(stripped, key) {
+            replaced = true;
+            // Guardar sin cambios deja la línea como está: el formulario no
+            // tiene allow-when-locked, allow-inhibiting ni los argumentos de
+            // spawn a partir del segundo, y reescribirla los perdería.
+            let unchanged = new_key == key
+                && parse_bind_line(stripped)
+                    .is_some_and(|bind| bind.kind == action_type && bind.command == command && bind.args == args);
+            if unchanged {
+                out.push_str(line);
+                out.push('\n');
+                continue;
+            }
+            let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+            let titled = match hotkey_overlay_property(stripped) {
+                Some(prop) => format!("{new_key} {prop} {{ {new_action}; }}"),
+                None => new_line.clone(),
+            };
+            out.push_str(&indent);
+            out.push_str(&titled);
+            out.push('\n');
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if !replaced {
+        return false;
+    }
+    // Sin salto de línea final, como estaba.
+    if !content.ends_with('\n') {
+        out.pop();
+    }
+    fs::write(&path, out).is_ok()
+}
+
 pub struct KeyboardService;
 
 impl KeyboardService {
@@ -234,61 +309,20 @@ impl KeyboardService {
     /// (config.kdl inválido); aquí se escribe la línea completa "key { action; }",
     /// que es lo que el propio Python construye en `new_line` (y usa add_keybind).
     pub fn set_keybind(key: &str, action_type: &str, command: &str, args: &str) -> bool {
-        let path = config_path();
-        if !path.exists() {
-            return false;
+        replace_bind(key, key, action_type, command, args)
+    }
+
+    /// Cambia la tecla del atajo `old` por `new`, con la acción del
+    /// formulario (la página de atajos al guardar con otra tecla).
+    pub fn rename_keybind(old: &str, new: &str, action_type: &str, command: &str, args: &str) -> bool {
+        if same_key(old, new) {
+            // Para niri es la misma tecla (Mod+w -> Mod+W): no choca con
+            // ningún otro atajo, y add_keybind se negaría por el propio `old`.
+            return replace_bind(old, new, action_type, command, args);
         }
-        // copia de seguridad previa (shutil.copyfile)
-        let _ = fs::copy(&path, backup_path());
-
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-
-        let new_action = make_action_line(action_type, command, args);
-        // Sin indent aquí: se conserva el indent original de la línea
-        // reemplazada (el Python duplicaba la indentación).
-        let new_line = format!("{key} {{ {new_action}; }}");
-
-        let mut out = String::new();
-        let mut in_binds = false;
-        let mut replaced = false;
-
-        for line in content.lines() {
-            let stripped = line.trim();
-            if stripped.starts_with("binds") {
-                in_binds = true;
-                out.push_str(line);
-                out.push('\n');
-                continue;
-            }
-            if in_binds && stripped == "}" {
-                out.push_str(line);
-                out.push('\n');
-                in_binds = false;
-                continue;
-            }
-            if in_binds && !replaced && line_matches_key(stripped, key) {
-                let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                let titled = match hotkey_overlay_property(stripped) {
-                    Some(prop) => format!("{key} {prop} {{ {new_action}; }}"),
-                    None => new_line.clone(),
-                };
-                out.push_str(&indent);
-                out.push_str(&titled);
-                out.push('\n');
-                replaced = true;
-                continue;
-            }
-            out.push_str(line);
-            out.push('\n');
-        }
-
-        if !replaced {
-            return false;
-        }
-        fs::write(&path, out).is_ok()
+        // Primero el nuevo: si la tecla ya tiene atajo, add_keybind no
+        // escribe nada y el atajo de antes sigue ahí.
+        Self::add_keybind(new, action_type, command, args) && Self::remove_keybind(old)
     }
 
     /// Inserta un atajo nuevo justo antes del cierre del bloque `binds`.
@@ -412,7 +446,7 @@ impl KeyboardService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::test_support::TempHome;
+    use crate::services::test_support::{skel_niri_config, TempHome};
 
     #[test]
     fn split_quote_keeps_first_char() {
@@ -549,6 +583,51 @@ mod tests {
             assert_eq!(home.read(), original, "add_keybind({key}) cambió el config");
         }
         assert!(KeyboardService::add_keybind("Mod+Shift+W", "spawn", "foot", ""));
+    }
+
+    #[test]
+    fn saving_a_keybind_unchanged_keeps_the_skel_byte_for_byte() {
+        // Guardar un atajo sin tocar nada reescribía la línea desde el
+        // formulario: las teclas multimedia perdían allow-when-locked, Mod+Escape
+        // allow-inhibiting=false, y el brillo se quedaba en
+        // `spawn "brightnessctl" "--class=backlight"` (sin "set" "+10%").
+        // niri lo da por bueno.
+        let skel = skel_niri_config();
+        let home = TempHome::new("kbd-noop", &skel);
+        let binds = KeyboardService::get_keybinds();
+        assert!(binds.len() > 20, "get_keybinds no lee los atajos del skel");
+        for bind in binds {
+            assert!(KeyboardService::set_keybind(&bind.key, &bind.kind, &bind.command, &bind.args));
+            let after = home.read();
+            let changed: Vec<&str> = after.lines().filter(|line| !skel.lines().any(|l| l == *line)).collect();
+            assert_eq!(after, skel, "guardar sin cambios el atajo {} cambia config.kdl: {changed:?}", bind.key);
+        }
+    }
+
+    #[test]
+    fn rename_keybind_to_the_same_key_in_another_case() {
+        // Para niri, Mod+w y Mod+W son la misma tecla: add_keybind se niega
+        // por el propio atajo que se renombra, y la página no guardaba nada.
+        let home = TempHome::new(
+            "kbd-rename",
+            "binds {\n    Mod+w hotkey-overlay-title=\"Bienvenida\" { spawn \"foot\"; }\n    Mod+Q { close-window; }\n}\n",
+        );
+        assert!(
+            KeyboardService::rename_keybind("Mod+w", "Mod+W", "spawn", "churros-welcome", ""),
+            "rename_keybind(Mod+w -> Mod+W) se niega: {}",
+            home.read()
+        );
+        assert_eq!(
+            home.read(),
+            "binds {\n    Mod+W hotkey-overlay-title=\"Bienvenida\" { spawn \"churros-welcome\"; }\n    Mod+Q { close-window; }\n}\n"
+        );
+        // A otra tecla que ya tiene atajo: no toca nada.
+        let before = home.read();
+        assert!(!KeyboardService::rename_keybind("Mod+W", "Mod+q", "spawn", "foot", ""));
+        assert_eq!(home.read(), before, "rename_keybind a una tecla ocupada cambió el config");
+        // A una tecla libre: el nuevo al final de binds y el viejo fuera.
+        assert!(KeyboardService::rename_keybind("Mod+W", "Mod+Shift+W", "spawn", "foot", ""));
+        assert_eq!(home.read(), "binds {\n    Mod+Q { close-window; }\n    Mod+Shift+W { spawn \"foot\"; }\n}\n");
     }
 
     #[test]

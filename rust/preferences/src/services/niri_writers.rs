@@ -5,19 +5,23 @@
 //
 // Aquí se comprueba que cada caso escribe (o rechaza) lo que debe y que no
 // se lleva por delante nodos de primer nivel que no le tocan (add_keybind
-// cortaba los spawn-at-startup que van detrás de binds: niri lo da por
-// bueno). Con CHURROS_NIRI_WRITERS_OUT=<dir> deja además cada resultado en
-// <dir> y la lista en <dir>/cases.json; tests/container/test_niri_config.py
-// pasa `niri validate` por cada uno. niri rechaza el config entero por un
-// escape inválido, un entero donde espera un decimal o un atajo repetido,
-// cosas que este test no ve.
+// cortaba los spawn-at-startup que van detrás de binds, y el tamaño del
+// cursor el environment de delante: niri lo da por bueno), y que guardar
+// sin tocar nada deja config.kdl byte a byte igual
+// (set_keybind perdía allow-when-locked y los argumentos de spawn a partir
+// del segundo). Con CHURROS_NIRI_WRITERS_OUT=<dir> deja además cada
+// resultado en <dir> y la lista en <dir>/cases.json;
+// tests/container/test_niri_config.py pasa `niri validate` por cada uno.
+// niri rechaza el config entero por un escape inválido, un entero donde
+// espera un decimal o un atajo repetido, cosas que este test no ve.
 // ==========================================
 
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 
-use super::keyboard::KeyboardService;
+use super::cursor::set_niri_cursor_size;
+use super::keyboard::{is_valid_key, KeyboardService};
 use super::niri_config::NiriConfig;
 use super::test_support::{rule_form, skel_niri_config, TempHome};
 use super::window_rules_service::WindowRulesService;
@@ -30,13 +34,26 @@ const NIRI_PAGE: &str = include_str!("../pages/niri.rs");
 /// Tecla libre en el skel para los atajos nuevos.
 const FREE_KEY: &str = "Mod+Ctrl+Alt+Z";
 
+/// Funciones de los servicios que escriben config.kdl (los de services/
+/// que lo nombran y escriben ficheros) que llaman las páginas pero que no
+/// lo escriben. Las get_*, list_* y reload ya cuentan como lectoras.
+/// tests/container/test_niri_config.py exige que cada llamada de pages/ a
+/// esos servicios tenga un caso aquí o esté en esta lista.
+const NOT_NIRI_WRITERS: [&str; 4] = [
+    "CursorService::available",
+    "CursorService::current",
+    // Tema del cursor: settings.ini de GTK, gsettings y xfconf, no niri.
+    "CursorService::set",
+    "CursorService::size",
+];
+
 /// Qué tiene que pasar con config.kdl.
 #[derive(Clone, Copy, PartialEq)]
 enum Expect {
     /// El escritor lo cambia.
     Change,
-    /// Puede quedar igual (guardar sin tocar nada).
-    Any,
+    /// Guardar sin tocar nada: config.kdl queda byte a byte igual.
+    Unchanged,
     /// El escritor se niega (false o Err) y no toca nada.
     Refuse,
 }
@@ -284,7 +301,7 @@ fn keyboard_cases() -> Vec<Case> {
     const SET: &[&str] = &["KeyboardService::set_keybind"];
     const ADD: &[&str] = &["KeyboardService::add_keybind"];
     const REMOVE: &[&str] = &["KeyboardService::remove_keybind"];
-    const RENAME: &[&str] = &["KeyboardService::add_keybind", "KeyboardService::remove_keybind"];
+    const RENAME: &[&str] = &["KeyboardService::rename_keybind"];
 
     let binds = {
         let _home = TempHome::new("niri-writers-binds", &skel_niri_config());
@@ -301,7 +318,7 @@ fn keyboard_cases() -> Vec<Case> {
             case(SET, format!("KeyboardService::set_keybind({key:?}, {kind:?}, {command:?}, {args:?})"), move || {
                 KeyboardService::set_keybind(&k, &t, &c, &a)
             })
-            .expect(Expect::Any),
+            .expect(Expect::Unchanged),
         );
         // "spawn notify-send ChurrOS" en el campo de comando.
         let k = key.clone();
@@ -312,11 +329,19 @@ fn keyboard_cases() -> Vec<Case> {
         cases.push(case(REMOVE, format!("KeyboardService::remove_keybind({key:?})"), move || {
             KeyboardService::remove_keybind(&k)
         }));
-        // Renombrar: lo que hace la página si cambia la tecla.
-        let k = key.clone();
-        cases.push(case(RENAME, format!("renombrar {key:?} a {FREE_KEY:?}"), move || {
-            KeyboardService::add_keybind(FREE_KEY, &kind, &command, &args) && KeyboardService::remove_keybind(&k)
-        }));
+        // Renombrar: lo que hace la página si cambia la tecla; a una libre y
+        // a la misma con la tecla en minúsculas (Mod+Return -> Mod+return:
+        // para niri, la misma), si la página la acepta.
+        let lower = match key.rsplit_once('+') {
+            Some((mods, name)) => format!("{mods}+{}", name.to_lowercase()),
+            None => key.to_lowercase(),
+        };
+        for new in [FREE_KEY.to_string(), lower].into_iter().filter(|new| *new != key && is_valid_key(new)) {
+            let (k, t, c, a) = (key.clone(), kind.clone(), command.clone(), args.clone());
+            cases.push(case(RENAME, format!("KeyboardService::rename_keybind({key:?}, {new:?})"), move || {
+                KeyboardService::rename_keybind(&k, &new, &t, &c, &a)
+            }));
+        }
     }
 
     for action in BUILTIN_ACTIONS {
@@ -339,8 +364,8 @@ fn keyboard_cases() -> Vec<Case> {
         );
     }
     cases.push(
-        case(RENAME, "renombrar \"Mod+W\" a \"Mod+Q\" (ya tiene atajo)", || {
-            KeyboardService::add_keybind("Mod+Q", "spawn", "churros-welcome", "") && KeyboardService::remove_keybind("Mod+W")
+        case(RENAME, "KeyboardService::rename_keybind(\"Mod+W\", \"Mod+Q\") (ya tiene atajo)", || {
+            KeyboardService::rename_keybind("Mod+W", "Mod+Q", "spawn", "churros-welcome", "")
         })
         .expect(Expect::Refuse),
     );
@@ -382,7 +407,7 @@ fn window_rules_cases() -> Vec<Case> {
             "open_floating": null, "clip_to_geometry": null, "blur": null,
         });
         for (label, updates, expect) in [
-            ("sin cambios", form, Expect::Any),
+            ("sin cambios", form, Expect::Unchanged),
             ("todo activado", edited, Expect::Change),
             ("regex", regex, Expect::Change),
             ("vaciada", cleared, Expect::Change),
@@ -419,6 +444,40 @@ fn window_rules_cases() -> Vec<Case> {
     cases
 }
 
+/// pages/cursor.rs: CursorService::set_size con los extremos del deslizador
+/// (8-64). Solo la parte de niri: set_size además llama a gsettings y
+/// xfconf-query, que cambiarían la sesión de quien corre el test.
+fn cursor_cases() -> Vec<Case> {
+    const SIZE: &[&str] = &["CursorService::set_size"];
+    let mut cases = Vec::new();
+    for size in [8.0, 64.0] {
+        cases.push(case(SIZE, format!("CursorService::set_size({size})"), move || {
+            set_niri_cursor_size(size);
+            true
+        }));
+    }
+    cases.push(
+        case(SIZE, "CursorService::set_size(32) sin bloque cursor", || {
+            set_niri_cursor_size(32.0);
+            true
+        })
+        .after(|| edit_config(|text| without_block(text, "cursor"))),
+    );
+    cases
+}
+
+/// Las líneas que cambian de `before` a `after` (lo que no comparten al
+/// principio ni al final), para los mensajes.
+fn changed_lines(before: &str, after: &str) -> String {
+    let (old, new): (Vec<&str>, Vec<&str>) = (before.lines().collect(), after.lines().collect());
+    let head = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+    let tail = old[head..].iter().rev().zip(new[head..].iter().rev()).take_while(|(a, b)| a == b).count();
+    let removed = old[head..old.len() - tail].iter().map(|l| format!("\n    - {l}"));
+    let added = new[head..new.len() - tail].iter().map(|l| format!("\n    + {l}"));
+    let lines: String = removed.chain(added).collect();
+    if lines.is_empty() { "\n    (solo el salto de línea final)".to_string() } else { lines }
+}
+
 #[test]
 fn every_ui_writer_output() {
     let out = std::env::var_os("CHURROS_NIRI_WRITERS_OUT").map(PathBuf::from);
@@ -426,7 +485,8 @@ fn every_ui_writer_output() {
         fs::create_dir_all(dir).expect("crear CHURROS_NIRI_WRITERS_OUT");
     }
     let skel = skel_niri_config();
-    let cases: Vec<Case> = [niri_config_cases(), keyboard_cases(), window_rules_cases()].into_iter().flatten().collect();
+    let cases: Vec<Case> =
+        [niri_config_cases(), keyboard_cases(), window_rules_cases(), cursor_cases()].into_iter().flatten().collect();
 
     let mut manifest: Vec<Value> = Vec::new();
     let mut problems: Vec<String> = Vec::new();
@@ -437,10 +497,14 @@ fn every_ui_writer_output() {
         let ok = (case.write)();
         let after = home.read();
         let problem = match case.expect {
-            Expect::Change | Expect::Any if !ok => Some("el escritor devolvió un error"),
-            Expect::Change if after == before => Some("config.kdl no cambia: el caso no prueba nada"),
-            Expect::Refuse if ok => Some("tenía que negarse y dice que escribió"),
-            Expect::Refuse if after != before => Some("se negó, pero cambió config.kdl"),
+            Expect::Change | Expect::Unchanged if !ok => Some("el escritor devolvió un error".to_string()),
+            Expect::Change if after == before => Some("config.kdl no cambia: el caso no prueba nada".to_string()),
+            Expect::Unchanged if after != before => Some(format!(
+                "guardar sin cambios cambia config.kdl (pierde lo que el formulario no modela):{}",
+                changed_lines(&before, &after)
+            )),
+            Expect::Refuse if ok => Some("tenía que negarse y dice que escribió".to_string()),
+            Expect::Refuse if after != before => Some("se negó, pero cambió config.kdl".to_string()),
             _ => None,
         };
         if let Some(problem) = problem {
@@ -463,7 +527,7 @@ fn every_ui_writer_output() {
         }
     }
     if let Some(dir) = &out {
-        let text = serde_json::to_string_pretty(&json!({"cases": manifest})).unwrap();
+        let text = serde_json::to_string_pretty(&json!({"cases": manifest, "not_writers": NOT_NIRI_WRITERS})).unwrap();
         fs::write(dir.join("cases.json"), text).expect("escribir cases.json");
     }
     assert!(problems.is_empty(), "{} caso(s) mal:\n{}", problems.len(), problems.join("\n"));

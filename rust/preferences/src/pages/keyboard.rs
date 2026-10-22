@@ -328,10 +328,7 @@ fn edit_bind_dialog(parent: Option<gtk::Window>, bind: Bind, weak: Weak<Page>) {
             }
 
             let ok = if new_key != bind.key {
-                // Primero el nuevo: si la tecla ya tiene atajo, add_keybind
-                // no escribe nada y el atajo de antes sigue ahí.
-                KeyboardService::add_keybind(&new_key, &bind_type_new, &new_cmd, &new_args)
-                    && KeyboardService::remove_keybind(&bind.key)
+                KeyboardService::rename_keybind(&bind.key, &new_key, &bind_type_new, &new_cmd, &new_args)
             } else {
                 KeyboardService::set_keybind(&bind.key, &bind_type_new, &new_cmd, &new_args)
             };

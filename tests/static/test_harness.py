@@ -148,6 +148,37 @@ class MutationsTest(unittest.TestCase):
             self.assertIn("2 veces", error)
             self.assertIn("no existe", run_mutations.mutated_text({"file": "otra", "delete": True}, root)[1])
 
+    def test_each_worker_gets_its_own_cargo_target(self):
+        # Con un CARGO_TARGET_DIR común, cargo da por compilada la mutación de
+        # un worker con el binario que acaba de compilar otro: sobreviven
+        # mutaciones al azar en la ejecución paralela del contenedor.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            shared = tmp / "shared"
+            (shared / "debug/deps").mkdir(parents=True)
+            (shared / "debug/incremental/x").mkdir(parents=True)
+            built = shared / "debug/deps/churros_settings-1234"
+            built.write_text("binario")
+            os.utime(built, ns=(1_600_000_000_123_456_789, 1_600_000_000_123_456_789))
+            workers = [tmp / "worker0", tmp / "worker1"]
+            with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(shared)}):
+                targets = [run_mutations.worker_target(tmp, copy) for copy in workers]
+                self.assertEqual(run_mutations.worker_target(tmp, workers[0]), targets[0], "cambia de un uso a otro")
+            self.assertEqual(len({*targets, shared}), 3, f"los workers comparten CARGO_TARGET_DIR: {targets}")
+            for target in targets:
+                copied = target / "debug/deps/churros_settings-1234"
+                self.assertEqual(copied.read_text(), "binario", "el target del worker no parte del compartido")
+                self.assertEqual(copied.stat().st_mtime_ns, built.stat().st_mtime_ns,
+                                 "la copia cambia las fechas: cargo lo recompilaría todo")
+                self.assertFalse((target / "debug/incremental").exists())
+            code, output = run_mutations.run([sys.executable, "-c", "import os; print(os.environ['CARGO_TARGET_DIR'])"],
+                                             tmp, 30, targets[1])
+            self.assertEqual((code, output.strip()), (0, str(targets[1])), "run() no pasa el CARGO_TARGET_DIR del worker")
+            for value in ("", "rust/target/container"):
+                with mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": value}):
+                    self.assertIsNone(run_mutations.worker_target(tmp, workers[0]),
+                                      f"con CARGO_TARGET_DIR={value!r} cada copia ya usa el suyo")
+
 
 class TestlibTest(unittest.TestCase):
     def test_shell_commands(self):

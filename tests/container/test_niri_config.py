@@ -14,15 +14,18 @@ desechable) niri, noctalia, desktop-file-utils y python-yaml, y comprueba:
     parser de KDL da por buenas, y el niri de Arch cambia de sintaxis sin que
     cambie el repo.
   - `niri validate` sobre lo que escribe churros-settings en config.kdl
-    (rust/preferences: niri_config.rs, keyboard.rs, window_rules_service.rs).
-    El test de cargo services::niri_writers aplica cada llamada que hacen
-    las páginas (pages/), con los extremos de sus controles, a una copia del
-    config del skel y deja cada resultado en CHURROS_NIRI_WRITERS_OUT; aquí
-    se compila y ejecuta (cargo --offline --locked, el CARGO_TARGET_DIR del
-    contenedor: después de ./churros rust ya está compilado) y niri valida
-    cada fichero. Una regex de app-id escrita sin escapar, una opacidad
-    entera o un atajo repetido hacen que niri rechace el config entero. Cada
-    escritor que llama una página tiene que tener al menos un caso.
+    (rust/preferences: niri_config.rs, keyboard.rs, window_rules_service.rs,
+    cursor.rs). El test de cargo services::niri_writers aplica cada llamada
+    que hacen las páginas (pages/), con los extremos de sus controles, a una
+    copia del config del skel, comprueba que guardar sin cambios no cambia
+    nada, y deja cada resultado en CHURROS_NIRI_WRITERS_OUT; aquí se compila
+    y ejecuta (cargo --offline --locked, el CARGO_TARGET_DIR del contenedor:
+    después de ./churros rust ya está compilado) y niri valida cada fichero.
+    Una regex de app-id escrita sin escapar, una opacidad entera o un atajo
+    repetido hacen que niri rechace el config entero. Cada llamada de una
+    página a un servicio que escribe config.kdl (los de services/ que lo
+    nombran y escriben ficheros) tiene que tener un caso, o estar declarada
+    como no escritora en NOT_NIRI_WRITERS de niri_writers.rs.
   - `noctalia config validate` sobre cada config de Noctalia del airootfs y
     sobre el del Live: el del skel más los .toml que root/scripts/*.sh
     escriben en ~/.config/noctalia (live.toml de desktop.sh). Cuentan los
@@ -34,6 +37,7 @@ desechable) niri, noctalia, desktop-file-utils y python-yaml, y comprueba:
 """
 from __future__ import annotations
 
+import fcntl
 from functools import lru_cache
 import importlib
 import json
@@ -49,6 +53,7 @@ from tests import testlib
 
 SUDO = [] if os.geteuid() == 0 else ["sudo", "-n"]
 PACKAGES = ("niri", "noctalia", "desktop-file-utils", "python-yaml")
+PACMAN_LOCK = Path(tempfile.gettempdir()) / "churros-pacman.lock"
 NIRI_CONFIG = re.compile(r"(?<!\S)\S*/\.config/niri/config\.kdl(?!\S)")
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 WORK: Path | None = None
@@ -72,16 +77,27 @@ def tearDownModule():
 def install_error() -> str | None:
     """Instala PACKAGES; devuelve el error o None.
 
+    Si ya están (pacman -T no toca la base de datos), no llama a -S: pacman
+    toma db.lck aunque no haya nada que instalar y no espera a que se
+    libere, y las mutaciones ejecutan este módulo en paralelo ("unable to
+    lock database"). Si faltan, instala con un cerrojo entre procesos.
     Si la base de datos de la imagen es vieja y el mirror ya no tiene esa
     versión, -S falla: entonces -Syu (el contenedor es desechable).
     """
-    result = None
-    for operation in ("-S", "-Syu"):
-        result = testlib.run([*SUDO, "pacman", operation, "--needed", "--noconfirm", *PACKAGES], timeout=1800)
-        if result.returncode == 0:
-            importlib.invalidate_caches()  # python-yaml recién instalado
-            return None
-    return f"pacman no pudo instalar {' '.join(PACKAGES)}:\n{result.stdout}"
+    if testlib.run(["pacman", "-T", *PACKAGES]).returncode == 0:
+        return None
+    lock = os.open(PACMAN_LOCK, os.O_RDONLY | os.O_CREAT, 0o666)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        result = None
+        for operation in ("-S", "-Syu"):
+            result = testlib.run([*SUDO, "pacman", operation, "--needed", "--noconfirm", *PACKAGES], timeout=1800)
+            if result.returncode == 0:
+                importlib.invalidate_caches()  # python-yaml recién instalado
+                return None
+        return f"pacman no pudo instalar {' '.join(PACKAGES)}:\n{result.stdout}"
+    finally:
+        os.close(lock)
 
 
 def require_packages(testcase: unittest.TestCase) -> None:
@@ -171,13 +187,34 @@ def apply_installer_commands(commands: list[tuple[str, str]], target: Path) -> l
 
 SETTINGS_CRATE = "churros-settings"
 SETTINGS_PAGES = testlib.ROOT / "rust/preferences/src/pages"
+SETTINGS_SERVICES = testlib.ROOT / "rust/preferences/src/services"
 WRITERS_TEST = "services::niri_writers::"
-SETTINGS_SERVICES = ("NiriConfig", "KeyboardService", "WindowRulesService")
+FILE_WRITE = re.compile(r"\b(?:fs::write|File::create|OpenOptions)\b")
+
+
+def settings_writer_services() -> set[str]:
+    """Servicios de churros-settings que escriben el config.kdl de niri.
+
+    Los `impl Servicio` de cada services/*.rs que nombra config.kdl y escribe
+    ficheros, salvo los módulos #[cfg(test)] de mod.rs. (wallpaper.rs lo lee,
+    pero no escribe nada.) Así un servicio nuevo que lo escribe entra solo.
+    """
+    mod_rs = testlib.read_text(SETTINGS_SERVICES / "mod.rs")
+    test_only = set(re.findall(r"#\[cfg\(test\)\]\s*(?:pub(?:\([\w:]+\))?\s+)?mod\s+(\w+)\s*;", mod_rs))
+    services = set()
+    for path in sorted(SETTINGS_SERVICES.glob("*.rs")):
+        text = testlib.read_text(path)
+        if path.stem not in test_only and "config.kdl" in text and FILE_WRITE.search(text):
+            services.update(re.findall(r"^impl (\w+) \{", text, re.MULTILINE))
+    return services
 
 
 def settings_writers_in_pages() -> set[str]:
-    """`Servicio::función` que escriben config.kdl y que llama alguna página."""
-    call = re.compile(rf"\b({'|'.join(SETTINGS_SERVICES)})::(\w+)\s*\(")
+    """`Servicio::función` de un servicio que escribe config.kdl y que llama alguna página."""
+    services = sorted(settings_writer_services())
+    if not services:
+        return set()
+    call = re.compile(rf"\b({'|'.join(services)})::(\w+)\s*\(")
     found = set()
     for path in sorted(SETTINGS_PAGES.glob("*.rs")):
         for service, function in call.findall(testlib.read_text(path)):
@@ -274,11 +311,15 @@ class NiriConfigTest(unittest.TestCase):
         cases = json.loads(manifest.read_text())["cases"]
 
         pages = settings_writers_in_pages()
-        self.assertIn("WindowRulesService::update_rule", pages, f"no se encontraron las llamadas de {testlib.rel(SETTINGS_PAGES)}")
+        for call in ("WindowRulesService::update_rule", "CursorService::set_size"):
+            self.assertIn(call, pages, f"no se encontraron las llamadas de {testlib.rel(SETTINGS_PAGES)} a los "
+                                       f"servicios que escriben config.kdl ({sorted(settings_writer_services())})")
         covered = {writer for case in cases for writer in case["writers"]}
-        missing = sorted(pages - covered)
+        not_writers = set(json.loads(manifest.read_text()).get("not_writers", []))
+        missing = sorted(pages - covered - not_writers)
         self.assertFalse(missing, f"{testlib.rel(SETTINGS_PAGES)} llama a {', '.join(missing)} y "
-                                  "rust/preferences/src/services/niri_writers.rs no tiene ningún caso que lo pruebe")
+                                  "rust/preferences/src/services/niri_writers.rs no tiene ningún caso que lo pruebe "
+                                  "(si no escribe config.kdl, va en NOT_NIRI_WRITERS)")
 
         findings = {}
         for case in cases:
