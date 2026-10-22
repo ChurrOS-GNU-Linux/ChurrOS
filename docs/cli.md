@@ -133,10 +133,27 @@ Revisa:
 - Que `Exec=` / `TryExec=` de los `.desktop` resuelvan, y que las rutas absolutas existan en airootfs.
 - Orden crítico de Calamares y que cada instancia `shellprocess` tenga su `.conf`.
 - Que el branding de Calamares cargue (`componentName`, slideshow API 2, imágenes existentes).
-- Que los paquetes de `scripts/build-aur.sh` figuren en `netinstall.yaml`.
 - Que los archivos de traducción `po/*.po` compilen.
+- Las pruebas de `tests/static` (ver [Pruebas](testing.md)): scripts por shebang, `file_permissions`, comandos de cada edición, Calamares, unidades systemd, sintaxis de configuraciones, contrato de las apps Rust y un build en seco.
 
-Termina con código 0 si todo pasa y 1 si algo falla. Los avisos de higiene del repositorio se informan pero no bloquean. No necesita construir la ISO ni permisos de root, y tarda unos segundos.
+Termina con código 0 si todo pasa y 1 si algo falla. Los avisos de higiene del repositorio se informan pero no bloquean. Con `CHURROS_STRICT=1` (o `CI=true`) una herramienta que falta o una prueba saltada cuentan como fallo. No necesita construir la ISO ni permisos de root, y tarda alrededor de un minuto.
+
+---
+
+## test
+
+Ejecuta las capas de pruebas. Sin opciones es lo mismo que `./churros check`.
+
+```bash
+./churros test                  # capa estática (check.sh + tests/static)
+./churros test --container      # tests/container en el contenedor Arch
+./churros test --rust           # ./churros rust
+./churros test --iso [ISO]      # auditoría del contenido de la ISO (por defecto, la última de out/)
+./churros test --boot [ISO]     # arranque en QEMU y comprobaciones dentro de la sesión Live
+./churros test --mutations      # autoprueba de la batería
+```
+
+Las capas se pueden combinar (`./churros test --iso --boot`). Detalle de cada una en [Pruebas](testing.md).
 
 Es el mismo comando que ejecuta el CI en cada Pull Request (ver `.github/workflows/ci.yml`).
 

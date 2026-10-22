@@ -19,6 +19,7 @@ Esta documentación está dirigida tanto a desarrolladores como a futuros colabo
 - [Branding](branding.md)
 - [CLI](cli.md)
 - [Development](development.md)
+- [Pruebas](testing.md)
 - [Apps](apps.md)
 - [Popups](popups.md)
 - [Preferences](preferences.md)
