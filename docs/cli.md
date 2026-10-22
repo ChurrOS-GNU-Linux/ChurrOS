@@ -1,29 +1,14 @@
 # ChurrOS CLI
 
-La CLI de ChurrOS es la herramienta oficial utilizada para desarrollar, construir y probar la distribución.
-
-Su objetivo es simplificar el flujo de trabajo del desarrollador y evitar ejecutar múltiples comandos manualmente.
-
-Toda tarea repetitiva debe integrarse en esta herramienta.
+`./churros` es la herramienta de desarrollo de ChurrOS: construye la ISO, la arranca en QEMU, ejecuta las comprobaciones y abre las apps en el host.
 
 ---
 
-# Filosofía
-
-La CLI busca que desarrollar ChurrOS sea tan sencillo como ejecutar un único comando.
-
-En lugar de recordar comandos largos de ArchISO o QEMU, todo se centraliza en:
-
-```bash
-./churros
-```
-
----
-
-# Uso
+## Uso
 
 ```bash
 ./churros <comando> [opciones]
+./churros --help        # también -h, help o sin argumentos
 ```
 
 Ejemplo:
@@ -33,90 +18,117 @@ Ejemplo:
 ./churros run --fresh
 ```
 
-Los argumentos posteriores al subcomando se reenvían al script `scripts/cli/<comando>.sh`. Un archivo `.sh` en ese directorio no es un comando público hasta que se añade a la lista explícita del dispatcher `churros`.
+El dispatcher `churros` se sitúa en la raíz del repositorio y reenvía los argumentos posteriores al subcomando a `scripts/cli/<comando>.sh`. Solo son comandos los de su lista explícita (`build`, `run`, `clean`, `check`, `rust`, `doctor`, `info`, `version`, `logo` y `apps`): un `.sh` más en ese directorio no queda expuesto por existir. Un comando desconocido muestra la ayuda y termina con código 1.
 
 ---
 
-# Comandos disponibles
+## Comandos disponibles
 
-## build
+### build
 
-Construye una nueva imagen ISO de ChurrOS.
+Construye una imagen ISO de ChurrOS.
 
 ```bash
 ./churros build
 ./churros build --edition xfce
 ./churros build --edition server
-./churros build --edition niri
+./churros build --container
+./churros build --container --arch arm64
+./churros build --container --arch arm64 --edition pi
+./churros build --arch i686
 ```
 
 Opciones:
-- `--arch <x86_64|arm64|i686>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64` y la de 32 bits con `--arch i686` (repos de Arch Linux 32). En aarch64 solo existe la edición niri; esa ISO requiere el entorno de build ARM, dentro de un contenedor en hosts que no sean aarch64.
-- `--container`: construye dentro del contenedor Arch (podman, o docker si no hay podman; con `sudo` y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. x86_64 usa `Containerfile`. `--arch arm64` usa `Containerfile.aarch64` (`--platform linux/arm64`): en x86_64 hace falta qemu-user-static con binfmt y la bandera `C`; en aarch64 el contenedor es nativo. Detalle en `docs/getting-started.md` y `docs/vm.md`.
-- `--edition <niri|xfce|server>` (o `-e`): Selecciona la edición de la ISO (por defecto: `niri`). La edición `server` instala un sistema sin escritorio, accesible por SSH.
-  - `niri`: Compositor Wayland con tiling dinámico horizontal (Noctalia Shell, foot, Fuzzel, Mako).
-  - `xfce`: Entorno de escritorio clásico X11 (XFCE 4, panel ChurrOS, xfwm4, xfce4-terminal).
 
-Este comando realiza automáticamente:
+- `--edition <niri|xfce|server|pi>` (o `-e`, o `--edition=<valor>`; no distingue mayúsculas): edición de la ISO. Por defecto, `niri`.
+  - `niri`: Wayland con tiling scrollable. Noctalia hace de barra, lanzador, notificaciones y OSD; terminal foot y wlogout como menú de sesión. Waybar, Fuzzel y Mako siguen instalados como alternativa.
+  - `xfce`: escritorio clásico X11 (XFCE 4, panel ChurrOS, xfwm4, xfce4-terminal).
+  - `server`: el sistema instalado no tiene escritorio y se administra por SSH. El Live arranca en XFCE para poder ejecutar el instalador gráfico; `configure-server` retira el escritorio al terminar la instalación.
+  - `pi`: Raspberry Pi Lite, solo aarch64. Sesión labwc con Waybar. Experimental: no se publica ni se construye en la CI.
+- `--arch <x86_64|arm64|i686>` (o `-a`, o `--arch=<valor>`; también acepta `aarch64` e `i386`…`i686`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`).
+  - `arm64`: existen las ediciones `niri` y `pi`; cualquier otra termina con error. En un host que no es aarch64 hay que añadir `--container`; sin él, el build termina con error y muestra el comando correcto.
+  - `i686`: repositorios de Arch Linux 32. Experimental: niri y noctalia no existen allí, así que la ISO no tiene sesión gráfica, y se omiten Calamares (falta `polkit-qt6`) y Bazaar. Los paquetes locales yay, wlogout y python-pywal tienen que estar compilados para i686. Construir para una arquitectura distinta de la del host solo muestra un aviso.
+- `--container`: construye dentro del contenedor Arch (podman, o docker si no hay podman; con root real y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. x86_64 usa `Containerfile`. `--arch arm64` usa `Containerfile.aarch64` (`--platform linux/arm64`): en x86_64 hace falta qemu-user-static con binfmt y la bandera `C`; en aarch64 el contenedor es nativo. Detalle en [Sistema de compilación](build-system.md#contenedor).
 
-- Comprobación pre-flight de dependencias críticas del host (grub, dosfstools, mtools, mkarchiso) antes de compilar para evitar fallos tardíos.
-- Configuración de paquetes y dotfiles según la edición seleccionada.
-- Copia de branding y tema GRUB al airootfs.
-- Construcción de paquetes AUR locales si faltan (Calamares, python-pywal, yay, wlogout).
-- Compilación de las apps Rust (`scripts/build-rust.sh`) y despliegue en `usr/bin/`.
-- Limpieza del directorio temporal.
-- Ejecución de ArchISO.
-- Construcción de la imagen ISO en `out/`.
+Pasos:
+
+1. Comprueba que estén `mkarchiso`, `mksquashfs`, `xorriso`, `grub-mkstandalone`, `mkfs.fat`, `mcopy` y `mmd`. Si falta alguno, termina con error: en Arch muestra el `pacman -S` que lo instala y, fuera del contenedor, propone el mismo build con `--container`.
+2. `[0/5]` Aplica la edición: si no es `niri`, sustituye `archiso/packages.<arch>` por `archiso/packages.<edición>.<arch>`. Escribe `/etc/churros-edition` en el airootfs y genera `etc/greetd/config.toml` con la sesión Live de la edición.
+3. `[1/5]` Branding: genera el tema de GRUB, copia `customize_airootfs.sh` y `branding/files` al airootfs y escribe la versión (`VERSION`) y la edición en `os-release`.
+4. `[2/5]` Paquetes locales: `scripts/build-calamares.sh` (recompila Calamares si falta o si cambian libpython o `installer/patches/`), `scripts/build-aur.sh` si falta python-pywal, yay o wlogout, y `scripts/build-bazaar.sh` (reutiliza el paquete si ya enlaza libdex ≥ 1.2). En i686 se omiten Calamares y Bazaar. Si hay Calamares, `installer/apply-calamares.sh` despliega su configuración y los paquetes se copian a `airootfs/root/packages/`.
+5. `[3/5]` Compila las apps Rust (`scripts/build-rust.sh`) y despliega los binarios en `archiso/airootfs/usr/bin/`.
+6. `[4/5]` Borra `work/` y `out/`.
+7. `[5/5]` Expone el repositorio local en `/root/packages` del host y ejecuta `mkarchiso`. En aarch64 antes adapta el preset de mkinitcpio y la lista de módulos GRUB de `mkarchiso`. La ISO queda en `out/`.
+8. `[6/6]` Borra `work/`. Al salir, haya ido bien o mal, restaura la lista de paquetes y la config de greetd, borra los ficheros generados en el airootfs y retira el enlace `/root/packages`.
+
+El repositorio local está en `archiso/packages/` (x86_64 e i686) y en `archiso/packages/aarch64/` (ISO ARM).
 
 ---
 
-## run
+### run
 
-Construye la ISO (si es necesario) y la inicia en una máquina virtual utilizando QEMU.
+Arranca la ISO en una máquina virtual con QEMU.
 
 ```bash
 ./churros run
 ./churros run --nokvm
 ./churros run --fresh
 ./churros run --clean
+./churros run --arch arm64
 ```
 
-Este comando permite probar rápidamente los cambios realizados sin necesidad de crear una máquina virtual manualmente.
+Busca en `out/` la ISO más reciente cuyo nombre lleva la arquitectura pedida. Si no hay ninguna, pregunta `Do you want to build ChurrOS? [y/N]`; con la respuesta por defecto no construye y termina. Si aceptas, ejecuta `./churros build --arch <arch>` (con `--container` para la ISO aarch64 en un host que no es aarch64).
 
-Flags opcionales (detalle en `docs/vm.md`):
+Flags opcionales (detalle en [VM](vm.md)):
 
-- `--arch <x86_64|arm64|i686>` — arquitectura de la ISO y de QEMU. Por defecto, la del equipo, igual que `build`. ARM usa `qemu-system-aarch64`, máquina `virt`, CD virtio-scsi (virt no tiene IDE) y consola `ttyAMA0`; si falta su ISO y el host no es aarch64, el build automático lleva `--container`. i686 usa `qemu-system-i386` y arranca por BIOS SeaBIOS o UEFI IA32 si hay OVMF de 32 bits.
+- `--arch <x86_64|arm64|i686>` (o `--arch=<valor>`) — arquitectura de la ISO y de QEMU. Por defecto, la del equipo, igual que `build`. ARM usa `qemu-system-aarch64`, máquina `virt`, CD virtio-scsi (virt no tiene IDE) y consola `ttyAMA0`. i686 usa `qemu-system-i386` y arranca por BIOS (SeaBIOS) o por UEFI IA32 si hay OVMF de 32 bits.
 - `--nokvm` — emulación por software, sin KVM.
-- `--fresh` — resetea `vm/OVMF_VARS.fd` para arrancar desde el CD-ROM.
+- `--fresh` — borra las variables EFI de la VM (`vm/OVMF_VARS.fd` en x86_64) para arrancar desde el CD-ROM.
 - `--clean` — borra el disco de la VM y las variables EFI antes de arrancar.
 
-Comportamiento de aceleración:
-- Si `/dev/kvm` está disponible, usa `-machine q35,accel=kvm` y 4 cores.
-- Si KVM no está disponible o la virtualización está desactivada en la BIOS, emite una advertencia explicativa con instrucciones de solución y utiliza fallback por software con `-cpu max` y 2 cores.
+Disco y firmware: `vm/ChurrOS.qcow2` (x86_64), `vm/ChurrOS-arm64.qcow2` y `vm/ChurrOS-i686.qcow2`, de 64 GiB, creados en el primer arranque. Las variables EFI de cada arquitectura se copian del firmware a `vm/OVMF_VARS.fd`, `vm/OVMF_VARS_arm64.fd` y `vm/OVMF_VARS_ia32.fd`. La salida serie va a `vm_serial.log`.
+
+Aceleración:
+
+- x86_64 e i686 con `/dev/kvm` legible y escribible: `-machine q35,accel=kvm`, `-cpu host` y 4 cores.
+- x86_64 sin KVM o con `--nokvm`: emulación TCG con `-machine q35`, el modelo de CPU por defecto de QEMU y 2 cores. i686 en ese caso usa `-cpu qemu32`.
+- aarch64: KVM solo si el host también es aarch64; si no, TCG con `-cpu cortex-a72`. En los dos casos, 4 cores.
+
+Sin KVM, `run` indica que usa emulación por software pero no busca la causa. El diagnóstico (permisos de `/dev/kvm`, virtualización desactivada en la BIOS) lo hace `./churros doctor`.
 
 ---
 
-## clean
+### clean
 
-Elimina todos los archivos temporales generados durante la compilación.
+Elimina los artefactos de la compilación.
 
 ```bash
 ./churros clean
 ```
 
-Directorios y archivos eliminados:
+Borra, con `sudo` cuando hace falta:
 
 ```text
-work/
-out/
-archiso/airootfs/ (artefactos temporales de build)
+work/                         (desmonta antes lo que haya quedado montado)
+out/                          (se vuelve a crear vacío)
+archiso/airootfs/etc/churros-edition
+archiso/airootfs/root/customize_airootfs.sh
+archiso/airootfs/root/branding/
+archiso/airootfs/root/packages/
+archiso/airootfs/etc/calamares/
+archiso/airootfs/etc/polkit-1/rules.d/49-calamares.rules
+archiso/airootfs/usr/bin/churros-welcome
+archiso/airootfs/usr/bin/churros-settings
+archiso/airootfs/usr/bin/churros-popup
+archiso/airootfs/usr/bin/churros-control-center
+archiso/airootfs/usr/share/churros/grub-theme/
 ```
 
-No elimina ningún archivo del código fuente.
+No borra `archiso/airootfs/usr/bin/churros-tour`, que el build sí retira al terminar. No toca el código fuente, `vm/` ni los paquetes de `archiso/packages/`.
 
 ---
 
-## check
+### check
 
 Ejecuta las comprobaciones estáticas del repositorio.
 
@@ -124,63 +136,67 @@ Ejecuta las comprobaciones estáticas del repositorio.
 ./churros check
 ```
 
-Revisa:
+Revisa, por temas:
 
-- Sintaxis de los scripts Bash y ShellCheck a nivel de error.
-- Sintaxis de todos los archivos Python.
-- Paquetes duplicados en las listas `archiso/packages.*` (x86_64, i686 y ediciones).
-- Que los comandos del autostart de Niri existan como binario, crate Rust desplegable o paquete de la ISO.
-- Que `Exec=` / `TryExec=` de los `.desktop` resuelvan, y que las rutas absolutas existan en airootfs.
-- Orden crítico de Calamares y que cada instancia `shellprocess` tenga su `.conf`.
-- Que el branding de Calamares cargue (`componentName`, slideshow API 2, imágenes existentes).
-- Que los paquetes de `scripts/build-aur.sh` figuren en `netinstall.yaml`.
-- Que los archivos de traducción `po/*.po` compilen.
+- Scripts: sintaxis de Bash, ShellCheck a nivel de error (los avisos de estilo solo se cuentan) y sintaxis de Python.
+- Paquetes y ediciones: duplicados en `archiso/packages*.x86_64`, `archiso/packages.i686` y `archiso/packages.aarch64` (no revisa `packages.pi.aarch64`), el perfil archiso de cada arquitectura, que cada edición x86_64 esté cableada en `build.sh`, `stamp-os-release.sh` y `edition-session.sh`, y que `usr/share/churros/defaults/` coincida con el skel.
+- Escritorio: los comandos que lanza Niri, su integración con Noctalia (atajos, fondo), Xwayland en Niri, los `Exec=`/`TryExec=` de los `.desktop` y la sesión X11 de XFCE. Los comandos se resuelven contra `archiso/packages.aarch64` salvo que se pase otra arquitectura en la variable `TARGET_ARCH` (por ejemplo, `TARGET_ARCH=x86_64 ./churros check`).
+- Instalador: orden crítico de Calamares, configuración de cada `shellprocess`, branding (`componentName`, slideshow API 2, imágenes), la vista previa de `./churros apps calamares`, `finished.conf` y la libpython del paquete de Calamares.
+- Arranque y Live: módulos GRUB de aarch64, firmware pflash de QEMU y login del Live, `initial_session` de greetd y el tamaño del overlay del Live (`cow_spacesize`).
+- Sistema: snapshots Btrfs (rollback), extensión de los paquetes y binfmt de aarch64, versión de la distro (`VERSION`, `os-release` por edición).
+- Ejecución privilegiada: la regla polkit, `scripts/test-polkit-rules.js` (se omite con un aviso si no hay `node`), `scripts/test-privileged-helpers.py` y `scripts/test-network-services.py`.
+- `po/*.po`: que compilen con `msgfmt --check`. Es un catálogo heredado de la interfaz en Python; las apps Rust no usan gettext.
+- Documentación: que los enlaces relativos de los `.md` versionados existan y que cada documento de `docs/` esté en [el índice](README.md).
+- Higiene del repositorio: avisa si hay ficheros generados en git.
 
-Termina con código 0 si todo pasa y 1 si algo falla. Los avisos de higiene del repositorio se informan pero no bloquean. No necesita construir la ISO ni permisos de root, y tarda unos segundos.
+La lista completa está en `scripts/cli/check.sh`. Termina con código 0 si todo pasa y 1 si algo falla; los avisos (`!`) se informan pero no bloquean. No construye la ISO ni necesita root, y tarda unos segundos.
 
-Es el mismo comando que ejecuta el CI en cada Pull Request (ver `.github/workflows/ci.yml`).
+La CI lo ejecuta en cada push a `main` y en cada pull request (`.github/workflows/ci.yml`).
 
 ---
 
-## rust
+### rust
 
-Compila y prueba las apps Rust (`rust/`) con los mismos pasos que el CI: `cargo build --workspace --all-targets`, `cargo test --workspace` y `cargo clippy` (sus avisos no fallan).
+Compila y prueba las apps Rust (`rust/`) con los mismos pasos que la CI: `cargo build --all-targets`, `cargo test` y `cargo clippy --all-targets` sobre el workspace, con `--locked`. Los avisos de clippy no hacen fallar el comando; un error de compilación sí.
 
 ```bash
 ./churros rust                       # en el contenedor Arch (cualquier distro)
-./churros rust -p churros-services   # solo un crate
+./churros rust -p churros-services   # solo un crate (repetible; también --package)
 ./churros rust --host                # en este equipo (Arch al día)
 ```
 
-Por defecto corre en el contenedor porque gtk4-rs y libadwaita-rs piden versiones que Debian, Ubuntu o Fedora no tienen. El CI (`.github/workflows/rust.yml`) ejecuta exactamente este comando.
+Por defecto corre en el contenedor porque gtk4-rs y libadwaita-rs piden versiones que Debian, Ubuntu o Fedora no tienen. La CI (`.github/workflows/rust.yml`) ejecuta este comando en x86_64 y en arm64.
 
 ---
 
-## doctor
+### doctor
 
-Comprueba que las herramientas del entorno de desarrollo estén instaladas (`mkarchiso`, `qemu-system-x86_64`, `xorriso`, `grub`, `dosfstools`, `mtools`, etc.) y verifica la aceleración por hardware KVM.
+Comprueba las herramientas del entorno de desarrollo y la aceleración KVM.
 
 ```bash
 ./churros doctor
-./churros doctor --install    # o -i / -y: instala automáticamente dependencias faltantes
+./churros doctor --install    # también -i, --yes o -y: instala lo que falte sin la pregunta [S/n]
+./churros doctor --arch arm64 # además, exige qemu-user aarch64 listo para el build ARM
 ```
 
-Características:
-- Identifica el nombre del paquete exacto que provee cada comando faltante.
-- Detecta la distro: propone `sudo pacman -S --needed ...`, `sudo apt-get install ...` o `sudo dnf install ...` con los nombres de paquete de cada una, y pregunta si instalarlos (`[S/n]`).
-- Fuera de Arch no busca `mkarchiso` ni `makepkg`: recomienda `./churros build --container` y comprueba que haya podman o docker.
-- Avisa si `rustc` es anterior a 1.85 (edition 2024).
-- Diagnostica si el usuario carece de permisos sobre `/dev/kvm` o si la virtualización (`Intel VT-x` o `AMD SVM`) está deshabilitada en la BIOS/UEFI.
+Comprueba:
 
+- En cualquier distro: `git`, `qemu-system-x86_64`, `qemu-system-i386`, `qemu-system-aarch64`, `qemu-img`, `sudo`, `python3`, `node`, `shellcheck`, `msgfmt` (gettext), `zstd`, `rustc` y `cargo`. Cuenta como fallo un `rustc` anterior a 1.85 (edition 2024). En Arch también `pkg-config`.
+- En Arch, lo que necesita el build en el host: `mkarchiso`, `xorriso`, `mksquashfs`, `mcopy` y `mmd` (mtools), `mkfs.fat` (dosfstools), `grub-mkstandalone` y `mkinitcpio`. Podman o docker aparecen como opcionales. No comprueba `makepkg` ni `base-devel`.
+- Fuera de Arch: recomienda `./churros build --container` y comprueba que haya podman o docker.
+- En un host que no es aarch64: si qemu-user aarch64 está registrado en binfmt con la bandera `C`. Sin `--arch arm64` es solo un aviso; con `--arch arm64` cuenta como fallo y explica cómo registrarlo.
+- `/dev/kvm`: si existe y tienes permiso (si no, propone añadirte al grupo `kvm`); si no existe, busca en el log del kernel si la virtualización está desactivada en la BIOS/UEFI.
+
+En Arch, Debian/Ubuntu y Fedora, cada fallo indica el paquete que lo resuelve. Al final muestra el comando para instalarlos todos (`sudo pacman -S --needed`, `sudo apt-get install` o `sudo dnf install`) y, en una terminal interactiva, pregunta si ejecutarlo (`[S/n]`). Termina con código 1 si falta algo.
 
 ---
 
-## apps
+### apps
 
-Abre las apps propias de ChurrOS en el host, sin construir la ISO ni QEMU.
+Abre las apps propias de ChurrOS en el host, sin construir la ISO ni QEMU. No se puede ejecutar como root.
 
 ```bash
-./churros apps
+./churros apps                  # ayuda
 ./churros apps doctor
 ./churros apps welcome
 ./churros apps settings
@@ -198,9 +214,9 @@ No sustituye `./churros run`.
 
 ---
 
-## info
+### info
 
-Muestra información del proyecto y del entorno (versión, rama, arquitectura y directorios).
+Muestra información del proyecto y del entorno: versión, rama, arquitectura, kernel y directorios.
 
 ```bash
 ./churros info
@@ -208,9 +224,9 @@ Muestra información del proyecto y del entorno (versión, rama, arquitectura y 
 
 ---
 
-## version
+### version
 
-Muestra la versión actual de la CLI.
+Muestra el contenido del fichero `VERSION`, que es la versión de la distribución. La CLI no tiene una versión propia.
 
 ```bash
 ./churros version
@@ -218,9 +234,9 @@ Muestra la versión actual de la CLI.
 
 ---
 
-## logo
+### logo
 
-Muestra el logotipo oficial de ChurrOS en la terminal.
+Muestra el logotipo de ChurrOS en ASCII.
 
 ```bash
 ./churros logo
@@ -228,109 +244,8 @@ Muestra el logotipo oficial de ChurrOS en la terminal.
 
 ---
 
-# Flujo recomendado
+## Añadir un comando
 
-Durante el desarrollo se recomienda utilizar la siguiente secuencia:
+Un comando nuevo necesita un script `scripts/cli/<comando>.sh` y una entrada en la lista `PUBLIC_COMMANDS` del dispatcher `churros`. Si aparece en la ayuda, se añade también a `show_help` en el mismo fichero.
 
-Modificar archivos
-
-↓
-
-```bash
-./churros check
-```
-
-↓
-
-```bash
-./churros build
-```
-
-↓
-
-```bash
-./churros run
-```
-
-↓
-
-Verificar cambios
-
-↓
-
-Realizar commit
-
-↓
-
-Push
-
----
-
-# Diseño
-
-La CLI está diseñada para crecer junto con el proyecto.
-
-Cada nueva funcionalidad de desarrollo debe añadirse como un nuevo comando: un script `scripts/cli/<comando>.sh` y una entrada en la lista explícita de comandos públicos del dispatcher `churros`. Un `.sh` extra en ese directorio no queda expuesto solo por existir.
-
-Esto evita depender de múltiples scripts independientes.
-
----
-
-# Comandos planificados
-
-Las siguientes funciones están previstas para futuras versiones.
-
-## release
-
-```bash
-./churros release
-```
-
-Permitirá generar una versión oficial de ChurrOS.
-
-Automáticamente:
-
-- Construirá la ISO.
-- Generará checksums.
-- Creará la versión.
-- Preparará el Release.
-
----
-
-## package
-
-```bash
-./churros package
-```
-
-Permitirá construir paquetes propios de ChurrOS.
-
----
-
-## update
-
-```bash
-./churros update
-```
-
-Actualizará las dependencias del proyecto.
-
----
-
-## docs
-
-```bash
-./churros docs
-```
-
-Abrirá la documentación oficial.
-
----
-
-# Futuro
-
-La CLI evolucionará hasta convertirse en la herramienta central del desarrollo de ChurrOS.
-
-El objetivo es que prácticamente todas las tareas relacionadas con la distribución puedan ejecutarse desde un único comando.
-
-Con el tiempo se añadirán nuevas funciones para automatizar procesos de compilación, pruebas, publicación y mantenimiento del proyecto.
+Un script nuevo cuenta como programa nuevo: antes de escribirlo, revisa la [regla para programas nuevos](principios.md#regla-para-programas-nuevos).
