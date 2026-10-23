@@ -15,9 +15,9 @@ churros_host_family() {
         ids=$(. /etc/os-release && printf '%s %s' "${ID:-}" "${ID_LIKE:-}")
     fi
     case " $ids " in
-        *" arch "|*" archarm "*) echo arch ;;
-        *" debian "|*" ubuntu "*) echo debian ;;
-        *" fedora "|*" rhel "*) echo fedora ;;
+        *" arch "*|*" archarm "*) echo arch ;;
+        *" debian "*|*" ubuntu "*) echo debian ;;
+        *" fedora "*|*" rhel "*) echo fedora ;;
         *) echo other ;;
     esac
 }
