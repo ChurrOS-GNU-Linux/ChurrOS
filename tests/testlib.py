@@ -305,17 +305,18 @@ def local_provides() -> dict[str, frozenset[str]]:
 def kernel_aliases() -> dict[str, str]:
     """{nombre que arrancan los cargadores: kernel que lo provee} de customize_airootfs.sh.
 
-    `ln -sfn /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux` hace que
-    GRUB, syslinux y unpackfs (que nombran vmlinuz-linux) arranquen otro
-    kernel; mkarchiso copia el destino del enlace a la ISO. Solo vale si la
-    lista instala ese kernel (el enlace está dentro de un `if -f`).
+    `ln -sfn vmlinuz-linux-churrosvyper /boot/vmlinuz-linux` hace que GRUB,
+    syslinux y unpackfs (que nombran vmlinuz-linux) arranquen otro kernel;
+    mkarchiso copia el destino del enlace a la ISO. Solo vale si la lista
+    instala ese kernel (el enlace está dentro de un `if -f`). El destino
+    puede ser relativo o absoluto: que sea relativo lo exige BootLinksTest.
     """
     text = read_text(ROOT / "branding/customize_airootfs.sh")
     aliases = {}
-    for target, link in re.findall(r"\bln\s+-\w+\s+/boot/vmlinuz-([\w.+-]+)\s+/boot/vmlinuz-([\w.+-]+)", text):
+    for target, link in re.findall(r"\bln\s+-\w+\s+(?:/boot/)?vmlinuz-([\w.+-]+)\s+/boot/vmlinuz-([\w.+-]+)", text):
         aliases[link] = target
-    for target, link in re.findall(r"\bln\s+-\w+\s+/boot/initramfs-([\w.+-]+?)\.img\s+/boot/initramfs-([\w.+-]+?)\.img",
-                                   text):
+    for target, link in re.findall(
+            r"\bln\s+-\w+\s+(?:/boot/)?initramfs-([\w.+-]+?)\.img\s+/boot/initramfs-([\w.+-]+?)\.img", text):
         aliases.setdefault(link, target)
     return aliases
 

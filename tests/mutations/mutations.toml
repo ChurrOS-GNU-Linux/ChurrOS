@@ -2279,3 +2279,12 @@ replace = '"$pkgdir/etc/mkinitcpio.d/linux.preset"'
 caught_by = "tests.static.test_editions"
 expect = "pkg-collision:linux-churrosvyper:/etc/mkinitcpio.d/linux.preset"
 why = "mkarchiso copia el airootfs antes de pacstrap: pacman aborta con 'exists in filesystem' y no hay ISO (pasó con el preset de linux-churrosvyper)."
+
+[[mutation]]
+name = "test_editions: el enlace del initramfs en /boot vuelve a ser absoluto"
+file = "branding/customize_airootfs.sh"
+find = "ln -sfn initramfs-linux-churrosvyper.img /boot/initramfs-linux.img"
+replace = "ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img"
+caught_by = "tests.static.test_editions"
+expect = "boot-link:branding/customize_airootfs.sh:/boot/initramfs-linux.img"
+why = "mkarchiso copia /boot fuera del chroot con cp -a y resuelve el enlace en el equipo de build: 'install: cannot stat .../boot/initramfs-linux.img' y no hay ISO niri (o se lleva el initramfs del host)."

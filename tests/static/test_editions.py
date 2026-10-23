@@ -29,6 +29,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -444,6 +445,49 @@ class LocalPackagesTest(unittest.TestCase):
                         f"{testlib.rel(recipe)} instala {path}, que también está en archiso/airootfs: mkarchiso "
                         "lo copia antes de pacstrap y pacman aborta ('exists in filesystem')")
         testlib.assert_findings(self, "pkg-collision", findings)
+
+
+class BootLinksTest(unittest.TestCase):
+    """Enlaces en /boot que crean los scripts del chroot de build.
+
+    mkarchiso copia /boot fuera del airootfs con `cp -a` (un enlace sigue
+    siendo enlace) y luego `install` copia /boot/vmlinuz-* e initramfs-*.img
+    a la ISO resolviendo los enlaces en el equipo de build: un destino
+    absoluto apunta al /boot del host. En el CI no existe y no hay ISO; en un
+    equipo con ese kernel instalado, la ISO se lleva el kernel del host.
+    """
+
+    def test_boot_links_are_relative(self):
+        scripts = [ROOT / "branding/customize_airootfs.sh",
+                   *sorted((testlib.AIROOTFS / "root/scripts").glob("*.sh"))]
+        findings = {}
+        for script in scripts:
+            for line in testlib.read_text(script).splitlines():
+                try:
+                    lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|()")
+                    lexer.whitespace_split = True
+                    lexer.commenters = "#"
+                    tokens = list(lexer)
+                except ValueError:
+                    continue
+                command: list[str] = []
+                for token in tokens + [";"]:
+                    if token and set(token) <= set(";&|()"):
+                        words = [word for word in command if word not in ("then", "do", "else")]
+                        if words[:1] == ["ln"]:
+                            flags = [word for word in words[1:] if word.startswith("-")]
+                            args = [word for word in words[1:] if not word.startswith("-")]
+                            if any(flag == "--symbolic" or (not flag.startswith("--") and "s" in flag) for flag in flags) \
+                                    and len(args) == 2 and args[1].startswith("/boot/") and args[0].startswith("/"):
+                                findings[f"boot-link:{testlib.rel(script)}:{args[1]}"] = (
+                                    f"{testlib.rel(script)}: `ln -s {args[0]} {args[1]}` es absoluto; mkarchiso lo "
+                                    "resuelve fuera del chroot, en el /boot del equipo de build. Usa un destino "
+                                    "relativo (sin /boot/).")
+                        command = []
+                    else:
+                        command.append(token)
+        self.assertIn("linux", testlib.kernel_aliases(), "no encuentro el enlace vmlinuz-linux en customize_airootfs.sh")
+        testlib.assert_findings(self, "boot-link", findings)
 
 
 class PacmanConfTest(unittest.TestCase):
