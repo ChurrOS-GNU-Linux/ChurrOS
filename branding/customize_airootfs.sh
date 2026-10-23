@@ -151,6 +151,8 @@ if [ -f /boot/Image ]; then
 fi
 
 if [ -f /boot/vmlinuz-linux-churrosvyper ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-churrosvyper-fallback.img
     if [ -f /etc/mkinitcpio.d/linux-churrosvyper.preset ]; then
         if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-churrosvyper.preset 2>/dev/null; then
             cat <<'EOF' > /etc/mkinitcpio.d/linux-churrosvyper.preset
@@ -163,10 +165,13 @@ EOF
             mkinitcpio -p linux-churrosvyper
         fi
     fi
-    ln -sfn /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
-    if [ -f /boot/initramfs-linux-churrosvyper.img ]; then
-        ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
-    fi
+    (
+        cd /boot
+        ln -sfn vmlinuz-linux-churrosvyper vmlinuz-linux
+        if [ -f initramfs-linux-churrosvyper.img ]; then
+            ln -sfn initramfs-linux-churrosvyper.img initramfs-linux.img
+        fi
+    )
 fi
 
 echo "Cleaning..."
