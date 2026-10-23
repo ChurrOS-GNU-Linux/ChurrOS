@@ -2288,3 +2288,12 @@ replace = "ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.
 caught_by = "tests.static.test_editions"
 expect = "boot-link:branding/customize_airootfs.sh:/boot/initramfs-linux.img"
 why = "mkarchiso copia /boot fuera del chroot con cp -a y resuelve el enlace en el equipo de build: 'install: cannot stat .../boot/initramfs-linux.img' y no hay ISO niri (o se lleva el initramfs del host)."
+
+[[mutation]]
+name = "test_calamares_config: la simulación de fix-boot deja de ver el preset que escribe customize_airootfs.sh"
+file = "tests/static/test_calamares_config.py"
+find = '        if name.removesuffix(".preset") in listed:'
+replace = '        if False:'
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
+why = "Sin ese preset la simulación solo ve linux.preset y la instalación de niri x86_64 parece pasar: mkinitcpio -P falla en el destino con el kernel ChurrOSvyper."

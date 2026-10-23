@@ -109,6 +109,14 @@ id = "calamares-sim:fix-boot:aarch64:kver-missing:linux-aarch64.preset"
 note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no existe en el destino. Aunque fix-boot pasara, 'mkinitcpio -P' (paso initcpio) saldría con 'specified kernel image does not exist'. Arreglo: el de calamares-sim:fix-boot:aarch64:command-fails, o ALL_kver='/boot/vmlinuz-linux-aarch64' en el sistema instalado."
 
 [[issue]]
+id = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
+note = "niri x86_64: customize_airootfs.sh deja /etc/mkinitcpio.d/linux-churrosvyper.preset en forma archiso y fix-boot lo pasa a default con ALL_kver='/boot/vmlinuz-linux-churrosvyper'. Ese fichero no existe en el destino (mkarchiso vacía /boot del squashfs y unpackfs.conf solo copia vmlinuz-linux e initramfs-linux.img), así que 'mkinitcpio -P' (paso initcpio, kernel: all) sale con 'specified kernel image does not exist' y Calamares aborta la instalación de la edición por defecto. Necesita una decisión: con qué nombre arranca el sistema instalado el kernel ChurrOSvyper (copiarlo también como vmlinuz-linux-churrosvyper, o un preset que nombre vmlinuz-linux sin romper las actualizaciones del kernel con pacman)."
+
+[[issue]]
+id = "calamares-sim:fix-boot:x86_64:image:linux-churrosvyper.preset"
+note = "Mismo origen: tras fix-boot el preset de linux-churrosvyper genera /boot/initramfs-linux-churrosvyper.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
+
+[[issue]]
 id = "calamares-xref:initcpio-hook:plymouth:pi/aarch64"
 note = "installer/calamares/modules/initcpiocfg.conf antepone el hook plymouth, pero archiso/packages.pi.aarch64 no instala plymouth: mkinitcpio sale con 1 ('Hook plymouth cannot be found') y el paso initcpio aborta la instalación de la edición pi. Arreglo: añadir plymouth a la lista pi, o quitar el prepend (initcpiocfg ya añade plymouth solo cuando está instalado)."
 

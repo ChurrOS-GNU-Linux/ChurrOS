@@ -184,6 +184,24 @@ LIVE_MKINITCPIO = {
         "etc/mkinitcpio.conf.d/archiso.conf": "archiso/mkinitcpio/aarch64/archiso.conf",
     },
 }
+
+
+def live_kernel_presets(arch: str) -> dict[str, str]:
+    """{etc/mkinitcpio.d/<kernel>.preset: texto} que customize_airootfs.sh
+    escribe en el Live (heredoc) para un kernel que alguna edición con
+    instalador de `arch` instala: el preset del paquete linux-churrosvyper
+    pasa a la forma archiso y Calamares lo encuentra en el destino."""
+    text = testlib.read_text(testlib.ROOT / "branding/customize_airootfs.sh")
+    listed = set().union(*(testlib.packages(item) for item in testlib.EDITIONS
+                           if item.arch == arch and item.installer))
+    found = {}
+    for _end, name, body in re.findall(
+            r"cat\s+<<-?\s*'?(\w+)'?\s*>\s*/etc/mkinitcpio\.d/([\w.+-]+\.preset)\n(.*?)\n\1\n", text, re.S):
+        if name.removesuffix(".preset") in listed:
+            found[f"etc/mkinitcpio.d/{name}"] = body + "\n"
+    return found
+
+
 # /etc/mkinitcpio.conf del paquete mkinitcpio (no está en el airootfs).
 STOCK_MKINITCPIO_CONF = (
     "MODULES=()\nBINARIES=()\nFILES=()\n"
@@ -1155,6 +1173,9 @@ class CalamaresConfigTest(unittest.TestCase):
         for target, source in LIVE_MKINITCPIO[arch].items():
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(testlib.ROOT / source, root / target)
+        for target, body in live_kernel_presets(arch).items():
+            (root / target).parent.mkdir(parents=True, exist_ok=True)
+            (root / target).write_text(body)
         (root / "etc/mkinitcpio.conf").write_text(STOCK_MKINITCPIO_CONF)
         (root / "boot").mkdir(parents=True, exist_ok=True)
         kernel_dest = initramfs_dest = None
