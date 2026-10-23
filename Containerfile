@@ -23,6 +23,17 @@ FROM ${BASE_IMAGE}
 RUN grep -q '^DisableSandboxFilesystem' /etc/pacman.conf \
     || sed -i '/^\[options\]/a DisableSandboxFilesystem' /etc/pacman.conf
 
+# Mirrors de respaldo tras los de la imagen oficial: si fastly.mirror.pkgbuild.com
+# falla con un fichero, pacman lo pide al siguiente en vez de abortar la imagen.
+# Arch Linux ARM ya usa su propio mirror geográfico.
+RUN if [ "$(uname -m)" = x86_64 ]; then \
+        printf 'Server = %s\n' \
+            'https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+            'https://mirror.rackspace.com/archlinux/$repo/os/$arch' \
+            'https://mirror.leaseweb.net/archlinux/$repo/os/$arch' \
+            >> /etc/pacman.d/mirrorlist; \
+    fi
+
 # Primero el keyring (archlinux-keyring, o el de ARM): con una imagen base
 # vieja, -Syu falla por firmas de empaquetadores nuevos.
 #
