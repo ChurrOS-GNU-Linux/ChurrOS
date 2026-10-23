@@ -178,5 +178,6 @@ fn main() -> glib::ExitCode {
 
     app.connect_activate(activate);
 
-    app.run()
+    // argv ya se leyó arriba: GApplication no conoce --live-only y saldría con 1.
+    app.run_with_args(&[] as &[&str])
 }
