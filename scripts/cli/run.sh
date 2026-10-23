@@ -259,7 +259,7 @@ if [ "$TARGET_ARCH" = "aarch64" ]; then
         CPU_ARGS=(-smp 4)
         MACHINE_ARGS=(-machine virt)
     fi
-    GPU_ARGS=(-device virtio-gpu-gl-pci -display "gtk,gl=on,show-cursor=on")
+    GPU_ARGS=(-device virtio-gpu-gl-pci,xres=1920,yres=1080 -display "gtk,gl=on,show-cursor=on")
 elif [ "$TARGET_ARCH" = "i686" ]; then
     if [ "$FORCE_NOKVM" = false ] && [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         echo "  KVM acceleration: enabled (i686)"
@@ -290,12 +290,12 @@ if [ -e /dev/dri ]; then
     if [ "$TARGET_ARCH" = "aarch64" ]; then
         echo "  GPU: virtio-gpu-gl-pci + virgl (3D)"
     else
-        GPU_ARGS=(-device virtio-vga-gl -display "gtk,gl=on,show-cursor=on")
+        GPU_ARGS=(-device virtio-vga-gl,xres=1920,yres=1080 -display "gtk,gl=on,show-cursor=on")
         echo "  GPU: virtio-vga-gl + virgl (3D)"
     fi
 else
     if [ "$TARGET_ARCH" != "aarch64" ]; then
-        GPU_ARGS=(-device virtio-gpu -display "gtk,gl=off,show-cursor=on")
+        GPU_ARGS=(-device virtio-gpu,xres=1920,yres=1080 -display "gtk,gl=off,show-cursor=on")
     fi
     echo "  GPU: virtio-gpu (no 3D — niri may fall back to software rendering)"
 fi

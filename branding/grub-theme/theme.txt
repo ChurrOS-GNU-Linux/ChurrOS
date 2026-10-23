@@ -3,24 +3,22 @@
 # Global properties are only those in gfxmenu theme_set_string (no title-align).
 # Font properties use PFF2NAME (not the .pf2 filename). Filenames must not
 # contain spaces: GRUB file open treats space as a separator.
-# Position math is 50%-270 (no spaces) or grub_strtoull fails.
-# Selected entry is highlighted with bold orange text (no selected_item_pixmap_style:
-# the styled-box pixmap can render on the wrong menu item in gfxmenu).
+# Position math is 50%-290 (no spaces) or grub_strtoull fails.
+# Selected entry is highlighted with bold orange text.
 
 title-text: ""
-title-font: "DejaVu Sans Bold 22"
-title-color: "#F97316"
-
 desktop-image: "background.png"
 desktop-color: "#111827"
 
+terminal-box: "terminal_box_*.png"
+terminal-border: "0"
 terminal-font: "DejaVu Sans Regular 16"
 
 + boot_menu {
-    left = 50%-270
-    top = 50%-99
-    width = "540"
-    height = "198"
+    left = 50%-290
+    top = 50%-100
+    width = "580"
+    height = "200"
     item_color = "#94A3B8"
     selected_item_color = "#F97316"
     item_font = "DejaVu Sans Regular 16"
@@ -29,15 +27,13 @@ terminal-font: "DejaVu Sans Regular 16"
     item_spacing = "10"
 }
 
-+ progress_bar {
++ label {
     id = "__timeout__"
-    left = 50%-160
-    top = 100%-196
-    width = "320"
-    height = "20"
-    show_text = true
+    left = "0"
+    top = 100%-210
+    width = "100%"
+    align = "center"
     text = "Booting automatically in %d s..."
     font = "DejaVu Sans Regular 16"
-    text_color = "#94A3B8"
-    align = "center"
+    color = "#64748B"
 }
