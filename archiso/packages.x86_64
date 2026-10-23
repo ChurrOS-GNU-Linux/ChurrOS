@@ -35,8 +35,8 @@ kitty-terminfo
 less
 libfido2
 libusb-compat
-linux-churrosvyper
-linux-churrosvyper-headers
+linux-cachyos
+linux-cachyos-headers
 linux-atm
 linux-firmware
 linux-firmware-marvell

@@ -12,8 +12,8 @@ groups:
     critical: true
     expanded: true
     packages:
-      - name: "nvidia"
-        description: "Driver oficial"
+      - name: "nvidia-dkms"
+        description: "Driver oficial (DKMS)"
       - name: "nvidia-utils"
         description: "Aceleración 3D"
       - name: "nvidia-settings"

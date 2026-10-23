@@ -150,7 +150,29 @@ if [ -f /boot/Image ]; then
     /usr/share/churros/scripts/publish-aarch64-kernel --require
 fi
 
-if [ -f /boot/vmlinuz-linux-churrosvyper ]; then
+if [ -f /boot/vmlinuz-linux-cachyos ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-cachyos-fallback.img
+    if [ -f /etc/mkinitcpio.d/linux-cachyos.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-cachyos.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-cachyos.preset
+# mkinitcpio preset file for the 'linux-cachyos' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-cachyos'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-cachyos.img"
+EOF
+            mkinitcpio -p linux-cachyos
+        fi
+    fi
+    (
+        cd /boot
+        ln -sfn vmlinuz-linux-cachyos vmlinuz-linux
+        if [ -f initramfs-linux-cachyos.img ]; then
+            ln -sfn initramfs-linux-cachyos.img initramfs-linux.img
+        fi
+    )
+elif [ -f /boot/vmlinuz-linux-churrosvyper ]; then
     rm -f /etc/mkinitcpio.d/linux.preset
     rm -f /boot/initramfs-linux-churrosvyper-fallback.img
     if [ -f /etc/mkinitcpio.d/linux-churrosvyper.preset ]; then

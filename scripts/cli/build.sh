@@ -403,7 +403,7 @@ else
     bash scripts/build-calamares.sh
 fi
 
-if [ "$TARGET_ARCH" = "x86_64" ]; then
+if [ "$TARGET_ARCH" = "x86_64" ] && { grep -q '^linux-churrosvyper' "$PACKAGE_LIST" 2>/dev/null || [ "$USE_CLUSTER" -eq 1 ]; }; then
     kernel_build_opts=()
     [ "$USE_CLUSTER" -eq 1 ] && kernel_build_opts+=("--cluster")
     bash scripts/build-kernel-vyper.sh ${kernel_build_opts[@]+"${kernel_build_opts[@]}"}
