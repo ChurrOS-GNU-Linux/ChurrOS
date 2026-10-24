@@ -143,17 +143,18 @@ Toda nueva funcionalidad debe incluir su documentación correspondiente.
 Antes de un commit de código:
 
 ```bash
-./churros check
+./churros test
 ```
 
 Si el cambio toca el escritorio, el instalador o el build:
 
 ```bash
 ./churros build
+./churros test --iso --boot
 ./churros run
 ```
 
-La ISO debe iniciar correctamente y los cambios deben verificarse a mano. No hay suite de tests de las apps GTK todavía.
+Las capas, qué cubre cada una y las reglas para no debilitarlas están en [Pruebas](testing.md).
 
 Para iterar una app Rust sin reconstruir la ISO:
 

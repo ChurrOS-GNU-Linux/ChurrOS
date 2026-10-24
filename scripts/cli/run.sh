@@ -222,7 +222,8 @@ fi
 
 # niri requires hardware-accelerated 3D (OpenGL via virgl).
 # Always attempt virtio-gpu-gl with GL; fall back to virtio-gpu (no GL) only if
-# the host lacks /dev/dri entirely — in that case niri will try llvmpipe.
+# the host lacks /dev/dri entirely. niri 26.04 skips software EGL (llvmpipe), so
+# without virgl it starts with no output; tests/vm uses Xvfb + Mesa instead.
 if [ -e /dev/dri ]; then
     if [ "$TARGET_ARCH" = "aarch64" ]; then
         echo "  GPU: virtio-gpu-gl-pci + virgl (3D)"
@@ -234,7 +235,7 @@ else
     if [ "$TARGET_ARCH" != "aarch64" ]; then
         GPU_ARGS=(-device virtio-gpu -display "gtk,gl=off,show-cursor=on")
     fi
-    echo "  GPU: virtio-gpu (no 3D — niri may fall back to software rendering)"
+    echo "  GPU: virtio-gpu (no 3D — niri will start without any output: black screen)"
 fi
 
 if [ "$TARGET_ARCH" != "aarch64" ]; then

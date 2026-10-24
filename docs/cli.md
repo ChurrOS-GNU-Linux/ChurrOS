@@ -48,12 +48,13 @@ Construye una nueva imagen ISO de ChurrOS.
 ./churros build --edition xfce
 ./churros build --edition server
 ./churros build --edition niri
+./churros build --edition pi --arch arm64
 ```
 
 Opciones:
-- `--arch <x86_64|arm64|i686>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64` y la de 32 bits con `--arch i686` (repos de Arch Linux 32). En aarch64 solo existe la edición niri; esa ISO requiere el entorno de build ARM, dentro de un contenedor en hosts que no sean aarch64.
+- `--arch <x86_64|arm64|i686>` (o `-a`): arquitectura de la ISO. Por defecto, la del equipo (`uname -m`); en un host x86_64 la ISO ARM se pide con `--arch arm64` y la de 32 bits con `--arch i686` (repos de Arch Linux 32). En aarch64 existen las ediciones niri y pi; esa ISO requiere el entorno de build ARM, dentro de un contenedor en hosts que no sean aarch64.
 - `--container`: construye dentro del contenedor Arch (podman, o docker si no hay podman; con `sudo` y `--privileged`). Sirve en cualquier distro y la ISO queda igualmente en `out/`. x86_64 usa `Containerfile`. `--arch arm64` usa `Containerfile.aarch64` (`--platform linux/arm64`): en x86_64 hace falta qemu-user-static con binfmt y la bandera `C`; en aarch64 el contenedor es nativo. Detalle en `docs/getting-started.md` y `docs/vm.md`.
-- `--edition <niri|xfce|server>` (o `-e`): Selecciona la edición de la ISO (por defecto: `niri`). La edición `server` instala un sistema sin escritorio, accesible por SSH.
+- `--edition <niri|xfce|server|pi>` (o `-e`): Selecciona la edición de la ISO (por defecto: `niri`). `pi` (Raspberry Pi Lite, labwc) solo existe en aarch64. La edición `server` instala un sistema sin escritorio, accesible por SSH.
   - `niri`: Compositor Wayland con tiling dinámico horizontal (Noctalia Shell, foot, Fuzzel, Mako).
   - `xfce`: Entorno de escritorio clásico X11 (XFCE 4, panel ChurrOS, xfwm4, xfce4-terminal).
 
@@ -133,10 +134,30 @@ Revisa:
 - Que `Exec=` / `TryExec=` de los `.desktop` resuelvan, y que las rutas absolutas existan en airootfs.
 - Orden crítico de Calamares y que cada instancia `shellprocess` tenga su `.conf`.
 - Que el branding de Calamares cargue (`componentName`, slideshow API 2, imágenes existentes).
-- Que los paquetes de `scripts/build-aur.sh` figuren en `netinstall.yaml`.
 - Que los archivos de traducción `po/*.po` compilen.
+- Las pruebas de `tests/static` (ver [Pruebas](testing.md)): scripts por shebang, `file_permissions`, comandos de cada edición, Calamares, unidades systemd, sintaxis de configuraciones, contrato de las apps Rust y un build en seco.
 
-Termina con código 0 si todo pasa y 1 si algo falla. Los avisos de higiene del repositorio se informan pero no bloquean. No necesita construir la ISO ni permisos de root, y tarda unos segundos.
+Termina con código 0 si todo pasa y 1 si algo falla. Los avisos de higiene del repositorio se informan pero no bloquean. Con `CHURROS_STRICT=1` (o `CI=true`) una herramienta que falta o una prueba saltada cuentan como fallo. No necesita construir la ISO ni permisos de root, y tarda alrededor de un minuto.
+
+---
+
+## test
+
+Ejecuta las capas de pruebas. Sin opciones es lo mismo que `./churros check`.
+
+```bash
+./churros test                  # capa estática (check.sh + tests/static)
+./churros test --container      # tests/container en el contenedor Arch
+./churros test --rust           # ./churros rust
+./churros test --gui            # apps GTK en Broadway, en el contenedor (test-tour.py y test-gui-smoke.py)
+./churros test --iso [ISO]      # auditoría del contenido de la ISO (por defecto, la última de out/)
+./churros test --boot [ISO]     # arranque en QEMU y comprobaciones dentro de la sesión Live
+./churros test --mutations      # autoprueba de la batería
+```
+
+Las capas se pueden combinar (`./churros test --iso --boot`). Detalle de cada una en [Pruebas](testing.md).
+
+`--gui` es lo que `./churros rust` no ve: `cargo test` no abre ninguna ventana. Arranca cada app desplegada y cada popup compilados en release, como en la ISO, y ejecuta los tests de widgets del recorrido, sobre un `gtk4-broadwayd` privado. Si tocas `rust/`, ejecuta las dos.
 
 Es el mismo comando que ejecuta el CI en cada Pull Request (ver `.github/workflows/ci.yml`).
 
@@ -225,6 +246,26 @@ Muestra el logotipo oficial de ChurrOS en la terminal.
 ```bash
 ./churros logo
 ```
+
+## cluster
+
+Gestiona el cluster de compilación distribuida (distcc por SSH) que acelera la
+compilación del kernel ChurrOSvyper. La configuración local va en
+`cluster.conf` (plantilla: `cluster.conf.example`; no se versiona).
+
+```bash
+./churros cluster init      # crea cluster.conf desde la plantilla
+./churros cluster scan      # detecta los nodos de la red
+./churros cluster auth      # copia las llaves SSH a cada nodo
+./churros cluster probe     # comprueba SSH, hardware y software de cada nodo
+./churros cluster start     # arranca distccd en los nodos (stop para pararlo)
+./churros cluster status    # estado de los workers e hilos totales
+./churros cluster build     # compila el kernel con el cluster
+./churros cluster monitor   # monitor de la compilación (distccmon)
+```
+
+`./churros build --cluster` usa el cluster para compilar el kernel cuando no
+puede descargar el paquete precompilado.
 
 ---
 

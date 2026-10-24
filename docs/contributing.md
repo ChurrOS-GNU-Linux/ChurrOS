@@ -101,7 +101,7 @@ Ejecuta primero:
 ./churros check
 ```
 
-Revisa sintaxis Bash y Python, paquetes duplicados, comandos del autostart de Niri, entradas `.desktop`, orden de Calamares, extras AUR en `netinstall.yaml` y que las traducciones compilen. Tarda unos segundos y no necesita construir la ISO. Es lo mismo que ejecuta el CI en cada Pull Request, así que si falla aquí, fallará allá.
+Revisa scripts, permisos, que cada comando que lanza el sistema exista en su edición, Calamares, unidades systemd, sintaxis de configuraciones, el contrato de las apps Rust y un build en seco (detalle en [Pruebas](testing.md)). Tarda alrededor de un minuto y no necesita construir la ISO. Es lo mismo que ejecuta el CI en cada Pull Request, así que si falla aquí, fallará allá.
 
 Si el cambio toca el escritorio, el instalador o el build:
 

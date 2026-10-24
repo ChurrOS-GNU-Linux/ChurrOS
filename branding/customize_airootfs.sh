@@ -163,9 +163,12 @@ EOF
             mkinitcpio -p linux-churrosvyper
         fi
     fi
-    ln -sfn /boot/vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
+    # Relative links: mkarchiso copies /boot out of the chroot with cp -a and
+    # then install resolves them on the build host, where an absolute target
+    # is the host's own /boot (missing in CI; the host's kernel elsewhere).
+    ln -sfn vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
     if [ -f /boot/initramfs-linux-churrosvyper.img ]; then
-        ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
+        ln -sfn initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
     fi
 fi
 

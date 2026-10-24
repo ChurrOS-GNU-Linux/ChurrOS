@@ -222,7 +222,7 @@ Ejecuta la validación en este orden después de construir la ISO aarch64:
 
 - [ ] El menú GRUB aparece con el tema y la entrada Live.
 - [ ] El sistema Live termina el arranque sin errores críticos en `vm_serial.log`.
-- [ ] `niri` inicia; `llvmpipe` es aceptable si virgl no está disponible.
+- [ ] `niri` inicia con salida. Necesita virgl: niri 26.04 descarta el renderizado por software (llvmpipe) y sin 3D arranca sin pantalla (negra). En VirtualBox/VMware hay que activar la aceleración 3D.
 - [ ] `waybar`, `fuzzel`, `foot`, Welcome y los popups abren correctamente.
 - [ ] `lscpu | grep Architecture` muestra `aarch64`.
 - [ ] Calamares completa una instalación GPT/btrfs.

@@ -21,21 +21,24 @@ installer/
 
 ## ⚙️ Secuencia de Instalación (`settings.conf`)
 
-La instalación en disco sigue una secuencia validada y crítica que incluye 6 hooks `shellprocess`:
+La instalación en disco sigue una secuencia validada y crítica con 5 instancias `shellprocess` (pasos principales de `exec` en `settings.conf`; `tests/static/test_calamares_config.py` comprueba este orden):
 
 ```text
-1. shellprocess@boot-nocow      -> Aplica chattr +C en /boot para evitar zstd en GRUB.
-2. unpackfs                     -> Extrae la imagen squashfs del Live al disco destino.
-3. shellprocess@pacman-init     -> Inicializa y puebla el keyring de pacman en el sistema instalado.
-4. shellprocess@fix-boot        -> Regenera presets de mkinitcpio y módulos del kernel.
-5. shellprocess@churros-repo    -> Registra el repositorio local [churros] temporalmente.
-6. netinstall / packages        -> Instala paquetes adicionales y extras AUR locales; sin Internet, Calamares omite este paso y conserva la instalación base de la ISO.
-7. bootloader                   -> Instala GRUB (UEFI) / Syslinux (BIOS).
-8. shellprocess@grub-theme      -> Aplica el tema GRUB centrado y hook de lectura Btrfs.
-9. shellprocess@post-install    -> Elimina el repo local, sudoers NOPASSWD, reglas polkit de Calamares y
-                                ajustes de ssh del Live, y limpia rastros del usuario Live.
-10. umount                      -> Desmonta las particiones instaladas.
+1. partition / mount            -> Particiona y monta el disco destino.
+2. shellprocess@boot-nocow      -> Aplica chattr +C en /boot para evitar zstd en GRUB.
+3. unpackfs                     -> Extrae la imagen squashfs del Live al disco destino.
+4. shellprocess@pacman-init     -> Inicializa y puebla el keyring de pacman en el sistema instalado.
+5. shellprocess@fix-boot        -> Regenera presets de mkinitcpio y módulos del kernel.
+6. initcpiocfg / initcpio       -> Configura y genera el initramfs del sistema instalado.
+7. users / displaymanager / services-systemd -> Usuario, greetd y servicios.
+8. grubcfg / bootloader         -> Configura e instala GRUB.
+9. shellprocess@grub-theme      -> Aplica el tema GRUB centrado y hook de lectura Btrfs.
+10. shellprocess@post-install   -> Quita sudoers NOPASSWD, reglas polkit de Calamares, ajustes
+                                de ssh del Live y rastros del usuario Live.
+11. umount                      -> Desmonta las particiones instaladas.
 ```
+
+Los paquetes locales (calamares, yay, wlogout, python-pywal, bazaar) ya vienen en la ISO por pacstrap: no hay paso `netinstall` ni `packages`.
 
 ---
 

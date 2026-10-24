@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# sudo de tests/static/test_build_dryrun.py. No eleva privilegios: ejecuta el
+# comando como el usuario actual, y solo los que build.sh necesita.
+#
+# - Rutas del host que build.sh toca con sudo (/root/packages, el
+#   /usr/bin/mkarchiso que parchea el build aarch64) se redirigen a
+#   $DRYRUN_FAKE_ROOT. Nunca se toca el /root ni el /usr real.
+# - Cualquier otra ruta absoluta tiene que estar dentro de $DRYRUN_ROOT.
+# - Como el sudo real (env_reset), el comando no hereda el entorno: lo que
+#   tenga que llegar a mkarchiso se pasa con `sudo env VAR=valor`.
+# - Lo que no está permitido sale con 97 y queda en $DRYRUN_LOG/forbidden.log.
+set -euo pipefail
+
+: "${DRYRUN_ROOT:?}" "${DRYRUN_FAKE_ROOT:?}" "${DRYRUN_LOG:?}" "${DRYRUN_STUBS:?}"
+
+refuse() {
+    printf 'sudo %s: %s\n' "$*" "$reason" >> "$DRYRUN_LOG/forbidden.log"
+    printf 'sudo (prueba): %s\n' "$reason" >&2
+    exit 97
+}
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /root/packages | /root/packages/*) arg="$DRYRUN_FAKE_ROOT/packages${arg#/root/packages}" ;;
+        /usr/bin/mkarchiso) arg="$DRYRUN_FAKE_ROOT/usr/bin/mkarchiso" ;;
+    esac
+    args+=("$arg")
+done
+printf '%q ' "$@" >> "$DRYRUN_LOG/sudo.log"
+printf '\n' >> "$DRYRUN_LOG/sudo.log"
+
+for arg in "${args[@]}"; do
+    case "$arg" in
+        "$DRYRUN_ROOT"/*) ;;
+        /*) reason="ruta fuera de la prueba: $arg"; refuse "$@" ;;
+    esac
+    case "/$arg/" in
+        */../*) reason="ruta con ..: $arg"; refuse "$@" ;;
+    esac
+done
+
+# Entorno de root tras env_reset, más lo que necesitan los stubs.
+base_env=(
+    "PATH=$PATH" "HOME=$DRYRUN_FAKE_ROOT" "USER=root" "LOGNAME=root"
+    "SUDO_USER=${USER:-}" "LANG=C.UTF-8" "DRYRUN_VIA_SUDO=1"
+    "DRYRUN_ROOT=$DRYRUN_ROOT" "DRYRUN_FAKE_ROOT=$DRYRUN_FAKE_ROOT"
+    "DRYRUN_LOG=$DRYRUN_LOG" "DRYRUN_STUBS=$DRYRUN_STUBS"
+    "DRYRUN_MKARCHISO=${DRYRUN_MKARCHISO:-ok}"
+)
+
+command_name="${args[0]:-}"
+case "$command_name" in
+    rm | test | readlink | ln | chown | find)
+        exec env -i "${base_env[@]}" "${args[@]}"
+        ;;
+    mkarchiso)
+        exec env -i "${base_env[@]}" "$DRYRUN_STUBS/mkarchiso" "${args[@]:1}"
+        ;;
+    env)
+        assignments=()
+        index=1
+        while [ "$index" -lt "${#args[@]}" ] && [[ "${args[$index]}" == [A-Za-z_]*=* ]]; do
+            assignments+=("${args[$index]}")
+            index=$((index + 1))
+        done
+        if [ "${args[$index]:-}" != mkarchiso ]; then
+            reason="sudo env solo puede lanzar mkarchiso"
+            refuse "$@"
+        fi
+        exec env -i "${base_env[@]}" "${assignments[@]}" "$DRYRUN_STUBS/mkarchiso" "${args[@]:$((index + 1))}"
+        ;;
+    bash)
+        if [ "${args[1]:-}" != scripts/patch-mkarchiso-grubmodules.sh ]; then
+            reason="sudo bash solo puede lanzar scripts/patch-mkarchiso-grubmodules.sh"
+            refuse "$@"
+        fi
+        exec env -i "${base_env[@]}" bash "${args[@]:1}"
+        ;;
+    *)
+        reason="comando no permitido en el ensayo: $command_name"
+        refuse "$@"
+        ;;
+esac

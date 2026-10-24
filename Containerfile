@@ -23,6 +23,17 @@ FROM ${BASE_IMAGE}
 RUN grep -q '^DisableSandboxFilesystem' /etc/pacman.conf \
     || sed -i '/^\[options\]/a DisableSandboxFilesystem' /etc/pacman.conf
 
+# Mirrors de respaldo tras los de la imagen oficial: si fastly.mirror.pkgbuild.com
+# falla con un fichero, pacman lo pide al siguiente en vez de abortar la imagen.
+# Arch Linux ARM ya usa su propio mirror geográfico.
+RUN if [ "$(uname -m)" = x86_64 ]; then \
+        printf 'Server = %s\n' \
+            'https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+            'https://mirror.rackspace.com/archlinux/$repo/os/$arch' \
+            'https://mirror.leaseweb.net/archlinux/$repo/os/$arch' \
+            >> /etc/pacman.d/mirrorlist; \
+    fi
+
 # Primero el keyring (archlinux-keyring, o el de ARM): con una imagen base
 # vieja, -Syu falla por firmas de empaquetadores nuevos.
 #
@@ -54,6 +65,19 @@ RUN pacman-key --init \
         nodejs \
         python \
     && pacman -Scc --noconfirm
+
+# archiso/pacman.x86_64.conf usa el repo [cachyos], que firma su base de
+# datos: sin su clave, pacstrap (./churros build) y tests/container fallan
+# con 'key ... is unknown'. Se descarga por HTTPS (gpg no siempre llega a
+# los keyservers detrás de un proxy) y se firma por su huella completa.
+ARG CACHYOS_FINGERPRINT=882DCFE48E2051D48E2562ABF3B607488DB35A47
+RUN if [ "$(uname -m)" = x86_64 ]; then \
+        curl -fsSL --retry 3 -o /tmp/cachyos.asc \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${CACHYOS_FINGERPRINT}" \
+        && pacman-key --add /tmp/cachyos.asc \
+        && pacman-key --lsign-key "${CACHYOS_FINGERPRINT}" \
+        && rm -f /tmp/cachyos.asc; \
+    fi
 
 # makepkg no corre como root y build.sh llama a sudo (mkarchiso, pacman):
 # el usuario del build necesita sudo sin contraseña. Es un contenedor
