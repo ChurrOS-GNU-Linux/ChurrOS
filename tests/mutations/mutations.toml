@@ -1774,7 +1774,7 @@ file = "tests/iso/check_iso.py"
 find = 'category = f"iso-{edition_name}-{arch}"'
 replace = 'category = f"iso-{edition_name}"'
 caught_by = "tests.static.test_repo_wiring"
-expect = "iso-server-x86_64:missing-lib:libcalamares.so:libkpmcore.so"
+expect = "la categoría 'iso-{edition_name}' no es"
 why = "La ISO aarch64 y la x86_64 compartirían la lista: un fallo de una sola arquitectura no se podría apuntar."
 
 [[mutation]]
