@@ -84,7 +84,7 @@ El parámetro `archisobasedir=%INSTALL_DIR%` se sustituye en tiempo de compilaci
 
 Las entradas de arranque local de GRUB y de Syslinux pasan `copytoram=n cow_spacesize=2G` (las de PXE, solo `cow_spacesize=2G`). El overlay de 256 MB por defecto no alcanza para la reserva de 500 MB de OSTree que hace Flatpak, y sin ese margen Bazaar no puede sincronizar Flathub.
 
-La entrada de accesibilidad añade `accessibility=on` a la línea del kernel, lo que activa `livecd-alsa-unmuter.service` y `livecd-talk.service` (ver [live-services.md](live-services.md)). El lector de pantalla necesita el paquete `espeakup`, que hoy solo está en `archiso/packages.aarch64`: en las demás listas la entrada aparece, pero `livecd-talk` no consigue arrancar `espeakup.service`.
+La entrada de accesibilidad añade `accessibility=on` a la línea del kernel, lo que activa `livecd-alsa-unmuter.service` y `livecd-talk.service` (ver [live-services.md](live-services.md)). El lector de pantalla usa el paquete `espeakup`, que está en todas las listas (`archiso/packages.x86_64`, `archiso/packages.i686`, `archiso/packages.aarch64`, `archiso/packages.xfce.x86_64`, `archiso/packages.server.x86_64` y `archiso/packages.pi.aarch64`): `livecd-talk` arranca `espeakup.service`.
 
 GRUB también carga módulos para distintos sistemas de archivos y para la consola serie (y USB-serie fuera de arm64).
 
@@ -206,7 +206,7 @@ Comprueba que tu firmware tenga activado el modo UEFI (no Legacy/CSM). En x86_64
 
 ### La entrada de accesibilidad no lee nada
 
-La entrada aparece siempre. El lector de pantalla necesita `espeakup`, que hoy solo está en `archiso/packages.aarch64`; para usarlo en x86_64 hay que añadirlo a `archiso/packages.x86_64` y a las listas de edición.
+La entrada aparece siempre. El lector de pantalla usa `espeakup`, que está en todas las listas (`archiso/packages.x86_64`, `archiso/packages.i686`, `archiso/packages.aarch64`, `archiso/packages.xfce.x86_64`, `archiso/packages.server.x86_64` y `archiso/packages.pi.aarch64`).
 
 ### GRUB muestra "Arch Linux" en vez de "ChurrOS"
 
