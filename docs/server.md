@@ -64,7 +64,13 @@ Un **41 % menos** que la edición Niri.
 
 # Qué quita al instalar
 
-`configure-server` borra los 22 paquetes de escritorio (XFCE, `cage`, `greetd`, `thunar`, `gvfs`…) con `pacman -Rns`, y además:
+`configure-server` borra los 26 paquetes de escritorio (XFCE, `cage`, `greetd`, `thunar`, `gvfs`…) con un solo `pacman -Rns`. Con `-s` caen también sus dependencias que ya nada usa (`libxfce4ui`, `exo`, `garcon`, `greetd-agreety`, `vte3`…): unos 60 paquetes en total. Lo que la lista instala explícitamente y no está en el purge (`xorg-server`, `tumbler`, `network-manager-applet`…) se queda, porque `-s` nunca quita paquetes instalados explícitamente.
+
+La lista incluye también los paquetes de `packages.server.x86_64` que dependen de los de escritorio, aunque no sean «el escritorio»: `xfwm4` (de `xfconf`), `thunar-archive-plugin` y `thunar-volman` (de `thunar`) y `gvfs-mtp` (de `gvfs`). Hace falta porque `pacman -R` es todo o nada: si un paquete que se queda depende de uno que se quita, rechaza la transacción entera (`removing xfconf breaks dependency 'xfconf' required by xfwm4`) y no borra ninguno. Antes pasaba exactamente eso: el escritorio no arrancaba, pero seguía instalado.
+
+Si añades un paquete a la lista de la edición, mira si depende de alguno de los que se quitan (`pactree -su <paquete>` en Arch lista todas sus dependencias) y, si es así, añádelo también a `DESKTOP_PKGS`. `./churros check` falla si un paquete de las familias XFCE, Thunar, GVFS o greetd queda en la lista sin estar en el purge, o si el purge nombra un paquete que la lista no instala; las dependencias de otras familias no las ve, porque necesitan las bases de pacman.
+
+Además de los paquetes, quita:
 
 - Los binarios de las apps propias, que son ficheros en `/usr/bin` y no paquetes: `churros-welcome`, `churros-settings`, `churros-control-center`, `churros-popup`, `churros-tour`, `churros-apply-wallpaper`, `churros-pick-image`.
 - Los lanzadores del panel de XFCE, que apuntan a esos binarios.
@@ -119,7 +125,8 @@ ssh usuario@IP_DEL_SERVIDOR
 
 # Verificación hecha
 
-- Cada nombre de paquete comprobado contra las bases de pacman de Arch; los 22 del purge existen en la lista de la edición, así que `pacman -Rns` no se encuentra con nombres fantasma.
+- Cada nombre de paquete comprobado contra las bases de pacman de Arch; los 26 del purge existen en la lista de la edición, así que `pacman -Rns` no se encuentra con nombres fantasma.
+- El `pacman -Rns` del purge simulado contra las bases `core` y `extra` de Arch (cierre completo de `packages.server.x86_64`, más los extras de `netinstall`): ningún paquete que se queda depende de uno que se quita, y `-s` arrastra 36 dependencias más. Con la lista anterior de 22 la transacción fallaba por `xfwm4`, `gvfs-mtp`, `thunar-archive-plugin`, `thunar-volman` y `libxfce4ui`.
 - Los seis paquetes añadidos (`chrony`, `fail2ban`, `htop`, `tmux`, `lsof`, `jq`, `strace`, `git`, `procps-ng`, `pciutils`) existen en los repos.
 - `bash -n` en los scripts tocados, YAML del módulo de Calamares válido y `./churros check` en verde.
 

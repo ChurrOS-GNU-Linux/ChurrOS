@@ -276,6 +276,45 @@ else
     fail "displaymanager.conf sigue con un ejecutable de una sola edicion, o falta churros-xsession"
 fi
 
+# ------------------------------------------------------ Server desktop purge
+
+section "Server desktop purge"
+
+# configure-server removes the ISO desktop with a single pacman -Rns. pacman
+# aborts the whole transaction, removing nothing, when a target is not
+# installed ("target not found") or when a package that stays depends on one
+# that goes ("breaks dependency"). The full closure needs the pacman databases,
+# so check what can be checked statically: every purge target is in the server
+# list, and every package of the purged families (XFCE, Thunar, GVFS, greetd)
+# in the server list is a purge target instead of a package left depending on
+# one.
+CONFIGURE_SERVER=archiso/airootfs/usr/share/churros/scripts/configure-server
+SERVER_LIST=archiso/packages.server.x86_64
+if [ -f "$SERVER_LIST" ]; then
+    purge=$(awk '/^DESKTOP_PKGS="/ { p = 1 } p { print } p && /"$/ { exit }' "$CONFIGURE_SERVER" |
+        sed 's/^DESKTOP_PKGS=//' | tr -d '\\"' | tr -s '[:space:]' ' ')
+    not_listed=""
+    left_behind=""
+    for pkg in $purge; do
+        grep -Fqx "$pkg" "$SERVER_LIST" || not_listed="$not_listed $pkg"
+    done
+    while read -r pkg; do
+        case " $purge " in
+            *" $pkg "*) ;;
+            *) left_behind="$left_behind $pkg" ;;
+        esac
+    done < <(grep -E '^(xf(ce4-|wm4|conf|desktop)|thunar|gvfs|greetd)' "$SERVER_LIST")
+    if [ -z "$purge" ]; then
+        fail "no DESKTOP_PKGS list found in $CONFIGURE_SERVER"
+    elif [ -n "$not_listed" ]; then
+        fail "configure-server purges packages missing from $SERVER_LIST:$not_listed"
+    elif [ -n "$left_behind" ]; then
+        fail "$SERVER_LIST keeps desktop packages that configure-server does not purge:$left_behind"
+    else
+        pass "configure-server purge matches $SERVER_LIST ($(wc -w <<< "$purge") packages)"
+    fi
+fi
+
 # ------------------------------------------------------- Shared resolvers
 
 mapfile -t PACKAGES < <(grep -v '^#' archiso/packages.${TARGET_ARCH} | grep -v '^$')
