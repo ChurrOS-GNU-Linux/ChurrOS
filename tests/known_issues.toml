@@ -13,13 +13,6 @@
 #   note = "qué falla, consecuencia y dónde"
 
 # --- test_file_permissions ---
-[[issue]]
-id = "exec-mode:/usr/local/bin/livecd-sound"
-note = "archiso/profiledef.sh no declara /usr/local/bin/livecd-sound en file_permissions (la releng de archiso lo pone 0:0:755). mkarchiso copia el airootfs con --no-preserve=mode y el script sale 0644: en la entrada Accessibility (accessibility=on) livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC y no hay sonido ni lector de pantalla. Arreglo: añadir [\"/usr/local/bin/livecd-sound\"]=\"0:0:755\"."
-
-[[issue]]
-id = "exec-mode:/usr/local/bin/Installation_guide"
-note = "archiso/profiledef.sh no declara /usr/local/bin/Installation_guide (resto de la releng de archiso, abre la guía de instalación de Arch con xdg-open). Sale 0644: escribir Installation_guide en la terminal del Live da 'permission denied'. Arreglo: añadir [\"/usr/local/bin/Installation_guide\"]=\"0:0:755\" o borrar el fichero si ChurrOS no lo quiere."
 
 # --- tests/static/test_release_bundle.py ---
 
@@ -134,26 +127,6 @@ id = "ref:niri/i686:scripts/cli/build.sh:initial_session:niri"
 note = "La ISO i686 arranca greetd con [initial_session] command = \"niri\" (SESSION_CMD de scripts/cli/build.sh), pero archlinux32 no empaqueta niri y packages.i686 no lo lista (lo dice su cabecera): la sesión Live autologin falla y la edición por defecto i686 no tiene escritorio."
 
 [[issue]]
-id = "ref:niri/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "livecd-talk.service (entrada Accessibility de GRUB/syslinux, accessibility=on) hace ExecStartPost=systemctl start espeakup.service, pero espeakup solo está en packages.aarch64: en la ISO x86_64 la unidad falla y no hay lector de pantalla. Falta espeakup en archiso/packages.x86_64."
-
-[[issue]]
-id = "ref:niri/i686:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "Igual que en x86_64: livecd-talk.service arranca espeakup.service y packages.i686 no trae espeakup; la entrada Accessibility arranca sin lector de pantalla."
-
-[[issue]]
-id = "ref:xfce/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "livecd-talk.service arranca espeakup.service y packages.xfce.x86_64 no trae espeakup: la entrada Accessibility de la ISO XFCE no tiene lector de pantalla."
-
-[[issue]]
-id = "ref:server/x86_64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "livecd-talk.service arranca espeakup.service y packages.server.x86_64 no trae espeakup: la entrada Accessibility de la ISO server no tiene lector de pantalla."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "livecd-talk.service arranca espeakup.service y packages.pi.aarch64 no trae espeakup (la lista niri de aarch64 sí): la entrada Accessibility de la ISO Pi no tiene lector de pantalla."
-
-[[issue]]
 id = "ref:pi/aarch64:archiso/airootfs/etc/passwd:/usr/bin/zsh"
 note = "etc/passwd da a root la shell /usr/bin/zsh, pero packages.pi.aarch64 no trae zsh (ni llega como dependencia): en la ISO Pi el login de root en otra consola o por serie no tiene shell (y root/.zlogin, el respaldo que arranca greetd, nunca se ejecuta)."
 
@@ -181,14 +154,6 @@ note = "La waybar de Pi abre foot con clic derecho en custom/launcher, pero pack
 id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
 note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefox, pero packages.server.x86_64 no trae firefox: en la sesión Live de la ISO server el botón no hace nada."
 
-[[issue]]
-id = "ref-not-executable:/usr/local/bin/livecd-sound"
-note = "livecd-alsa-unmuter.service y livecd-talk.service ejecutan /usr/local/bin/livecd-sound, que no tiene entrada en file_permissions de archiso/profiledef.sh: mkarchiso lo copia como 0644 y las dos unidades fallan con 203/EXEC en la entrada Accessibility."
-
-[[issue]]
-id = "ref-args:archiso/airootfs/etc/skel/.config/autostart/churros-welcome.desktop:churros-welcome"
-note = "El autostart XFCE lanza `churros-welcome --live-only`, pero rust/churros-welcome/src/main.rs termina en app.run(), que pasa argv a GApplication: en la sesión Live XFCE sale con 'Unknown option --live-only' (exit 1) y la bienvenida (con el botón del instalador) no aparece. Hay que usar run_with_args."
-
 # --- test_rust_contract ---
 [[issue]]
 id = "deploy:gitignore:churros-tour"
@@ -198,18 +163,7 @@ note = ".gitignore lista los binarios y assets que scripts/build-rust.sh escribe
 id = "deploy:clean:churros-tour"
 note = "scripts/cli/clean.sh (./churros clean) borra los binarios Rust generados uno a uno y le falta archiso/airootfs/usr/bin/churros-tour (el trap de build.sh sí lo borra): tras un build cortado antes del trap, clean no lo quita y, como tampoco está en .gitignore, queda un ELF sin versionar en el árbol. Arreglo: añadir `rm -f archiso/airootfs/usr/bin/churros-tour` a clean.sh (mejor: recorrer los crates con deploy = true)."
 
-[[issue]]
-id = "rust-asset:churros-settings:theme.svg"
-note = "rust/preferences/src/pages/users.rs pasa Some(\"theme.svg\") a Row::new en la fila 'Mensaje de bienvenida', pero rust/preferences/assets/icons/ no tiene theme.svg: gtk::Image::from_file muestra el icono de imagen rota en Ajustes > Usuarios, sin ningún error. Arreglo: usar un icono que exista (p. ej. users.svg o palette.svg) o añadir assets/icons/theme.svg."
-
-[[issue]]
-id = "rust-cli:churros-welcome --live-only"
-note = "archiso/airootfs/etc/skel/.config/autostart/churros-welcome.desktop (OnlyShowIn=XFCE) ejecuta `churros-welcome --live-only`. rust/churros-welcome/src/main.rs mira la opción con std::env::args().any() y después llama a app.run(), que entrega argv a GApplication; como no la registra, GLib imprime 'Unknown option --live-only' y sale con 1 (reproducido con GLib 2.80). En el Live de las ediciones xfce y server (existe /run/archiso, así que no sale antes) la bienvenida, que es la entrada al instalador, nunca se abre sola. Arreglo: app.run_with_args(&[] as &[&str]) como popups y tour, o registrar la opción con add_main_option."
-
 # --- test_editions / test_systemd_units ---
-[[issue]]
-id = "pkg-list:packages.pi.aarch64:sin-salto-final"
-note = "archiso/packages.pi.aarch64 termina en 'waybar' sin salto de línea. Hoy funciona, pero `echo paquete >> archiso/packages.pi.aarch64` (como se suele añadir un paquete) crea la línea 'waybarpaquete' y pacstrap aborta con 'target not found'. Arreglo: añadir el salto de línea final."
 
 [[issue]]
 id = "pkg-list:packages.pi.aarch64:duplicado:fuzzel"
@@ -284,58 +238,6 @@ id = "edition-pkg:pi/aarch64:zsh"
 note = "root/scripts/users.sh crea churros con `-s /bin/zsh` y archiso/airootfs/etc/passwd da /usr/bin/zsh a root, pero archiso/packages.pi.aarch64 no trae zsh: los dos usuarios de la Live pi tienen una shell que no existe (el login en consola, su y sudo -i fallan). Arreglo: añadir zsh a packages.pi.aarch64."
 
 [[issue]]
-id = "edition-pkg:server/x86_64:kpmcore"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae kpmcore y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:polkit-qt6"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae polkit-qt6 y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:qt6-declarative"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae qt6-declarative y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:qt6-svg"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae qt6-svg y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:yaml-cpp"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae yaml-cpp y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares encuentra librerías sin resolver y la edición server no se puede instalar. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:zenity"
-note = "La Live de server arranca XFCE solo para ejecutar el instalador gráfico (comentario de build.sh), pero archiso/packages.server.x86_64 no trae zenity y no le llega como dependencia (pacman -Sp de la lista: kcoreaddons y qt6-translations sí llegan por kcrash y qt6-base, este no). Calamares se desempaqueta con bsdtar sin dependencias, así que /usr/local/bin/calamares no puede mostrar el diálogo de error cuando faltan librerías. Arreglo: copiar a packages.server.x86_64 el bloque 'Calamares installer dependencies' de packages.x86_64."
-
-[[issue]]
-id = "unit-dep:niri/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
-
-[[issue]]
-id = "unit-dep:niri/i686:etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.i686 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
-
-[[issue]]
-id = "unit-dep:xfce/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.xfce.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
-
-[[issue]]
-id = "unit-dep:server/x86_64:etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.server.x86_64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
-
-[[issue]]
-id = "unit-dep:pi/aarch64:etc/systemd/system/livecd-talk.service:espeakup.service"
-note = "etc/systemd/system/livecd-talk.service (entrada de arranque Accessibility, accessibility=on) ejecuta `ExecStartPost=systemctl start espeakup.service`, pero archiso/packages.pi.aarch64 no trae espeakup (solo packages.aarch64 lo lista; la releng de archiso lo incluye): systemctl falla, la unidad queda failed y no hay lector de pantalla. Se suma a que /usr/local/bin/livecd-sound sale 0644 (exec-mode:/usr/local/bin/livecd-sound). Arreglo: añadir espeakup a la lista."
-
-[[issue]]
-id = "unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service"
-note = "etc/systemd/system/multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, del paquete modemmanager, que no está en ninguna lista ni llega como dependencia (comprobado con pacman -Sp de las seis listas). El enlace queda colgando: la Live no arranca ModemManager (módems 3G/4G) aunque el perfil lo pretende, y scripts/test-network-services.py exige el enlace. Arreglo: añadir modemmanager a las listas, o borrar multi-user.target.wants/ModemManager.service y el alias dbus-org.freedesktop.ModemManager1.service."
-
-[[issue]]
-id = "unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
-note = "El alias etc/systemd/system/dbus-org.freedesktop.ModemManager1.service apunta a /usr/lib/systemd/system/ModemManager.service, del paquete modemmanager, que no está en ninguna lista ni llega como dependencia (comprobado con pacman -Sp de las seis listas). El enlace queda colgando: la Live no arranca ModemManager (módems 3G/4G) aunque el perfil lo pretende, y scripts/test-network-services.py exige el enlace. Arreglo: añadir modemmanager a las listas, o borrar multi-user.target.wants/ModemManager.service y el alias dbus-org.freedesktop.ModemManager1.service."
-
-[[issue]]
 id = "unit-enable:pi/aarch64:ufw.service"
 note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-systemd.conf activan ufw.service, pero archiso/packages.pi.aarch64 no trae ufw: enable_unit solo avisa, Calamares lo salta (no es mandatory) y la Live y el sistema instalado de la pi quedan sin cortafuegos; Ajustes > Privacidad ejecuta ufw y falla. Arreglo: añadir ufw a packages.pi.aarch64."
 
@@ -357,116 +259,12 @@ id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
 note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."
 
 # --- tests/iso/check_iso.py (confirmado en una ISO niri x86_64 construida) ---
-[[issue]]
-id = "iso-niri-x86_64:not-executable:/usr/local/bin/livecd-sound"
-note = "En la ISO, /usr/local/bin/livecd-sound tiene modo 644: mkarchiso no conserva el +x de git y profiledef.sh no lo declara en file_permissions. En la entrada Accessibility, livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC. Mismo fallo que exec-mode:/usr/local/bin/livecd-sound."
-
-[[issue]]
-id = "iso-niri-x86_64:not-executable:/usr/local/bin/Installation_guide"
-note = "En la ISO, /usr/local/bin/Installation_guide tiene modo 644 (sin entrada en file_permissions): 'permission denied' al ejecutarlo en el Live. Mismo fallo que exec-mode:/usr/local/bin/Installation_guide."
-
-[[issue]]
-id = "iso-niri-x86_64:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
-note = "En la ISO, multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, que no existe: modemmanager no está en ninguna lista. Mismo fallo que unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service."
-
-[[issue]]
-id = "iso-niri-x86_64:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
-note = "En la ISO, el alias dbus-org.freedesktop.ModemManager1.service apunta a una unidad que no existe (modemmanager no se instala). Mismo fallo que unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service."
 
 # --- tests/iso/check_iso.py (confirmado en una ISO server x86_64 construida) ---
-[[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6Qml.so"
-note = "/usr/bin/calamares necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6Quick.so"
-note = "/usr/bin/calamares necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:calamares:libQt6QuickWidgets.so"
-note = "/usr/bin/calamares necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares.so:libkpmcore.so"
-note = "/usr/lib/libcalamares.so.3.4.2 necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares.so:libyaml-cpp.so"
-note = "/usr/lib/libcalamares.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_job_fsresizer.so:libkpmcore.so"
-note = "/usr/lib/calamares/modules/fsresizer/libcalamares_job_fsresizer.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_netinstall.so:libyaml-cpp.so"
-note = "/usr/lib/calamares/modules/netinstall/libcalamares_viewmodule_netinstall.so necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamares_viewmodule_partition.so:libkpmcore.so"
-note = "/usr/lib/calamares/modules/partition/libcalamares_viewmodule_partition.so necesita libkpmcore.so.13, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Qml.so"
-note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Qml.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Quick.so"
-note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Quick.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6QuickWidgets.so"
-note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6QuickWidgets.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libQt6Svg.so"
-note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libQt6Svg.so.6, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:missing-lib:libcalamaresui.so:libyaml-cpp.so"
-note = "/usr/lib/libcalamaresui.so.3.4.2 necesita libyaml-cpp.so.0.9, que no está en la ISO. customize_airootfs.sh desempaqueta Calamares con bsdtar y pacman nunca resuelve sus dependencias; packages.server.x86_64 no tiene el bloque 'Calamares installer dependencies' de packages.x86_64 (yaml-cpp, kpmcore, qt6-declarative, qt6-svg...). Calamares no arranca: la edición server no se puede instalar. Mismo fallo que edition-pkg:server/x86_64:*."
-
-[[issue]]
-id = "iso-server-x86_64:not-executable:/usr/local/bin/Installation_guide"
-note = "/usr/local/bin/Installation_guide tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-server-x86_64:not-executable:/usr/local/bin/livecd-sound"
-note = "/usr/local/bin/livecd-sound tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-server-x86_64:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
-note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-server-x86_64:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
-note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
 
 # --- tests/iso/check_iso.py (confirmado en una ISO xfce x86_64 construida) ---
-[[issue]]
-id = "iso-xfce-x86_64:not-executable:/usr/local/bin/Installation_guide"
-note = "/usr/local/bin/Installation_guide tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-xfce-x86_64:not-executable:/usr/local/bin/livecd-sound"
-note = "/usr/local/bin/livecd-sound tiene modo 644 en la ISO (sin entrada en file_permissions): falta en file_permissions (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-xfce-x86_64:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
-note = "/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
-
-[[issue]]
-id = "iso-xfce-x86_64:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
-note = "/etc/systemd/system/multi-user.target.wants/ModemManager.service -> /usr/lib/systemd/system/ModemManager.service no existe: modemmanager no está en ninguna lista (mismo fallo que en niri)."
 
 # --- tests/vm/boot_smoke.py ---
-[[issue]]
-id = "boot-server-x86_64:process:churros-welcome"
-note = "Confirmado arrancando la ISO server en QEMU: la sesión XFCE del Live llega al escritorio, pero la bienvenida (la entrada al instalador) no se abre. El autostart XFCE ejecuta `churros-welcome --live-only` y main.rs acaba en app.run(), que pasa argv a GApplication: 'Unknown option --live-only', sale con 1. Mismo fallo que rust-cli:churros-welcome --live-only."
-
-[[issue]]
-id = "boot-xfce-x86_64:process:churros-welcome"
-note = "Misma causa que boot-server:process:churros-welcome (mismo autostart OnlyShowIn=XFCE y misma sesión churros-xfce-session): en el Live XFCE la bienvenida no se abre. Arreglo: app.run_with_args(&[] as &[&str]) en rust/churros-welcome/src/main.rs."
 
 [[issue]]
 id = "unit-enable:niri/aarch64:ananicy-cpp.service"
@@ -488,9 +286,6 @@ note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero so
 id = "unit-enable:xfce/x86_64:ananicy-cpp.service"
 note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en xfce/x86_64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
 
-
-
-
 [[issue]]
 id = "ref:niri/x86_64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/x86_64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
@@ -498,22 +293,6 @@ note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_sta
 [[issue]]
 id = "ref:niri/aarch64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
-
-[[issue]]
-id = "iso-niri-aarch64:not-executable:/usr/local/bin/livecd-sound"
-note = "En la ISO aarch64 (iso-arm64.yml), /usr/local/bin/livecd-sound tiene modo 644: mkarchiso no conserva el +x de git y profiledef.sh no lo declara en file_permissions. En la entrada Accessibility, livecd-alsa-unmuter.service y livecd-talk.service fallan con 203/EXEC. Mismo fallo que exec-mode:/usr/local/bin/livecd-sound."
-
-[[issue]]
-id = "iso-niri-aarch64:not-executable:/usr/local/bin/Installation_guide"
-note = "En la ISO aarch64 (iso-arm64.yml), /usr/local/bin/Installation_guide tiene modo 644 (sin entrada en file_permissions): 'permission denied' al ejecutarlo en el Live. Mismo fallo que exec-mode:/usr/local/bin/Installation_guide."
-
-[[issue]]
-id = "iso-niri-aarch64:unit-link:/etc/systemd/system/multi-user.target.wants/ModemManager.service"
-note = "En la ISO aarch64 (iso-arm64.yml), multi-user.target.wants/ModemManager.service apunta a /usr/lib/systemd/system/ModemManager.service, que no existe: modemmanager no está en ninguna lista. Mismo fallo que unit-link:*:etc/systemd/system/multi-user.target.wants/ModemManager.service."
-
-[[issue]]
-id = "iso-niri-aarch64:unit-link:/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service"
-note = "En la ISO aarch64 (iso-arm64.yml), el alias dbus-org.freedesktop.ModemManager1.service apunta a una unidad que no existe (modemmanager no se instala). Mismo fallo que unit-link:*:etc/systemd/system/dbus-org.freedesktop.ModemManager1.service."
 
 [[issue]]
 id = "boot-server-x86_64:coredump:light-locker"
