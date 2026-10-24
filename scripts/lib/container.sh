@@ -206,6 +206,7 @@ container_run() {
 
     run_args=(run --rm
         --security-opt label=disable
+        --dns 1.1.1.1 --dns 8.8.8.8
         -v "$CHURROS_REPO_ROOT:/churros"
         -w /churros
         -v "$CHURROS_CONTAINER_HOME_VOL:/home/builder"
