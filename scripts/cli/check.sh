@@ -1955,6 +1955,58 @@ else
     fail "scripts/test-network-services.py"
 fi
 
+# ------------------------------------------------------- Documentation links
+
+section "Documentation links"
+
+# Cada enlace relativo de los .md versionados apunta a un fichero que existe, y
+# cada docs/**/*.md aparece en el índice docs/README.md. Así un doc que se borra
+# o se mueve no deja enlaces muertos ni páginas huérfanas.
+mapfile -t MARKDOWN < <(git ls-files '*.md')
+if python3 - "${MARKDOWN[@]}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+INLINE = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'][^)]*[\"'])?\s*\)")
+REFERENCE = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)", re.M)
+HTML = re.compile(r"\b(?:href|src)=[\"']([^\"']+)[\"']")
+
+errors = 0
+for name in sys.argv[1:]:
+    path = Path(name)
+    if not path.is_file():
+        continue
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    text = re.sub(r"`[^`\n]*`", "", text)
+    for target in INLINE.findall(text) + REFERENCE.findall(text) + HTML.findall(text):
+        if target.startswith("#") or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", target):
+            continue
+        local = target.split("#", 1)[0].split("?", 1)[0]
+        if local and not (path.parent / local).exists():
+            errors += 1
+            print(f"    {name}: enlace roto a {target}")
+
+index = Path("docs/README.md")
+linked = {
+    (index.parent / t.split("#", 1)[0]).resolve()
+    for t in INLINE.findall(index.read_text(encoding="utf-8"))
+    if not re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", t)
+}
+for doc in sorted(Path("docs").rglob("*.md")):
+    if doc != index and doc.resolve() not in linked:
+        errors += 1
+        print(f"    {doc} no aparece en docs/README.md")
+
+sys.exit(1 if errors else 0)
+PY
+then
+    pass "${#MARKDOWN[@]} markdown files: relative links resolve, docs/ fully indexed"
+else
+    fail "broken documentation links or docs missing from docs/README.md"
+fi
+
 # ---------------------------------------------------------- Test suite
 
 section "Test suite (tests/static)"

@@ -1,0 +1,109 @@
+name: Informe de hardware / prueba de ISO
+description: Resultado de probar una ISO de ChurrOS en un equipo real o en una máquina virtual, funcione o no.
+title: "hardware: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Un informe en el que todo funciona también sirve: así se sabe en qué equipos se ha probado ChurrOS.
+        Si encuentras un error concreto, ábrelo además con el formulario de error y enlázalo aquí.
+  - type: input
+    id: iso
+    attributes:
+      label: ISO probada
+      description: Nombre del fichero de la ISO o versión (`VERSION` de `/etc/os-release`).
+      placeholder: "p. ej. ChurrOS-AAAA.MM.DD-x86_64.iso"
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edición
+      options:
+        - niri (por defecto)
+        - xfce
+        - server (sin escritorio)
+        - pi (Raspberry Pi, aarch64)
+        - No lo sé
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Arquitectura
+      options:
+        - x86_64
+        - aarch64 (arm64)
+        - i686 (32 bits)
+    validations:
+      required: true
+  - type: dropdown
+    id: boot-mode
+    attributes:
+      label: Modo de arranque
+      options:
+        - UEFI
+        - BIOS (legacy)
+        - No lo sé
+    validations:
+      required: true
+  - type: input
+    id: machine
+    attributes:
+      label: Equipo
+      description: Fabricante y modelo, o el hipervisor si es una máquina virtual (QEMU, VirtualBox...).
+      placeholder: "p. ej. Lenovo ThinkPad T480 o QEMU con ./churros run"
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+  - type: input
+    id: wireless
+    attributes:
+      label: Wifi y Bluetooth
+      description: Modelo de la tarjeta, si se conoce.
+  - type: checkboxes
+    id: live
+    attributes:
+      label: Sistema Live
+      description: Marca lo que funcionó arrancando desde la ISO.
+      options:
+        - label: Arranca hasta el escritorio
+        - label: Gráficos y resolución correctos
+        - label: Red por cable
+        - label: Wifi
+        - label: Bluetooth
+        - label: Audio
+        - label: Suspender y reanudar
+        - label: El instalador (Calamares) se abre
+  - type: checkboxes
+    id: installed
+    attributes:
+      label: Sistema instalado
+      description: Marca lo que funcionó. Déjalo vacío si no instalaste. En la edición server, el sistema instalado arranca en consola de texto.
+      options:
+        - label: El instalador termina sin errores
+        - label: Arranca desde el disco
+        - label: Gráficos y resolución correctos
+        - label: Red por cable
+        - label: Wifi
+        - label: Bluetooth
+        - label: Audio
+        - label: Suspender y reanudar
+  - type: textarea
+    id: devices
+    attributes:
+      label: Salida de lspci -nn y lsusb
+      description: Ejecuta `lspci -nn` y `lsusb` en el equipo y pega la salida.
+      render: shell
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notas
+      description: Qué falló y cómo, errores en pantalla, enlaces a issues abiertos. Las capturas se pueden adjuntar aquí.

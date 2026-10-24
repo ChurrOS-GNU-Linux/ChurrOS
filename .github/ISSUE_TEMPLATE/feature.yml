@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Para cambios grandes, conviene discutirlos aquí antes de abrir un PR.
+        Para cambios grandes, conviene discutirlos aquí antes de abrir un PR. Un programa, una edición o una arquitectura nuevos no se empiezan hasta que la propuesta se apruebe según [docs/principios.md](https://github.com/ChurrOS-GNU-Linux/ChurrOS/blob/main/docs/principios.md).
   - type: textarea
     id: problem
     attributes:
@@ -19,6 +19,13 @@ body:
     attributes:
       label: Propuesta
       description: Cómo se imagina la solución (a alto nivel).
+    validations:
+      required: true
+  - type: textarea
+    id: principle
+    attributes:
+      label: Principio y coste de mantenimiento
+      description: Qué principio de docs/principios.md sirve esta propuesta, y qué sustituye o qué se deja de mantener a cambio. Si no sustituye nada, quién la mantendrá.
     validations:
       required: true
   - type: textarea
