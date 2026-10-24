@@ -21,3 +21,4 @@ greeting_msg = "Bienvenido a ChurrOS"
 [widget.clock]
 format = "%A, %d de %B  -  %H:%M"
 resolution = "1s"
+label_width = 300
