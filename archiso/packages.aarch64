@@ -246,3 +246,6 @@ zenity
 qt6-translations
 ttf-jetbrains-mono
 ttf-nerd-fonts-symbols-mono
+
+# Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
+modemmanager

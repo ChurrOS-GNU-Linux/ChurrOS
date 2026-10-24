@@ -1523,6 +1523,19 @@ class KnownIssuesTest(unittest.TestCase):
                                   "de tests/ (no silencian nada: borra la entrada o corrige la categoría):\n  "
                                   + "\n  ".join(orphans))
 
+    def test_audit_categories_keep_the_arch(self):
+        """La auditoría de ISO y la prueba de arranque apuntan sus fallos por
+        edición y arquitectura, haya o no entradas suyas en known_issues.toml:
+        sin la arquitectura, la ISO aarch64 daría por arreglado un fallo que
+        solo tiene la x86_64."""
+        for rel in ("tests/iso/check_iso.py", "tests/vm/boot_smoke.py"):
+            code = re.sub(r"(?m)^\s*#.*$", "", testlib.read_text(ROOT / rel))
+            values = re.findall(r'^\s*category\s*=\s*f"([^"\n]*)"', code, re.M)
+            self.assertTrue(values, f"{rel}: no se encuentra `category = f\"…\"`; actualiza esta prueba")
+            for value in values:
+                self.assertRegex(value, r"^[a-z]+-\{[^{}]+\}-\{[^{}]*arch[^{}]*\}$",
+                                 f"{rel}: la categoría {value!r} no es <prefijo>-{{edición}}-{{arch}}")
+
 
 # Lo que puede valer un {…} de una categoría f-string: edición, arquitectura,
 # nombre de la lista de paquetes (repo-pkg:{list_name(item)}) o 'unknown'.
