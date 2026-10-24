@@ -1,0 +1,12 @@
+# Revisión obligatoria de la red de pruebas. Un cambio que debilita una
+# comprobación (o la borra) deja pasar justo las regresiones que tenía que
+# parar, así que lo revisa quien mantiene el CI (ver MAINTAINERS).
+#
+# GitHub aplica la última regla que coincide.
+
+/tests/                       @sebaspi0922 @Hoyuse
+/tests/known_issues.toml      @sebaspi0922 @Hoyuse
+/scripts/cli/check.sh         @sebaspi0922
+/scripts/cli/test.sh          @sebaspi0922
+/scripts/test-*               @sebaspi0922 @Hoyuse
+/.github/                     @Hoyuse @sebaspi0922

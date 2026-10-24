@@ -1,0 +1,2299 @@
+# Regresiones sembradas: cada una tiene que hacer fallar la prueba `caught_by`
+# con `expect` en la salida. Las ejecuta tests/mutations/run_mutations.py
+# (./churros test --mutations; CI: job "mutations" de ci.yml).
+#
+# Son cambios dañinos y realistas, del tipo que entra con un cambio generado
+# sin revisar: quitar un paquete "que no se usa", perder un permiso, mover un
+# paso de Calamares, una errata en un script que solo corre al arrancar o al
+# instalar, desactivar una prueba para que el CI pase.
+#
+# Al arreglar un fallo, añade aquí la mutación que lo reproduce. Si una
+# mutación queda obsoleta porque el fichero cambió ('find' ya no aparece una
+# sola vez), actualízala para que siga describiendo la misma regresión; no la
+# borres sin sustituirla.
+
+
+# --- shell_perms ---
+
+[[mutation]]
+name = "test_file_permissions: The entry for churros-niri-session is deleted"
+file = "archiso/profiledef.sh"
+find = "  [\"/usr/bin/churros-niri-session\"]=\"0:0:755\"\n"
+replace = ""
+caught_by = "tests.static.test_file_permissions"
+expect = "[exec-mode:/usr/bin/churros-niri-session]"
+why = "The entry for churros-niri-session is deleted. The file is 100644 in git, so it ships 0644 and the installed greetd session fails with Permission denied."
+
+[[mutation]]
+name = "test_file_permissions: The mode is changed to 0"
+file = "archiso/profiledef.sh"
+find = "[\"/usr/local/bin/churros-write-root-config\"]=\"0:0:755\""
+replace = "[\"/usr/local/bin/churros-write-root-config\"]=\"0:0:644\""
+caught_by = "tests.static.test_file_permissions"
+expect = "[exec-mode:/usr/local/bin/churros-write-root-config]"
+why = "The mode is changed to 0:0:644, so pkexec of the root-config helper fails with permission denied."
+
+[[mutation]]
+name = "test_file_permissions: A typo in an entry key (same effect as adding a script without an entry)"
+file = "archiso/profiledef.sh"
+find = "[\"/usr/share/churros/scripts/verify-install\"]"
+replace = "[\"/usr/share/churros/scripts/verify-instal\"]"
+caught_by = "tests.static.test_file_permissions"
+expect = "[stale-permission:/usr/share/churros/scripts/verify-instal]"
+why = "A typo in an entry key (same effect as adding a script without an entry): the real script ships 0644 and the '-' prefix in shellprocess hides the failure. exec-mode:/usr/share/churros/scripts/verify-install also fires."
+
+[[mutation]]
+name = "test_file_permissions: A deploy=true crate has no entry, so the Rust binary ships 0644 and niri keybindings fail"
+file = "archiso/profiledef.sh"
+find = "  [\"/usr/bin/churros-popup\"]=\"0:0:755\"\n"
+replace = ""
+caught_by = "tests.static.test_file_permissions"
+expect = "[exec-mode:/usr/bin/churros-popup]"
+why = "A deploy=true crate has no entry, so the Rust binary ships 0644 and niri keybindings fail with EACCES."
+
+[[mutation]]
+name = "test_file_permissions: "
+file = "archiso/profiledef.sh"
+find = "  [\"/root/.automated_script.sh\"]=\"0:0:755\"\n"
+replace = ""
+caught_by = "tests.static.test_file_permissions"
+expect = "[exec-mode:/root/.automated_script.sh]"
+why = ".zlogin runs ~/.automated_script.sh. This is a path outside the exec dirs, found only through the reference scan."
+
+[[mutation]]
+name = "test_file_permissions: The password hashes become readable by every user"
+file = "archiso/profiledef.sh"
+find = "[\"/etc/shadow\"]=\"0:0:400\""
+replace = "[\"/etc/shadow\"]=\"0:0:644\""
+caught_by = "tests.static.test_file_permissions"
+expect = "[permission-sanity:/etc/shadow:modo]"
+why = "The password hashes become readable by every user."
+
+[[mutation]]
+name = "test_shell_scripts: An unclosed if in an extensionless session wrapper, which check"
+file = "archiso/airootfs/usr/bin/churros-niri-session"
+find = "exec /usr/bin/niri \"$@\""
+replace = "if [ -n \"$WAYLAND_DISPLAY\" ]; then\n    exec /usr/bin/niri \"$@\""
+caught_by = "tests.static.test_shell_scripts"
+expect = "archiso/airootfs/usr/bin/churros-niri-session: `bash -n` falla"
+why = "An unclosed if in an extensionless session wrapper, which check.sh never parses."
+
+[[mutation]]
+name = "test_shell_scripts: An unbalanced quote in an extensionless installer script"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find = "LOG=/var/log/churros-install-verify.log"
+replace = "LOG=\"/var/log/churros-install-verify.log"
+caught_by = "tests.static.test_shell_scripts"
+expect = "verify-install: `bash -n` falla"
+why = "An unbalanced quote in an extensionless installer script."
+
+[[mutation]]
+name = "test_shell_scripts: A zsh syntax error in root's"
+file = "archiso/airootfs/root/.zlogin"
+find = "if [[ \"$(tty 2>/dev/null)\" == \"/dev/tty1\" ]]"
+replace = "if [[ \"$(tty 2>/dev/null)\" == \"/dev/tty1\" ]"
+caught_by = "tests.static.test_shell_scripts"
+expect = "archiso/airootfs/root/.zlogin: `zsh -f -n` falla"
+why = "A zsh syntax error in root's .zlogin, which starts greetd on tty1."
+
+[[mutation]]
+name = "test_shell_scripts: A missing space before ]"
+file = "archiso/airootfs/usr/local/bin/churros-xsession"
+find = "if [ -x /usr/bin/churros-xfce-session ]; then"
+replace = "if [ -x /usr/bin/churros-xfce-session]; then"
+caught_by = "tests.static.test_shell_scripts"
+expect = "[shellcheck:archiso/airootfs/usr/local/bin/churros-xsession:SC1020]"
+why = "A missing space before ]: bash -n passes, but [ fails at runtime. Only shellcheck run on the extensionless file catches it."
+
+[[mutation]]
+name = "test_shell_scripts: An env shebang with an option"
+file = "archiso/airootfs/usr/bin/churros-portal-start"
+find = "#!/usr/bin/env bash\n"
+replace = "#!/usr/bin/env bash -e\n"
+caught_by = "tests.static.test_shell_scripts"
+expect = "[shebang:/usr/bin/churros-portal-start]"
+why = "An env shebang with an option: Linux passes 'bash -e' to env as one program name, so the script never starts."
+
+[[mutation]]
+name = "test_shell_scripts: The leading `"
+file = "archiso/airootfs/usr/share/churros/scripts/configure-greetd-session"
+find = ". /usr/share/churros/scripts/edition-session.sh"
+replace = "/usr/share/churros/scripts/edition-session.sh"
+caught_by = "tests.static.test_shell_scripts"
+expect = "[shebang:/usr/share/churros/scripts/edition-session.sh]"
+why = "The leading `.` is dropped, so the sourced library (no #!, mode 644) is executed instead of loaded."
+
+[[mutation]]
+name = "test_shell_scripts: A CRLF shebang (Windows editor or AI paste)"
+file = "archiso/airootfs/usr/local/bin/churros-theme"
+find = "#!/usr/bin/env bash\n"
+replace = "#!/usr/bin/env bash\r\n"
+caught_by = "tests.static.test_shell_scripts"
+expect = "[shebang:/usr/local/bin/churros-theme]"
+why = "A CRLF shebang (Windows editor or AI paste): the kernel looks for 'bash\\r'."
+
+[[mutation]]
+name = "test_shell_scripts: A Calamares shellprocess step executes the sourced library"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "-/usr/share/churros/scripts/verify-install\""
+replace = "-/usr/share/churros/scripts/edition-session.sh\""
+caught_by = "tests.static.test_shell_scripts"
+expect = "[shebang:/usr/share/churros/scripts/edition-session.sh]"
+why = "A Calamares shellprocess step executes the sourced library."
+
+
+# --- references ---
+
+[[mutation]]
+name = "test_references: AI dedups/trims the x86 list only; check"
+file = "archiso/packages.x86_64"
+find_re = "^foot\\n"
+replace = ""
+caught_by = "tests.static.test_references"
+expect = "[ref:niri/x86_64:archiso/airootfs/etc/skel/.config/niri/config.kdl:foot]"
+why = "AI dedups/trims the x86 list only; check.sh reads packages.aarch64"
+
+[[mutation]]
+name = "test_references: Mod+Shift+Space and the waybar launcher are left dead on x86_64"
+file = "archiso/packages.x86_64"
+find_re = "^fuzzel\\n"
+replace = ""
+caught_by = "tests.static.test_references"
+expect = "[ref:niri/x86_64:archiso/airootfs/etc/skel/.config/niri/config.kdl:fuzzel]"
+why = "Mod+Shift+Space and the waybar launcher are left dead on x86_64"
+
+[[mutation]]
+name = "test_references: typo that check"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "spawn \"thunar\""
+replace = "spawn \"thunarr\""
+caught_by = "tests.static.test_references"
+expect = "config.kdl:thunarr]"
+why = "typo that check.sh's substring heuristic accepts"
+
+[[mutation]]
+name = "test_references: check"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "&& churros-tour"
+replace = "&& churros-tuor"
+caught_by = "tests.static.test_references"
+expect = "config.kdl:churros-tuor]"
+why = "check.sh never parses spawn-sh-at-startup; the tour stops autostarting"
+
+[[mutation]]
+name = "test_references: Debian/Fedora path copied in"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "\"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\""
+replace = "\"/usr/libexec/polkit-gnome-authentication-agent-1\""
+caught_by = "tests.static.test_references"
+expect = "config.kdl:/usr/libexec/polkit-gnome-authentication-agent-1]"
+why = "Debian/Fedora path copied in: no polkit agent, so pkexec prompts fail"
+
+[[mutation]]
+name = "test_references: The Live autologin session command does not exist, giving a black screen"
+file = "scripts/cli/build.sh"
+find = "SESSION_CMD=\"niri\" ;;"
+replace = "SESSION_CMD=\"nirii\" ;;"
+caught_by = "tests.static.test_references"
+expect = "[ref:niri/x86_64:scripts/cli/build.sh:initial_session:nirii]"
+why = "The Live autologin session command does not exist, giving a black screen"
+
+[[mutation]]
+name = "test_references: The unit fails with 203/EXEC and no check reads ExecStart"
+file = "archiso/airootfs/etc/systemd/system/choose-mirror.service"
+find = "ExecStart=/usr/local/bin/choose-mirror"
+replace = "ExecStart=/usr/local/bin/choose-mirorr"
+caught_by = "tests.static.test_references"
+expect = "choose-mirror.service:/usr/local/bin/choose-mirorr]"
+why = "The unit fails with 203/EXEC and no check reads ExecStart"
+
+[[mutation]]
+name = "test_references: After the first kernel update GRUB cannot read /boot on btrfs"
+file = "archiso/airootfs/etc/pacman.d/hooks/91-churros-boot-grub-readable.hook"
+find = "Exec = /usr/share/churros/scripts/make-boot-grub-readable"
+replace = "Exec = /usr/share/churros/scripts/make-boot-grub-readble"
+caught_by = "tests.static.test_references"
+expect = "91-churros-boot-grub-readable.hook:/usr/share/churros/scripts/make-boot-grub-readble]"
+why = "After the first kernel update GRUB cannot read /boot on btrfs"
+
+[[mutation]]
+name = "test_references: Replaces the brief's 'drop xorg-xinit', which is NOT a bug"
+file = "archiso/packages.xfce.x86_64"
+find = "\nxfce4-session\n"
+replace = "\n"
+caught_by = "tests.static.test_references"
+expect = "[ref:xfce/x86_64:archiso/airootfs/usr/bin/churros-xfce-session:/usr/bin/startxfce4]"
+why = "Replaces the brief's 'drop xorg-xinit', which is NOT a bug: xfce4-session depends on xorg-xinit (pacman -Si), so it is recorded as [implicit]. Dropping xfce4-session leaves startxfce4 missing, and nothing else in the list pulls it (checked with pacman -Sp)"
+
+[[mutation]]
+name = "test_references: 'Unused package cleanup' empties the Bluetooth pages, popups and control center"
+file = "archiso/packages.x86_64"
+find_re = "^bluez-utils\\n"
+replace = ""
+caught_by = "tests.static.test_references"
+expect = "[ref:niri/x86_64:rust/services:bluetoothctl]"
+why = "'Unused package cleanup' empties the Bluetooth pages, popups and control center"
+
+[[mutation]]
+name = "test_references: Popup name not in POPUPS"
+file = "archiso/airootfs/etc/skel/.config/waybar/config.jsonc"
+find = "\"churros-popup brightness\""
+replace = "\"churros-popup brillo\""
+caught_by = "tests.static.test_references"
+expect = "[ref-args:archiso/airootfs/etc/skel/.config/waybar/config.jsonc:churros-popup brillo]"
+why = "Popup name not in POPUPS: churros-popup exits 64 and nothing appears"
+
+[[mutation]]
+name = "test_references: Adds a CLI flag to an app whose main uses app"
+file = "archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-14/14.desktop"
+find = "Exec=churros-settings"
+replace = "Exec=churros-settings --page appearance"
+caught_by = "tests.static.test_references"
+expect = "[ref-args:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-14/14.desktop:churros-settings]"
+why = "Adds a CLI flag to an app whose main uses app.run(), so GApplication rejects it"
+
+[[mutation]]
+name = "test_references: niri spawn-at-startup gets EACCES because mkarchiso drops git modes"
+file = "archiso/profiledef.sh"
+find = "  [\"/usr/bin/churros-portal-start\"]=\"0:0:755\"\n"
+replace = ""
+caught_by = "tests.static.test_references"
+expect = "[ref-not-executable:/usr/bin/churros-portal-start]"
+why = "niri spawn-at-startup gets EACCES because mkarchiso drops git modes"
+
+[[mutation]]
+name = "test_references: Dead XFCE shortcut that nothing scans today"
+file = "archiso/airootfs/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
+find = "value=\"xfce4-popup-whiskermenu\""
+replace = "value=\"xfce4-popup-whiskermenuu\""
+caught_by = "tests.static.test_references"
+expect = "xfce4-keyboard-shortcuts.xml:xfce4-popup-whiskermenuu]"
+why = "Dead XFCE shortcut that nothing scans today"
+
+[[mutation]]
+name = "test_references: labwc commands are never resolved today"
+file = "archiso/airootfs/etc/xdg/labwc/rc.xml"
+find = "<command>pcmanfm</command>"
+replace = "<command>pcmanfmm</command>"
+caught_by = "tests.static.test_references"
+expect = "[ref:pi/aarch64:archiso/airootfs/etc/xdg/labwc/rc.xml:pcmanfmm]"
+why = "labwc commands are never resolved today"
+
+[[mutation]]
+name = "test_references: The installed greetd session points to a missing wrapper, giving a login loop"
+file = "archiso/airootfs/usr/share/churros/scripts/edition-session.sh"
+find = "/usr/bin/churros-pi-session ;;"
+replace = "/usr/bin/churros-pi-sesion ;;"
+caught_by = "tests.static.test_references"
+expect = "[ref:pi/aarch64:archiso/airootfs/usr/share/churros/scripts/edition-session.sh:initial_session:/usr/bin/churros-pi-sesion]"
+why = "The installed greetd session points to a missing wrapper, giving a login loop"
+
+[[mutation]]
+name = "test_references: Install fails at the very end, or GRUB keeps the old config"
+file = "installer/calamares/modules/shellprocess-grub-theme.conf"
+find = "\"grub-mkconfig -o /boot/grub/grub.cfg\""
+replace = "\"grub-mkconfg -o /boot/grub/grub.cfg\""
+caught_by = "tests.static.test_references"
+expect = "shellprocess-grub-theme.conf:grub-mkconfg]"
+why = "Install fails at the very end, or GRUB keeps the old config"
+
+[[mutation]]
+name = "test_references: Pi volume scroll and mute stop working"
+file = "archiso/packages.pi.aarch64"
+find_re = "^wireplumber\\n"
+replace = ""
+caught_by = "tests.static.test_references"
+expect = "[ref:pi/aarch64:archiso/airootfs/usr/share/churros/pi/waybar/config.jsonc:wpctl]"
+why = "Pi volume scroll and mute stop working"
+
+[[mutation]]
+name = "test_references: The session wrapper's final exec target is broken"
+file = "archiso/airootfs/usr/bin/churros-pi-session"
+find = "exec /usr/bin/labwc"
+replace = "exec /usr/bin/labwcc"
+caught_by = "tests.static.test_references"
+expect = "[ref:pi/aarch64:archiso/airootfs/usr/bin/churros-pi-session:/usr/bin/labwcc]"
+why = "The session wrapper's final exec target is broken"
+
+[[mutation]]
+name = "test_references: A typo in a '-' (failure-ignored) command is silent at runtime"
+file = "archiso/airootfs/etc/systemd/system/greetd.service.d/plymouth.conf"
+find = "ExecStartPre=-/usr/bin/plymouth quit"
+replace = "ExecStartPre=-/usr/bin/plymoth quit"
+caught_by = "tests.static.test_references"
+expect = "[ref:any:archiso/airootfs/etc/systemd/system/greetd.service.d/plymouth.conf:/usr/bin/plymoth]"
+why = "A typo in a '-' (failure-ignored) command is silent at runtime"
+
+[[mutation]]
+name = "test_references: check (2)"
+file = "archiso/airootfs/etc/skel/.config/autostart/picom.desktop"
+find = "Exec=picom -b"
+replace = "Exec=picomm -b"
+caught_by = "tests.static.test_references"
+expect = "[ref:xfce/x86_64:archiso/airootfs/etc/skel/.config/autostart/picom.desktop:picomm]"
+why = "check.sh never scans autostart entries"
+
+[[mutation]]
+name = "test_references: Typo in a program that Rust spawns"
+file = "rust/preferences/src/services/system.rs"
+find = "Command::new(\"lspci\")"
+replace = "Command::new(\"lscpi\")"
+caught_by = "tests.static.test_references"
+expect = "[ref:niri/x86_64:rust/preferences:lscpi]"
+why = "Typo in a program that Rust spawns"
+
+
+# --- editions_systemd ---
+
+[[mutation]]
+name = "test_editions: An AI 'dedups' the x86_64 list and drops the greeter"
+file = "archiso/packages.x86_64"
+find_re = "^greetd-regreet\\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/x86_64:greetd-regreet"
+why = "An AI 'dedups' the x86_64 list and drops the greeter: greetd's default_session (cage -s -- regreet) cannot start."
+
+[[mutation]]
+name = "test_editions: `echo foo >> packages"
+file = "archiso/packages.pi.aarch64"
+find_re = "^waybar$"
+replace = "waybarfoo"
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:pi/aarch64:waybar"
+why = "`echo foo >> packages.pi.aarch64` on a list without final newline glues the package to 'waybar'; churros-pi-session loses its bar."
+
+[[mutation]]
+name = "test_editions: zsh dropped while trimming the list"
+file = "archiso/packages.x86_64"
+find_re = "^zsh\\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/x86_64:zsh"
+why = "zsh dropped while trimming the list: users.sh (-s /bin/zsh) and root in etc/passwd get a missing shell."
+
+[[mutation]]
+name = "test_editions: Duplicated line after a merge or copy-paste in an edition list"
+file = "archiso/packages.xfce.x86_64"
+find_re = "^zenity\\n"
+replace = "zenity\\nzenity\\n"
+caught_by = "tests.static.test_editions"
+expect = "pkg-list:packages.xfce.x86_64:duplicado:zenity"
+why = "Duplicated line after a merge or copy-paste in an edition list."
+
+[[mutation]]
+name = "test_editions: The xfce|server arm is 'simplified' to xfce)"
+file = "scripts/cli/build.sh"
+find = "    xfce|server)         SESSION_CMD=\"/usr/bin/churros-xfce-session\" ;;"
+replace = "    xfce)         SESSION_CMD=\"/usr/bin/churros-xfce-session\" ;;"
+caught_by = "tests.static.test_editions"
+expect = "build.sh no tiene brazo SESSION_CMD para 'server'"
+why = "The xfce|server arm is 'simplified' to xfce): every server build aborts with 'sin comando de sesión'."
+
+[[mutation]]
+name = "test_editions: Typo in the Live session command"
+file = "scripts/cli/build.sh"
+find = "    niri)                SESSION_CMD=\"niri\" ;;"
+replace = "    niri)                SESSION_CMD=\"nirii\" ;;"
+caught_by = "tests.static.test_editions"
+expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
+why = "Typo in the Live session command: every niri ISO autologins a command that does not exist."
+
+[[mutation]]
+name = "test_editions: el server pierde xfce4-session (startxfce4)"
+file = "archiso/packages.server.x86_64"
+find = "\nxfce4-session\n"
+replace = "\n"
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:server/x86_64:xfce4-session"
+why = "churros-xfce-session ejecuta startxfce4 (xfce4-session): sin él, la sesión Live del server vuelve al greeter en bucle. (Quitar solo xorg-xinit no rompe nada: xfce4-session depende de él.)"
+
+[[mutation]]
+name = "test_editions: Removing [multilib] makes pacstrap fail on lib32-mesa / lib32-vulkan-icd-loader"
+file = "archiso/pacman.x86_64.conf"
+find = "[multilib]\nInclude = /etc/pacman.d/mirrorlist\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "sin [multilib] y las listas piden"
+why = "Removing [multilib] makes pacstrap fail on lib32-mesa / lib32-vulkan-icd-loader."
+
+[[mutation]]
+name = "test_editions: Installed pi systems would fall into the default arm and start churros-niri-session (niri"
+file = "archiso/airootfs/usr/share/churros/scripts/edition-session.sh"
+find = "        pi)     printf '%s\\n' /usr/bin/churros-pi-session ;;\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "churros_session_command no tiene brazo para 'pi'"
+why = "Installed pi systems would fall into the default arm and start churros-niri-session (niri is not installed)."
+
+[[mutation]]
+name = "test_editions: The aarch64 guard loses the pi edition"
+file = "scripts/cli/build.sh"
+find = " && [ \"$EDITION\" != pi ]"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "testlib.EDITIONS tiene combinaciones que build.sh rechaza"
+why = "The aarch64 guard loses the pi edition: build.sh rejects --edition pi --arch arm64."
+
+[[mutation]]
+name = "test_systemd_units: enable_unit only warns on a missing unit and getty@tty1 is masked"
+file = "archiso/airootfs/root/scripts/services.sh"
+find = "enable_unit greetd.service"
+replace = "enable_unit greetd.servce"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-enable:*:greetd.servce"
+why = "enable_unit only warns on a missing unit and getty@tty1 is masked: the Live boots to an empty tty."
+
+[[mutation]]
+name = "test_systemd_units: ExecStart typo"
+file = "archiso/airootfs/etc/systemd/system/churros-update.service"
+find = "ExecStart=/usr/local/bin/churros-update-auto"
+replace = "ExecStart=/usr/local/bin/churros-update-autoo"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-exec:*:etc/systemd/system/churros-update.service:/usr/local/bin/churros-update-autoo"
+why = "ExecStart typo: the auto-update service fails with 203/EXEC."
+
+[[mutation]]
+name = "test_systemd_units: A unit is deleted or renamed but its multi-user"
+file = "archiso/airootfs/etc/systemd/system/choose-mirror.service"
+delete = true
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-link:*:etc/systemd/system/multi-user.target.wants/choose-mirror.service"
+why = "A unit is deleted or renamed but its multi-user.target.wants link stays dangling."
+
+[[mutation]]
+name = "test_systemd_units: pacman rejects the hook"
+file = "archiso/airootfs/etc/pacman.d/hooks/50-churros-snapshot.hook"
+find = "Operation = Upgrade"
+replace = "Operation = Upgarde"
+caught_by = "tests.static.test_systemd_units"
+expect = "hook:50-churros-snapshot.hook:Operation=Upgarde"
+why = "pacman rejects the hook: no pre-transaction btrfs snapshots."
+
+[[mutation]]
+name = "test_systemd_units: 'Cleanup' drops the '-'"
+file = "archiso/airootfs/etc/systemd/system/greetd.service.d/plymouth.conf"
+find = "ExecStartPre=-/usr/bin/plymouth quit"
+replace = "ExecStartPre=/usr/bin/plymouth quit"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-exec:pi/aarch64:etc/systemd/system/greetd.service.d/plymouth.conf:/usr/bin/plymouth"
+why = "'Cleanup' drops the '-': on an edition without plymouth greetd.service fails before starting."
+
+[[mutation]]
+name = "test_systemd_units: systemd ignores the misspelled section"
+file = "archiso/airootfs/etc/systemd/system/pacman-init.service"
+find = "[Service]"
+replace = "[Sevice]"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-syntax:etc/systemd/system/pacman-init.service:seccion:Sevice"
+why = "systemd ignores the misspelled section: the keyring is never initialised in the Live."
+
+[[mutation]]
+name = "test_systemd_units: After a kernel upgrade /boot stays zstd-compressed and GRUB fails with 'premature end of f"
+file = "archiso/airootfs/etc/pacman.d/hooks/91-churros-boot-grub-readable.hook"
+find = "Exec = /usr/share/churros/scripts/make-boot-grub-readable"
+replace = "Exec = /usr/share/churros/scripts/make-boot-grub-readble"
+caught_by = "tests.static.test_systemd_units"
+expect = "hook-exec:*:91-churros-boot-grub-readable.hook:/usr/share/churros/scripts/make-boot-grub-readble"
+why = "After a kernel upgrade /boot stays zstd-compressed and GRUB fails with 'premature end of file'."
+
+[[mutation]]
+name = "test_systemd_units: systemd refuses a mount whose Where= does not match its name; pacman-init (BindsTo) fails"
+file = "archiso/airootfs/etc/systemd/system/etc-pacman.d-gnupg.mount"
+find = "Where=/etc/pacman.d/gnupg"
+replace = "Where=/etc/pacman.d/gpg"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-syntax:etc/systemd/system/etc-pacman.d-gnupg.mount:Where=/etc/pacman.d/gpg"
+why = "systemd refuses a mount whose Where= does not match its name; pacman-init (BindsTo) fails."
+
+[[mutation]]
+name = "test_systemd_units: Mandatory unit typo"
+file = "installer/calamares/modules/services-systemd.conf"
+find = "  - name: \"greetd.service\""
+replace = "  - name: \"greetd.servcie\""
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-enable:niri/x86_64:greetd.servcie"
+why = "Mandatory unit typo: the services-systemd job aborts the installation."
+
+[[mutation]]
+name = "test_systemd_units: The mask succeeds on a non-existent name and getty keeps running on tty1"
+file = "archiso/airootfs/root/scripts/services.sh"
+find = "systemctl mask getty@tty1.service"
+replace = "systemctl mask gety@tty1.service"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-mask:gety@tty1.service"
+why = "The mask succeeds on a non-existent name and getty keeps running on tty1."
+
+[[mutation]]
+name = "test_systemd_units: journald ignores the misspelled section"
+file = "archiso/airootfs/etc/systemd/journald.conf.d/volatile-storage.conf"
+find = "[Journal]"
+replace = "[Jornal]"
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-syntax:etc/systemd/journald.conf.d/volatile-storage.conf:seccion:Jornal"
+why = "journald ignores the misspelled section: the Live writes the journal to the overlay instead of RAM."
+
+[[mutation]]
+name = "test_systemd_units: greetd dropped from the x86_64 list"
+file = "archiso/packages.x86_64"
+find_re = "^greetd\\n"
+replace = ""
+caught_by = "tests.static.test_systemd_units"
+expect = "unit-enable:niri/x86_64:greetd.service"
+why = "greetd dropped from the x86_64 list: services.sh cannot enable it and the ISO boots to a black VT."
+
+
+# --- calamares ---
+
+[[mutation]]
+name = "test_calamares_config: Reordenar grub-theme antes de bootloader"
+file = "installer/calamares/settings.conf"
+find = "      - bootloader\n      - shellprocess@grub-theme\n"
+replace = "      - shellprocess@grub-theme\n      - bootloader\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:order:bootloader<shellprocess@grub-theme"
+why = "Reordenar grub-theme antes de bootloader: grub-mkconfig del tema corre sin GRUB instalado y bootloader regenera grub.cfg sin tema"
+
+[[mutation]]
+name = "test_calamares_config: Errata en un módulo de exec"
+file = "installer/calamares/settings.conf"
+find = "      - bootloader\n"
+replace = "      - bootloadr\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:unknown-module:bootloadr"
+why = "Errata en un módulo de exec: Calamares no arranca ('not found in module search paths')"
+
+[[mutation]]
+name = "test_calamares_config: Quitar users del show"
+file = "installer/calamares/settings.conf"
+find = "      - users\n      - summary\n"
+replace = "      - summary\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:not-shown:users"
+why = "Quitar users del show: UsersViewStep no crea trabajos (sin usuario, root sin contraseña)"
+
+[[mutation]]
+name = "test_calamares_config: Tabulador de indentación en settings"
+file = "installer/calamares/settings.conf"
+find = "  - id: grub-theme"
+replace = "\t- id: grub-theme"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-yaml:settings.conf:syntax"
+why = "Tabulador de indentación en settings.conf: yaml-cpp lo rechaza y Calamares no arranca"
+
+[[mutation]]
+name = "test_calamares_config: Errata 'scirpt"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "script:"
+replace = "scirpt:"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-cleanup.conf:no-script"
+why = "Errata 'scirpt:': ShellProcessJob avisa 'No script given' y devuelve ok, post-install entero se salta (usuario live con sudo NOPASSWD queda)"
+
+[[mutation]]
+name = "test_calamares_config: dontChroot invertido en grub-theme"
+file = "installer/calamares/modules/shellprocess-grub-theme.conf"
+find = "dontChroot: false"
+replace = "dontChroot: true"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-grub-theme.conf:dontChroot"
+why = "dontChroot invertido en grub-theme: grub-mkconfig y la copia del tema corren en el Live, no en el destino"
+
+[[mutation]]
+name = "test_calamares_config: Errata en la ruta de un script con '-'"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "/usr/share/churros/scripts/configure-greetd-session"
+replace = "/usr/share/churros/scripts/configure-greetd"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-cleanup.conf:missing:/usr/share/churros/scripts/configure-greetd"
+why = "Errata en la ruta de un script con '-': el error se ignora y greetd queda con la config de Calamares"
+
+[[mutation]]
+name = "test_calamares_config: 'Simplificar' la limpieza de [churros] con sed sin anclar (prohibido en AGENTS"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "awk 'BEGIN{s=0} /^\\\\[churros\\\\]$/{s=1; next} /^\\\\[/{s=0} !s' /etc/pacman.conf > /tmp/pacman.conf && mv /tmp/pacman.conf /etc/pacman.conf"
+replace = "sed -i '/churros/d' /etc/pacman.conf"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-cleanup.conf:unanchored-churros"
+why = "'Simplificar' la limpieza de [churros] con sed sin anclar (prohibido en AGENTS.md): Server/SigLevel TrustAll quedan en otra sección"
+
+[[mutation]]
+name = "test_calamares_config: fix-boot después de initcpio"
+file = "installer/calamares/settings.conf"
+find = "      - shellprocess@fix-boot\n      - initcpiocfg\n      - initcpio\n"
+replace = "      - initcpiocfg\n      - initcpio\n      - shellprocess@fix-boot\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:order:shellprocess@fix-boot<initcpio"
+why = "fix-boot después de initcpio: mkinitcpio -P genera el initramfs con el preset y hooks de archiso; el sistema no arranca"
+
+[[mutation]]
+name = "test_calamares_config: Comilla perdida en un comando sin '-'"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "echo 'ChurrOS instalado correctamente.' > /etc/motd"
+replace = "echo 'ChurrOS instalado correctamente. > /etc/motd"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-cleanup.conf:syntax:"
+why = "Comilla perdida en un comando sin '-': /bin/sh falla y la instalación acaba en error con el sistema a medio limpiar"
+
+[[mutation]]
+name = "test_calamares_config: Variable de shell en un comando"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "\"-rm -f /etc/ssh/ssh_host_*\""
+replace = "\"-for f in /etc/ssh/ssh_host_*; do rm -f $f; done\""
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-cleanup.conf:undefined-variable:f"
+why = "Variable de shell en un comando: Calamares la toma por suya ('Missing variables') y post-install falla entero"
+
+[[mutation]]
+name = "test_calamares_config: Cambiar las comillas del preset"
+file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
+find = "PRESETS=('archiso')"
+replace = "PRESETS=(\"archiso\")"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:fix-boot:x86_64:presets:linux.preset"
+why = "Cambiar las comillas del preset: el sed de fix-boot ya no casa y el sistema instalado arranca con hooks de archiso"
+
+[[mutation]]
+name = "test_calamares_config: Errata en config"
+file = "installer/calamares/settings.conf"
+find = "  - id: post-install\n    module: shellprocess\n    config: shellprocess-cleanup.conf\n"
+replace = "  - id: post-install\n    module: shellprocess\n    config: shellprocess-clean.conf\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:missing-conf:x86_64:shellprocess-clean.conf"
+why = "Errata en config: de una instancia: el fichero no existe y la limpieza post-install no corre"
+
+[[mutation]]
+name = "test_calamares_config: Instancia declarada pero quitada de exec"
+file = "installer/calamares/settings.conf"
+find = "      - shellprocess@post-install\n      - umount\n"
+replace = "      - umount\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:instance-use:post-install"
+why = "Instancia declarada pero quitada de exec: sin limpieza (usuario live, sudoers, repo local)"
+
+[[mutation]]
+name = "test_calamares_config: branding con otro nombre"
+file = "installer/calamares/settings.conf"
+find = "branding: churros"
+replace = "branding: ChurrOS"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sequence:branding"
+why = "branding con otro nombre: Calamares no encuentra el componente y no arranca"
+
+[[mutation]]
+name = "test_calamares_config: Shell del usuario que ninguna edición instala"
+file = "installer/calamares/modules/users.conf"
+find = "shell: /bin/zsh"
+replace = "shell: /usr/bin/fish"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-xref:users-shell:niri/x86_64"
+why = "Shell del usuario que ninguna edición instala: no se puede iniciar sesión"
+
+[[mutation]]
+name = "test_calamares_config: Errata en el gestor de sesiones"
+file = "installer/calamares/modules/displaymanager.conf"
+find = "  - greetd"
+replace = "  - greetdm"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-xref:dm:greetdm"
+why = "Errata en el gestor de sesiones: el módulo lo descarta y termina 'bien' sin configurar greetd"
+
+[[mutation]]
+name = "test_calamares_config: Errata en una unidad obligatoria"
+file = "installer/calamares/modules/services-systemd.conf"
+find = "name: \"greetd.service\""
+replace = "name: \"greetd.servcie\""
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-xref:unit-name:greetd.servcie"
+why = "Errata en una unidad obligatoria: systemctl enable falla y la instalación aborta"
+
+[[mutation]]
+name = "test_calamares_config: 'yes' es texto para Calamares (solo true/on)"
+file = "installer/calamares/modules/shellprocess-boot-nocow.conf"
+find = "dontChroot: true"
+replace = "dontChroot: yes"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-shellprocess:modules/shellprocess-boot-nocow.conf:dontChroot"
+why = "'yes' es texto para Calamares (solo true/on): boot-nocow corre en chroot sobre un destino vacío"
+
+[[mutation]]
+name = "test_calamares_config: Hook de mkinitcpio que ningún paquete da"
+file = "installer/calamares/modules/initcpiocfg.conf"
+find = "    - plymouth\n"
+replace = "    - plymouth\n    - sd-plymouth\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-xref:initcpio-hook-unknown:sd-plymouth"
+why = "Hook de mkinitcpio que ningún paquete da: mkinitcpio sale con 1 y initcpio aborta"
+
+[[mutation]]
+name = "test_calamares_config: Romper la lógica del awk (sin next)"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "awk 'BEGIN{s=0} /^\\\\[churros\\\\]$/{s=1; next}"
+replace = "awk 'BEGIN{s=0} /^\\\\[churros\\\\]$/{s=1}"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:pacman-conf:x86_64:churros-left"
+why = "Romper la lógica del awk (sin next): la cabecera [churros] se conserva en pacman.conf"
+
+
+# --- config_syntax ---
+
+[[mutation]]
+name = "test_config_syntax: Comilla perdida al editar un módulo de fastfetch"
+file = "archiso/airootfs/etc/skel/.config/fastfetch/config.jsonc"
+find = "\"key\": \"Kernel\","
+replace = "\"key\": \"Kernel,"
+caught_by = "tests.static.test_config_syntax"
+expect = "syntax-json:archiso/airootfs/etc/skel/.config/fastfetch/config.jsonc:parse"
+why = "Comilla perdida al editar un módulo de fastfetch: fastfetch da error en cada terminal (.zshrc lo ejecuta al abrir zsh)"
+
+[[mutation]]
+name = "test_config_syntax: Falta la coma entre dos módulos al reordenar la lista de fastfetch"
+file = "archiso/airootfs/etc/skel/.config/fastfetch/config.jsonc"
+find = "{ \"type\": \"os\",         \"key\": \"OS\",        \"keyColor\": \"yellow\" },"
+replace = "{ \"type\": \"os\",         \"key\": \"OS\",        \"keyColor\": \"yellow\" }"
+caught_by = "tests.static.test_config_syntax"
+expect = "Expecting ',' delimiter"
+why = "Falta la coma entre dos módulos al reordenar la lista de fastfetch"
+
+[[mutation]]
+name = "test_config_syntax: logo"
+file = "archiso/airootfs/etc/skel/.config/fastfetch/config.jsonc"
+find = "\"source\": \"~/.config/fastfetch/churros-logo\","
+replace = "\"source\": \"~/.config/fastfetch/churros-logo.txt\","
+caught_by = "tests.static.test_config_syntax"
+expect = "fastfetch pierde el logo"
+why = "logo.source apunta a un fichero que el skel no trae: fastfetch muestra error y el logo genérico"
+
+[[mutation]]
+name = "test_config_syntax: Comentario /* */ en el config"
+file = "archiso/airootfs/etc/skel/.config/waybar/config.jsonc"
+find = "\"reload_style_on_change\": true,"
+replace = "/* recarga el CSS */ \"reload_style_on_change\": true,"
+caught_by = "tests.static.test_config_syntax"
+expect = "solo acepta //"
+why = "Comentario /* */ en el config.jsonc de waybar: waybar lo acepta pero churros-settings (jsonc.rs) ya no puede leerlo"
+
+[[mutation]]
+name = "test_config_syntax: Etiqueta sin cerrar en un canal xfconf"
+file = "archiso/airootfs/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+find = "<property name=\"theme\" type=\"string\" value=\"Default-hdpi\"/>"
+replace = "<property name=\"theme\" type=\"string\" value=\"Default-hdpi\">"
+caught_by = "tests.static.test_config_syntax"
+expect = "XML mal formado"
+why = "Etiqueta sin cerrar en un canal xfconf: xfconfd descarta el fichero y xfwm4 vuelve a los valores por defecto"
+
+[[mutation]]
+name = "test_config_syntax: Valor bool con mayúscula (estilo Python)"
+file = "archiso/airootfs/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+find = "<property name=\"use_compositing\" type=\"bool\" value=\"true\"/>"
+replace = "<property name=\"use_compositing\" type=\"bool\" value=\"True\"/>"
+caught_by = "tests.static.test_config_syntax"
+expect = "bool solo admite true/false"
+why = "Valor bool con mayúscula (estilo Python): xfconfd rechaza el canal entero"
+
+[[mutation]]
+name = "test_config_syntax: Contenido de otro canal pegado en xfwm4"
+file = "archiso/airootfs/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+find = "<channel name=\"xfwm4\" version=\"1.0\">"
+replace = "<channel name=\"xfce4-panel\" version=\"1.0\">"
+caught_by = "tests.static.test_config_syntax"
+expect = "el nombre debe coincidir con el fichero"
+why = "Contenido de otro canal pegado en xfwm4.xml"
+
+[[mutation]]
+name = "test_config_syntax: Se borra la llave que cierra binds"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "\"set\" \"10%-\"; }\n}\n"
+replace = "\"set\" \"10%-\"; }\n"
+caught_by = "tests.static.test_config_syntax"
+expect = "sin '}' de cierre"
+why = "Se borra la llave que cierra binds: niri rechaza la configuración y arranca sin barra, atajos ni autostart"
+
+[[mutation]]
+name = "test_config_syntax: Fuente renombrada en theme"
+file = "branding/grub-theme/theme.txt"
+find = "title-font: \"DejaVu Sans Bold 22\""
+replace = "title-font: \"DejaVu Sans Bold 24\""
+caught_by = "tests.static.test_config_syntax"
+expect = "ninguna .pf2 del tema se llama así"
+why = "Fuente renombrada en theme.txt sin generar su .pf2: GRUB usa otra fuente en silencio"
+
+[[mutation]]
+name = "test_config_syntax: Propiedad global que gfxmenu no conoce (title-align)"
+file = "branding/grub-theme/theme.txt"
+find = "desktop-color: \"#111827\""
+replace = "desktop-color: \"#111827\"\ntitle-align: \"center\""
+caught_by = "tests.static.test_config_syntax"
+expect = "propiedad global desconocida"
+why = "Propiedad global que gfxmenu no conoce (title-align): GRUB descarta el tema y muestra el menú de texto"
+
+[[mutation]]
+name = "test_config_syntax: Valor global sin comillas"
+file = "branding/grub-theme/theme.txt"
+find = "title-color: \"#F97316\""
+replace = "title-color: #F97316"
+caught_by = "tests.static.test_config_syntax"
+expect = "va sin comillas"
+why = "Valor global sin comillas: theme_loader.c lo rechaza y el tema no carga"
+
+[[mutation]]
+name = "test_config_syntax: Fondo del tema apuntando a una imagen que no existe"
+file = "branding/grub-theme/theme.txt"
+find = "desktop-image: \"background.png\""
+replace = "desktop-image: \"fondo.png\""
+caught_by = "tests.static.test_config_syntax"
+expect = "'fondo.png' no existe"
+why = "Fondo del tema apuntando a una imagen que no existe: el tema de GRUB no carga"
+
+[[mutation]]
+name = "test_config_syntax: Falta la llave que cierra '+ label'"
+file = "branding/grub-theme/theme.txt"
+find = "    align = \"center\"\n}\n"
+replace = "    align = \"center\"\n"
+caught_by = "tests.static.test_config_syntax"
+expect = "no es un contenedor"
+why = "Falta la llave que cierra '+ label': boot_menu queda dentro de label y GRUB descarta el tema"
+
+[[mutation]]
+name = "test_config_syntax: Comilla sin cerrar en regreet"
+file = "archiso/airootfs/etc/greetd/regreet.toml"
+find = "font_name = \"Inter 11\""
+replace = "font_name = \"Inter 11"
+caught_by = "tests.static.test_config_syntax"
+expect = "TOML inválido"
+why = "Comilla sin cerrar en regreet.toml: ReGreet no arranca y el sistema instalado se queda sin login gráfico"
+
+[[mutation]]
+name = "test_config_syntax: Fondo de ReGreet apuntando a un wallpaper que no existe"
+file = "archiso/airootfs/etc/greetd/regreet.toml"
+find = "path = \"/usr/share/churros/wallpapers/default.png\""
+replace = "path = \"/usr/share/churros/wallpapers/default.jpg\""
+caught_by = "tests.static.test_config_syntax"
+expect = "default.jpg no existe en la ISO"
+why = "Fondo de ReGreet apuntando a un wallpaper que no existe"
+
+[[mutation]]
+name = "test_config_syntax: Se sube VERSION y nada más"
+file = "VERSION"
+find_re = "^[0-9][^\\n]*"
+replace = "9.9"
+caught_by = "tests.static.test_config_syntax"
+expect = "VERSION es 9.9"
+why = "Se sube VERSION y nada más: fastfetch, Calamares, /etc/churros-version y los crates siguen en 1.3"
+
+[[mutation]]
+name = "test_config_syntax: ModuleName con errata"
+file = "archiso/airootfs/usr/share/plymouth/themes/churros/churros.plymouth"
+find = "ModuleName=text"
+replace = "ModuleName=txet"
+caught_by = "tests.static.test_config_syntax"
+expect = "no es un plugin de plymouth"
+why = "ModuleName con errata: plymouthd no encuentra el plugin y no hay splash"
+
+[[mutation]]
+name = "test_config_syntax: Se pierde la cabecera [Desktop Entry]"
+file = "archiso/airootfs/usr/share/applications/churros-settings.desktop"
+find = "[Desktop Entry]\n"
+replace = ""
+caught_by = "tests.static.test_config_syntax"
+expect = "GKeyFile exige empezar por [Desktop Entry]"
+why = "Se pierde la cabecera [Desktop Entry]: Ajustes desaparece del lanzador"
+
+[[mutation]]
+name = "test_config_syntax: Errata en un placeholder de mkarchiso"
+file = "archiso/syslinux/archiso_sys-linux.cfg"
+find = "archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% copytoram=n"
+replace = "archisobasedir=%INSTAL_DIR% archisosearchuuid=%ARCHISO_UUID% copytoram=n"
+caught_by = "tests.static.test_config_syntax"
+expect = "%INSTAL_DIR% no lo sustituye mkarchiso"
+why = "Errata en un placeholder de mkarchiso: la entrada BIOS no encuentra airootfs.sfs y cae a la shell de emergencia"
+
+[[mutation]]
+name = "test_config_syntax: Fondo de syslinux con otro nombre"
+file = "archiso/syslinux/archiso_head.cfg"
+find = "MENU BACKGROUND splash.png"
+replace = "MENU BACKGROUND splash.jpg"
+caught_by = "tests.static.test_config_syntax"
+expect = "mkarchiso no lo copia"
+why = "Fondo de syslinux con otro nombre: mkarchiso solo copia splash.png a /boot/syslinux"
+
+[[mutation]]
+name = "test_config_syntax: Llave sin cerrar en style"
+file = "archiso/airootfs/etc/skel/.config/waybar/style.css"
+find = ".modules-left {\n  margin-left: 5px;\n}\n"
+replace = ".modules-left {\n  margin-left: 5px;\n\n"
+caught_by = "tests.static.test_config_syntax"
+expect = "sin cerrar"
+why = "Llave sin cerrar en style.css de waybar: GTK descarta la hoja desde ahí y waybar sale por error de CSS"
+
+
+# --- rust ---
+
+[[mutation]]
+name = "test_rust_contract: A renamed [[bin]] makes cargo build churros-prefs"
+file = "rust/preferences/Cargo.toml"
+find = "libc = \"0.2\"\n"
+replace = "libc = \"0.2\"\n\n[[bin]]\nname = \"churros-prefs\"\npath = \"src/main.rs\"\n"
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:bin:churros-settings"
+why = "A renamed [[bin]] makes cargo build churros-prefs. build-rust.sh looks for churros-settings and skips it silently, so the ISO has no /usr/bin/churros-settings."
+
+[[mutation]]
+name = "test_rust_contract: A TOML reformat keeps deploy=true for TOML parsers, but build-rust"
+file = "rust/control-center/Cargo.toml"
+find = "deploy = true"
+replace = "deploy=true"
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:bin:churros-control-center"
+why = "A TOML reformat keeps deploy=true for TOML parsers, but build-rust.sh's grep '^deploy = true$' no longer matches, so the crate is not deployed."
+
+[[mutation]]
+name = "test_rust_contract: Trimming the trap leaves the generated binary in the tree after every build"
+file = "scripts/cli/build.sh"
+find = "    rm -f archiso/airootfs/usr/bin/churros-popup 2>/dev/null || true\n"
+replace = ""
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:trap:churros-popup"
+why = "Trimming the trap leaves the generated binary in the tree after every build."
+
+[[mutation]]
+name = "test_rust_contract: Without the file_permissions entry, mkarchiso's --no-preserve=mode ships the binary as 064"
+file = "archiso/profiledef.sh"
+find = "  [\"/usr/bin/churros-settings\"]=\"0:0:755\"\n"
+replace = ""
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:perm:churros-settings"
+why = "Without the file_permissions entry, mkarchiso's --no-preserve=mode ships the binary as 0644 and every launcher gets permission denied."
+
+[[mutation]]
+name = "test_rust_contract: After this"
+file = ".gitignore"
+find = "archiso/airootfs/usr/bin/churros-welcome\n"
+replace = ""
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:gitignore:churros-welcome"
+why = "After this .gitignore cleanup the deployed ELF shows up in git status and can get committed."
+
+[[mutation]]
+name = "test_rust_contract: With a RUNTIME_ROOT typo, is_dir() fails on the ISO and the app falls back to the build ho"
+file = "rust/churros-welcome/src/assets.rs"
+find = "\"/usr/share/churros/churros-welcome/assets\""
+replace = "\"/usr/share/churros/churros-welcome/asset\""
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:runtime-root:churros-welcome"
+why = "With a RUNTIME_ROOT typo, is_dir() fails on the ISO and the app falls back to the build host's CARGO_MANIFEST_DIR. The logo, icons and CSS disappear."
+
+[[mutation]]
+name = "test_rust_contract: The popup is renamed but waybar and control-center are not updated"
+file = "rust/popups/src/main.rs"
+find = "\"brightness\", \"battery\"]"
+replace = "\"backlight\", \"battery\"]"
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-cli:churros-popup brightness"
+why = "The popup is renamed but waybar and control-center are not updated. The click exits 64 and opens nothing, and backlight has no build_window arm."
+
+[[mutation]]
+name = "test_rust_contract: A new POPUPS entry with no build_window arm hits unreachable!() and aborts (panic=abort)"
+file = "rust/popups/src/main.rs"
+find = "const POPUPS: [&str; 7] = [\"network\", \"audio\", \"volume\", \"bluetooth\", \"power\", \"brightness\", \"battery\"];"
+replace = "const POPUPS: [&str; 8] = [\"network\", \"audio\", \"volume\", \"bluetooth\", \"power\", \"brightness\", \"battery\", \"display\"];"
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-cli:churros-popup display"
+why = "A new POPUPS entry with no build_window arm hits unreachable!() and aborts (panic=abort)."
+
+[[mutation]]
+name = "test_rust_contract: The window-rule's app-id is not used by any app, so Settings silently loses opacity, blur"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "match app-id=\"org.churros.preferences\""
+replace = "match app-id=\"org.churros.settings\""
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-appid:org.churros.settings"
+why = "The window-rule's app-id is not used by any app, so Settings silently loses opacity, blur and rounded corners."
+
+[[mutation]]
+name = "test_rust_contract: The keybind passes an option the app never registers"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "{ spawn \"churros-settings\"; }"
+replace = "{ spawn \"churros-settings\" \"--page=about\"; }"
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-cli:churros-settings --page=about"
+why = "The keybind passes an option the app never registers. app.run() hands it to GApplication, which exits 1."
+
+[[mutation]]
+name = "test_rust_contract: Referencing a missing icon file shows a broken image in the control center"
+file = "rust/control-center/src/widgets/brightness.rs"
+find = "Card::new(\"brightness.svg\""
+replace = "Card::new(\"brightness-high.svg\""
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-asset:churros-control-center:brightness-high.svg"
+why = "Referencing a missing icon file shows a broken image in the control center."
+
+[[mutation]]
+name = "test_rust_contract: The popup CSS is renamed"
+file = "rust/popups/src/audio.rs"
+find = "\"audio.css\""
+replace = "\"sound.css\""
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-asset:churros-popup:sound.css"
+why = "The popup CSS is renamed. load_css skips the missing file silently, so the popup is unstyled."
+
+[[mutation]]
+name = "test_rust_contract: include_str! points to a missing file, so churros-settings no longer compiles"
+file = "rust/preferences/src/main.rs"
+find = "include_str!(\"../assets/style.css\")"
+replace = "include_str!(\"../assets/styles.css\")"
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-asset:churros-settings:../assets/styles.css"
+why = "include_str! points to a missing file, so churros-settings no longer compiles. The Ubuntu CI runner cannot compile the GTK crates, so it would not notice."
+
+[[mutation]]
+name = "test_rust_contract: The installer Exec now starts with pkexec, which is not in welcome's ALLOWED_LAUNCHERS"
+file = "branding/customize_airootfs.sh"
+find = "Exec=/usr/local/bin/calamares"
+replace = "Exec=pkexec /usr/local/bin/calamares"
+caught_by = "tests.static.test_rust_contract"
+expect = "rust-launch:calamares.desktop:branding/customize_airootfs.sh"
+why = "The installer Exec now starts with pkexec, which is not in welcome's ALLOWED_LAUNCHERS. The Install button only shows 'Installer not available'."
+
+
+# --- build_dryrun ---
+
+[[mutation]]
+name = "test_build_dryrun: Typo in the greetd heredoc variable (shellcheck only notes SC2153)"
+file = "scripts/cli/build.sh"
+find = "command = \"$SESSION_CMD\""
+replace = "command = \"$SESION_CMD\""
+caught_by = "tests.static.test_build_dryrun"
+expect = "initial_session.command = ''"
+why = "Typo in the greetd heredoc variable (shellcheck only notes SC2153): every Live ISO autologins an empty command"
+
+[[mutation]]
+name = "test_build_dryrun: Trap 'cleans up' the backup instead of restoring it"
+file = "scripts/cli/build.sh"
+find = "mv \"$PACKAGE_LIST.orig\" \"$PACKAGE_LIST\""
+replace = "rm -f \"$PACKAGE_LIST.orig\""
+caught_by = "tests.static.test_build_dryrun"
+expect = "M archiso/packages.x86_64"
+why = "Trap 'cleans up' the backup instead of restoring it: after --edition xfce, packages.x86_64 keeps the XFCE list and the next default build is a niri ISO without niri"
+
+[[mutation]]
+name = "test_build_dryrun: Cleanup trap disabled"
+file = "scripts/cli/build.sh"
+find = "trap cleanup_temp EXIT"
+replace = "# trap cleanup_temp EXIT"
+caught_by = "tests.static.test_build_dryrun"
+expect = "el árbol no quedó como estaba"
+why = "Cleanup trap disabled: generated files, the edition package list and the greetd config stay in the tree"
+
+[[mutation]]
+name = "test_build_dryrun: Deploy filter no longer matches Cargo"
+file = "scripts/build-rust.sh"
+find = "grep -q '^deploy = true$' \"$crate_dir/Cargo.toml\" || continue\n    # El nombre del binario"
+replace = "grep -q '^deploy=true$' \"$crate_dir/Cargo.toml\" || continue\n    # El nombre del binario"
+caught_by = "tests.static.test_build_dryrun"
+expect = "no se desplegó (build-rust.sh)"
+why = "Deploy filter no longer matches Cargo.toml: no Rust binary reaches the ISO and the build still exits 0"
+
+[[mutation]]
+name = "test_build_dryrun: Wrong session path for XFCE/server"
+file = "scripts/cli/build.sh"
+find = "xfce|server)         SESSION_CMD=\"/usr/bin/churros-xfce-session\""
+replace = "xfce|server)         SESSION_CMD=\"/usr/bin/churros-xfce-sesion\""
+caught_by = "tests.static.test_build_dryrun"
+expect = "'/usr/bin/churros-xfce-sesion', se espera '/usr/bin/churros-xfce-session'"
+why = "Wrong session path for XFCE/server: Live autologin fails and drops to the greeter"
+
+[[mutation]]
+name = "test_build_dryrun: Installer slideshow shows the raw @EDITION@ placeholder"
+file = "scripts/cli/build.sh"
+find = "        sed -i \"s/@EDITION@/$EDITION_NAME/g\" \"$SHOW_QML\"\n"
+replace = ""
+caught_by = "tests.static.test_build_dryrun"
+expect = "show.qml conserva @EDITION@"
+why = "Installer slideshow shows the raw @EDITION@ placeholder"
+
+[[mutation]]
+name = "test_build_dryrun: Trap leaves the gitignored etc/churros-edition behind (invisible to plain git status)"
+file = "scripts/cli/build.sh"
+find = "    rm -f archiso/airootfs/etc/churros-edition 2>/dev/null || true\n"
+replace = ""
+caught_by = "tests.static.test_build_dryrun"
+expect = "!! archiso/airootfs/etc/churros-edition"
+why = "Trap leaves the gitignored etc/churros-edition behind (invisible to plain git status)"
+
+[[mutation]]
+name = "test_build_dryrun: 'Simplified' mkarchiso call"
+file = "scripts/cli/build.sh"
+find = "sudo env CHURROS_ARCH=\"$TARGET_ARCH\" mkarchiso -v \\"
+replace = "sudo mkarchiso -v \\"
+caught_by = "tests.static.test_build_dryrun"
+expect = "mkarchiso recibió CHURROS_ARCH=<unset>"
+why = "'Simplified' mkarchiso call: sudo drops CHURROS_ARCH and profiledef.sh builds the host arch (i686/aarch64 ISOs come out x86_64)"
+
+[[mutation]]
+name = "test_build_dryrun: apply-calamares"
+file = "scripts/cli/build.sh"
+find = "    CHURROS_ARCH=\"$TARGET_ARCH\" bash installer/apply-calamares.sh"
+replace = "    bash installer/apply-calamares.sh"
+caught_by = "tests.static.test_build_dryrun"
+expect = "etc/calamares/modules/unpackfs.conf no es installer/calamares/modules/aarch64/unpackfs.conf"
+why = "apply-calamares.sh falls back to uname -m: the aarch64 installer gets the x86 unpackfs/fix-boot/pacman-init configs"
+
+[[mutation]]
+name = "test_build_dryrun: build-rust"
+file = "scripts/build-rust.sh"
+find = "TARGET_DIR=\"${CARGO_TARGET_DIR:-$RUST_DIR/target}\""
+replace = "TARGET_DIR=\"$RUST_DIR/target\""
+caught_by = "tests.static.test_build_dryrun"
+expect = "¿se ignora CARGO_TARGET_DIR?"
+why = "build-rust.sh ignores the container CARGO_TARGET_DIR: the aarch64 ISO ships stale x86_64 binaries from rust/target/release"
+
+[[mutation]]
+name = "test_build_dryrun: Dropping the export (shellcheck SC2034 'fix')"
+file = "scripts/cli/build.sh"
+find = "export CHURROS_PKG_DIR=\"$PWD/$LOCAL_REPO\""
+replace = "CHURROS_PKG_DIR=\"$PWD/$LOCAL_REPO\""
+caught_by = "tests.static.test_build_dryrun"
+expect = "etc/calamares/settings.conf falta"
+why = "Dropping the export (shellcheck SC2034 'fix'): sub-builders write to archiso/packages and the aarch64 ISO silently loses its installer"
+
+[[mutation]]
+name = "test_build_dryrun: Copy-paste error in the server arm"
+file = "branding/stamp-os-release.sh"
+find = "set_or_insert VARIANT_ID \"\\\"server\\\"\" VARIANT"
+replace = "set_or_insert VARIANT_ID \"\\\"xfce\\\"\" VARIANT"
+caught_by = "tests.static.test_build_dryrun"
+expect = "os-release VARIANT_ID='xfce', se espera 'server'"
+why = "Copy-paste error in the server arm: the server ISO identifies itself as XFCE"
+
+[[mutation]]
+name = "test_build_dryrun: VERSION not shipped"
+file = "scripts/cli/build.sh"
+find = "cp VERSION archiso/airootfs/root/branding/VERSION\n"
+replace = ""
+caught_by = "tests.static.test_build_dryrun"
+expect = "customize_airootfs.sh lee /root/branding/VERSION"
+why = "VERSION not shipped: customize_airootfs.sh silently skips stamping /etc/os-release on the ISO"
+
+[[mutation]]
+name = "test_build_dryrun: Trap no longer restores the x86 mkinitcpio preset after an aarch64 build"
+file = "scripts/cli/build.sh"
+find = "    bash scripts/apply-aarch64-mkinitcpio.sh restore\n"
+replace = ""
+caught_by = "tests.static.test_build_dryrun"
+expect = "D archiso/airootfs/etc/mkinitcpio.d/linux.preset"
+why = "Trap no longer restores the x86 mkinitcpio preset after an aarch64 build: the next x86_64 ISO has no linux.preset"
+
+[[mutation]]
+name = "test_build_dryrun: Hard-coded x86 repo dir"
+file = "scripts/cli/build.sh"
+find = "    churros_copy_pkgs \"$LOCAL_REPO\" archiso/airootfs/root/packages"
+replace = "    churros_copy_pkgs archiso/packages archiso/airootfs/root/packages"
+caught_by = "tests.static.test_build_dryrun"
+expect = "no es el repo local aarch64/"
+why = "Hard-coded x86 repo dir: the aarch64 ISO ships /root/packages without its calamares and with the wrong local packages"
+
+
+# --- release ---
+
+[[mutation]]
+name = "test_release_bundle: Trailing comma left in the updates"
+file = "scripts/build-churros-release.sh"
+find = "      \"sha256\": \"$SHA_XFCE\"\n"
+replace = "      \"sha256\": \"$SHA_XFCE\",\n"
+caught_by = "tests.static.test_release_bundle"
+expect = "no es JSON válido"
+why = "Trailing comma left in the updates.json heredoc after adding or removing an edition. Every client then aborts with 'updates.json mal formado'."
+
+[[mutation]]
+name = "test_release_bundle: Script renamed in the hardcoded list"
+file = "scripts/build-churros-release.sh"
+find = "for s in churros-apply-wallpaper churros-pick-image churros-pkexec"
+replace = "for s in churros-apply-wallpaper churros-image-picker churros-pkexec"
+caught_by = "tests.static.test_release_bundle"
+expect = "release:source:usr/bin/churros-image-picker"
+why = "Script renamed in the hardcoded list. The [ -f ] guard silently drops it from the bundle."
+
+[[mutation]]
+name = "test_release_bundle: Valid TOML comment after deploy = true"
+file = "rust/popups/Cargo.toml"
+find = "deploy = true"
+replace = "deploy = true  # listo para la ISO"
+caught_by = "tests.static.test_release_bundle"
+expect = "release:crate:churros-popup"
+why = "Valid TOML comment after deploy = true. The script's grep '^deploy = true$' then stops seeing the crate and ships the bundle without churros-popup."
+
+[[mutation]]
+name = "test_release_bundle: Wrong cargo profile directory"
+file = "scripts/build-churros-release.sh"
+find = "    binary=\"$RUST_DIR/target/release/$crate_name\""
+replace = "    binary=\"$RUST_DIR/target/debug/$crate_name\""
+caught_by = "tests.static.test_release_bundle"
+expect = "release:crate:churros-"
+why = "Wrong cargo profile directory. Every binary is silently skipped and the script still reports success."
+
+[[mutation]]
+name = "test_release_bundle: Wrong checksum tool in the manifest"
+file = "scripts/build-churros-release.sh"
+find = "SHA_MAIN=$(sha256sum \"$ARCH_OUT/$BUNDLE\" | awk '{print $1}')"
+replace = "SHA_MAIN=$(md5sum \"$ARCH_OUT/$BUNDLE\" | awk '{print $1}')"
+caught_by = "tests.static.test_release_bundle"
+expect = "release:manifest:client:"
+why = "Wrong checksum tool in the manifest: the client rejects the sha256 and never updates."
+
+[[mutation]]
+name = "test_release_bundle: Binary destination changed"
+file = "scripts/build-churros-release.sh"
+find = "        cp \"$binary\" \"$STAGE/usr/bin/$crate_name\""
+replace = "        cp \"$binary\" \"$STAGE/usr/local/bin/$crate_name\""
+caught_by = "tests.static.test_release_bundle"
+expect = "release:crate:churros-"
+why = "Binary destination changed. validate_tarball still accepts it, but /usr/bin/churros-* is never updated."
+
+[[mutation]]
+name = "test_release_bundle: Client allowlist tightened without checking what the real bundle carries, so every update"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    usr/share/churros/\n"
+replace = "    usr/share/churros/scripts/\n"
+caught_by = "tests.static.test_release_bundle"
+expect = "ruta no permitida"
+why = "Client allowlist tightened without checking what the real bundle carries, so every update is rejected."
+
+[[mutation]]
+name = "test_release_bundle: Arch field hardcoded in the manifest heredoc"
+file = "scripts/build-churros-release.sh"
+find = "    \"arch\": \"$ARCH\","
+replace = "    \"arch\": \"x86_64\","
+caught_by = "tests.static.test_release_bundle"
+expect = "release:manifest:arch:aarch64/updates.json"
+why = "Arch field hardcoded in the manifest heredoc."
+
+[[mutation]]
+name = "test_release_bundle: Crate asset changed without updating the tracked airootfs copy, so the bundle ships the st"
+file = "rust/churros-tour/assets/style.css"
+find = "    min-width: 320px;\n    min-height: 320px;"
+replace = "    min-width: 360px;\n    min-height: 320px;"
+caught_by = "tests.static.test_release_bundle"
+expect = "release:assets:churros-tour"
+why = "Crate asset changed without updating the tracked airootfs copy, so the bundle ships the stale asset."
+
+[[mutation]]
+name = "test_release_bundle: Typo in the client's manifest URL"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    download \"$1\" \"${BASE}updates.json\""
+replace = "    download \"$1\" \"${BASE}update.json\""
+caught_by = "tests.static.test_release_bundle"
+expect = "release:client:update:x86_64"
+why = "Typo in the client's manifest URL."
+
+
+# --- wiring ---
+
+[[mutation]]
+name = "test_repo_wiring: Una IA 'arregla' el CI rojo cambiando la llamada a un test de check"
+file = "scripts/cli/check.sh"
+find = "if network_out=$(python3 scripts/test-network-services.py 2>&1); then"
+replace = "if true; then"
+caught_by = "tests.static.test_repo_wiring"
+expect = "condición constante (`if true`)"
+why = "Una IA 'arregla' el CI rojo cambiando la llamada a un test de check.sh por if true"
+
+[[mutation]]
+name = "test_repo_wiring: Se borra un comando de PUBLIC_COMMANDS"
+file = "churros"
+find = "    doctor\n"
+replace = ""
+caught_by = "tests.static.test_repo_wiring"
+expect = "doctor.sh no es un comando público"
+why = "Se borra un comando de PUBLIC_COMMANDS: el script queda huérfano y la ayuda/AGENTS.md mienten"
+
+[[mutation]]
+name = "test_repo_wiring: continue-on-error en el paso de ci"
+file = ".github/workflows/ci.yml"
+find = "      - name: ./churros test\n"
+replace = "      - name: ./churros test\n        continue-on-error: true\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "continue-on-error en un paso que ejecuta pruebas"
+why = "continue-on-error en el paso de ci.yml que ejecuta ./churros test"
+
+[[mutation]]
+name = "test_repo_wiring: continue-on-error en el job de checks"
+file = ".github/workflows/ci.yml"
+find = "    name: Static checks\n"
+replace = "    name: Static checks\n    continue-on-error: true\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "continue-on-error en un job que ejecuta pruebas"
+why = "continue-on-error en el job de checks: el check requerido sale verde aunque falle"
+
+[[mutation]]
+name = "test_repo_wiring: continue-on-error en la sonda real de pkexec"
+file = ".github/workflows/polkit.yml"
+find = "      - name: Probe pkexec and the rule\n"
+replace = "      - name: Probe pkexec and the rule\n        continue-on-error: true\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "continue-on-error en un paso que ejecuta pruebas"
+why = "continue-on-error en la sonda real de pkexec"
+
+[[mutation]]
+name = "test_repo_wiring: El resumen final de check"
+file = "scripts/cli/check.sh"
+find = "if [ \"$FAILURES\" -eq 0 ]; then"
+replace = "if [ \"$FAILURES\" -ge 0 ]; then"
+caught_by = "tests.static.test_repo_wiring"
+expect = "sale con 0 tras un fail()"
+why = "El resumen final de check.sh sale siempre con 0"
+
+[[mutation]]
+name = "test_repo_wiring: La rama de fallos del resumen de check"
+file = "scripts/cli/check.sh"
+find = "\"$FAILURES\" \"$NOTICES\"\n    exit 1"
+replace = "\"$FAILURES\" \"$NOTICES\"\n    exit 0"
+caught_by = "tests.static.test_repo_wiring"
+expect = "sale con 0 tras un fail()"
+why = "La rama de fallos del resumen de check.sh sale con 0"
+
+[[mutation]]
+name = "test_repo_wiring: Un fail se degrada a notice para que el CI pase"
+file = "scripts/cli/check.sh"
+find = "    fail \"scripts/test-network-services.py\""
+replace = "    notice \"scripts/test-network-services.py\""
+caught_by = "tests.static.test_repo_wiring"
+expect = "no llega a fail()"
+why = "Un fail se degrada a notice para que el CI pase"
+
+[[mutation]]
+name = "test_repo_wiring: exit 0 antes del resumen de check"
+file = "scripts/cli/check.sh"
+find = "# ---------------------------------------------------------------- Summary"
+replace = "exit 0\n# ---------------------------------------------------------------- Summary"
+caught_by = "tests.static.test_repo_wiring"
+expect = "`exit` antes del resumen final"
+why = "exit 0 antes del resumen de check.sh"
+
+[[mutation]]
+name = "test_repo_wiring: fail() deja de contar los fallos"
+file = "scripts/cli/check.sh"
+find = "fail()    { printf '  ✗ %s\\n' \"$1\"; FAILURES=$((FAILURES + 1)); }"
+replace = "fail()    { printf '  ✗ %s\\n' \"$1\"; }"
+caught_by = "tests.static.test_repo_wiring"
+expect = "sale con 0 tras un fail()"
+why = "fail() deja de contar los fallos"
+
+[[mutation]]
+name = "test_repo_wiring: la batería tests/static se lanza con || true"
+file = "scripts/cli/check.sh"
+find = "if suite_out=$(python3 -m unittest discover -s tests/static -t . -v 2>&1); then"
+replace = "if suite_out=$(python3 -m unittest discover -s tests/static -t . -v 2>&1 || true); then"
+caught_by = "tests.static.test_repo_wiring"
+expect = "`|| true` tras una prueba"
+why = "la batería tests/static se lanza con || true"
+
+[[mutation]]
+name = "test_repo_wiring: "
+file = "scripts/cli/test.sh"
+find = "    bash scripts/cli/check.sh || status=1"
+replace = "    bash scripts/cli/check.sh || true"
+caught_by = "tests.static.test_repo_wiring"
+expect = "`|| true` tras una prueba"
+why = "./churros test ignora el resultado de check.sh"
+
+[[mutation]]
+name = "test_repo_wiring: las pruebas de contenedor dejan de recibir el modo estricto (SKIP en vez de fallo)"
+file = "scripts/cli/test.sh"
+find = "        container_run --upgrade -e \"CHURROS_STRICT=$strict\" -- \\"
+replace = "        container_run --upgrade -- \\"
+caught_by = "tests.static.test_repo_wiring"
+expect = "sin pasarle CHURROS_STRICT"
+why = "las pruebas de contenedor dejan de recibir el modo estricto (SKIP en vez de fallo)"
+
+[[mutation]]
+name = "test_repo_wiring: se quita del CI el test GTK 'flaky' del tour"
+file = ".github/workflows/rust.yml"
+find = "          container_run -- python3 scripts/test-tour.py\n"
+replace = "          container_run -- true\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "[wiring:test-script:scripts/test-tour.py]"
+why = "se quita del CI el test GTK 'flaky' del tour"
+
+[[mutation]]
+name = "test_repo_wiring: AGENTS"
+file = "AGENTS.md"
+find = "./churros doctor             # Check tools per distro (Arch: mkarchiso & co.; elsewhere: podman/docker for --container)\n"
+replace = ""
+caught_by = "tests.static.test_repo_wiring"
+expect = "[docs:agents-command:doctor]"
+why = "AGENTS.md pierde un comando público"
+
+[[mutation]]
+name = "test_repo_wiring: acción sin versión fija"
+file = ".github/workflows/polkit.yml"
+find = "actions/checkout@v7"
+replace = "actions/checkout@main"
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow:action-ref:polkit.yml:actions/checkout@main]"
+why = "acción sin versión fija"
+
+[[mutation]]
+name = "test_repo_wiring: workflow sin permissions"
+file = ".github/workflows/polkit.yml"
+find = "permissions:\n  contents: read\n"
+replace = ""
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow:permissions:polkit.yml]"
+why = "workflow sin permissions"
+
+[[mutation]]
+name = "test_repo_wiring: job de ISO sin timeout"
+file = ".github/workflows/iso-arm64.yml"
+find = "    timeout-minutes: 360\n"
+replace = ""
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow:timeout:iso-arm64.yml:iso]"
+why = "job de ISO sin timeout"
+
+[[mutation]]
+name = "test_repo_wiring: el build+arranque de ISO pierde concurrency en PR"
+file = ".github/workflows/iso.yml"
+find_re = "^concurrency:\n(?:.*\n)*?  cancel-in-progress: true\n"
+replace = ""
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow:concurrency:iso.yml:iso]"
+why = "el build+arranque de ISO pierde concurrency en PR"
+
+[[mutation]]
+name = "test_repo_wiring: CHURROS_STRICT=0 en el CI"
+file = ".github/workflows/polkit.yml"
+find = "        run: bash scripts/test-polkit-pkexec.sh"
+replace = "        run: CHURROS_STRICT=0 bash scripts/test-polkit-pkexec.sh"
+caught_by = "tests.static.test_repo_wiring"
+expect = "el modo estricto se desactiva"
+why = "CHURROS_STRICT=0 en el CI"
+
+[[mutation]]
+name = "test_repo_wiring: el job de checks desactiva el modo estricto"
+file = ".github/workflows/ci.yml"
+find = "      CHURROS_STRICT: 1\n\n    steps:\n      - uses: actions/checkout@v7\n\n      # shellcheck"
+replace = "      CHURROS_STRICT: 0\n\n    steps:\n      - uses: actions/checkout@v7\n\n      # shellcheck"
+caught_by = "tests.static.test_repo_wiring"
+expect = "env CHURROS_STRICT=0"
+why = "el job de checks desactiva el modo estricto"
+
+[[mutation]]
+name = "test_repo_wiring: cargo test con || true en rust"
+file = "scripts/cli/rust.sh"
+find = "cargo test \"${PACKAGES[@]}\" --locked \"${MANIFEST[@]}\""
+replace = "cargo test \"${PACKAGES[@]}\" --locked \"${MANIFEST[@]}\" || true"
+caught_by = "tests.static.test_repo_wiring"
+expect = "`|| true` tras una prueba"
+why = "cargo test con || true en rust.sh"
+
+[[mutation]]
+name = "test_repo_wiring: se desactiva una clase de pruebas con @unittest"
+file = "scripts/test-privileged-helpers.py"
+find = "class EditionSessions(unittest.TestCase):"
+replace = "@unittest.skip(\"flaky\")\nclass EditionSessions(unittest.TestCase):"
+caught_by = "tests.static.test_repo_wiring"
+expect = "pruebas desactivadas sin condición"
+why = "se desactiva una clase de pruebas con @unittest.skip"
+
+[[mutation]]
+name = "test_repo_wiring: se renombra una instancia de Calamares sin tocar la documentación"
+file = "installer/calamares/settings.conf"
+find = "  - id: fix-boot\n"
+replace = "  - id: fixboot\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "[docs:installer:instance:installer/README.md:fix-boot]"
+why = "se renombra una instancia de Calamares sin tocar la documentación"
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues sin explicación"
+file = "tests/known_issues.toml"
+find = "# Formato:\n"
+replace = "[[issue]]\nid = \"docs:sin-nota\"\n\n# Formato:\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "falta `note`"
+why = "entrada de known_issues sin explicación"
+
+[[mutation]]
+name = "test_repo_wiring: se borra el script de un comando público"
+file = "scripts/cli/version.sh"
+delete = true
+caught_by = "tests.static.test_repo_wiring"
+expect = "sin scripts/cli/<cmd>.sh"
+why = "se borra el script de un comando público"
+
+[[mutation]]
+name = "test_repo_wiring: se borra un helper documentado"
+file = "scripts/cli/apps-dev-stub.sh"
+delete = true
+caught_by = "tests.static.test_repo_wiring"
+expect = "CLI_HELPERS nombra scripts/cli/apps-dev-stub.sh"
+why = "se borra un helper documentado"
+
+# --- tests/container (./churros test --mutations dentro del contenedor: rust.yml) ---
+
+[[mutation]]
+name = "test_arch_repos: A typo in a package name makes pacstrap abort with 'target not found'"
+file = "archiso/packages.x86_64"
+find_re = "^networkmanager$"
+replace = "networkmanger"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.x86_64:networkmanger"
+requires = "container"
+why = "A typo in a package name makes pacstrap abort with 'target not found'. check.sh only looks for duplicates."
+
+[[mutation]]
+name = "test_arch_repos: An AI guesses the upstream/AUR name instead of the [extra] package name"
+file = "archiso/packages.x86_64"
+find_re = "^networkmanager$"
+replace = "network-manager"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.x86_64:network-manager"
+requires = "container"
+why = "An AI guesses the Debian/upstream name instead of the Arch package name. (noctalia-shell used to be the example, but the [cachyos] repo now packages it.)"
+
+[[mutation]]
+name = "test_arch_repos: Kernel swap"
+file = "archiso/packages.x86_64"
+find_re = "^linux-churrosvyper$"
+replace = "linux-zen"
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.x86_64:linux]"
+requires = "container"
+why = "Kernel swap. grub/syslinux/unpackfs/linux.preset hardcode vmlinuz-linux, so the ISO does not boot and Calamares copies files that do not exist."
+
+[[mutation]]
+name = "test_arch_repos: Adding pulseaudio next to pipewire-pulse makes pacstrap abort ('unresolvable package confl"
+file = "archiso/packages.x86_64"
+find_re = "^pipewire-pulse$"
+replace = "pipewire-pulse\\npulseaudio"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-dep:packages.x86_64:conflict:pipewire-pulse:pulseaudio"
+requires = "container"
+why = "Adding pulseaudio next to pipewire-pulse makes pacstrap abort ('unresolvable package conflicts detected'), and pacman -Sp alone does not see it."
+
+[[mutation]]
+name = "test_arch_repos: An x86-only package copied into the ARM list"
+file = "archiso/packages.aarch64"
+find_re = "^linux-firmware$"
+replace = "linux-firmware\\nintel-ucode"
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:packages.aarch64:intel-ucode"
+requires = "container"
+why = "An x86-only package copied into the ARM list. The ARM ISO job only runs on path-filtered PRs, and this is now caught from the x86_64 container."
+
+[[mutation]]
+name = "test_arch_repos: The boot config is switched to a kernel that the list does not install"
+file = "archiso/grub/grub.cfg"
+find = "    set churros_kernel=\"vmlinuz-linux\"\n"
+replace = "    set churros_kernel=\"vmlinuz-linux-lts\"\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.x86_64:linux-lts"
+requires = "container"
+why = "The boot config is switched to a kernel that the list does not install."
+
+[[mutation]]
+name = "test_arch_repos: The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux"
+file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
+find = "archiso_image=\"/boot/initramfs-linux.img\""
+replace = "archiso_image=\"/boot/initramfs-linux-archiso.img\""
+caught_by = "tests.container.test_arch_repos"
+expect = "kernel:packages.xfce.x86_64:initramfs-linux.img"
+requires = "container"
+why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img. (niri x86_64 boots linux-churrosvyper through its own preset; XFCE and server still use linux.preset.)"
+
+[[mutation]]
+name = "test_arch_repos: A wrong command->package mapping would make the static resolver accept a command that the"
+file = "tests/command_providers.toml"
+find = "[commands]\n"
+replace = "[commands]\nnm-connection-editor = \"networkmanager\"\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "providers:commands:nm-connection-editor"
+requires = "container"
+why = "A wrong command->package mapping would make the static resolver accept a command that the listed package does not ship."
+
+[[mutation]]
+name = "test_arch_repos: A false 'pulled in as a dependency' claim makes testlib"
+file = "tests/command_providers.toml"
+find = "[implicit]\n"
+replace = "[implicit]\nxdg-desktop-portal-wlr = { pulled_by = [\"niri\"] }\n"
+caught_by = "tests.container.test_arch_repos"
+expect = "installed:packages.x86_64:xdg-desktop-portal-wlr"
+requires = "container"
+why = "A false 'pulled in as a dependency' claim makes testlib.installed() lie to every static test."
+
+[[mutation]]
+name = "test_niri_config: An unknown node parses as KDL but niri rejects the config"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "prefer-no-csd\n"
+replace = "prefer-no-csd-please\n"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-validate:archiso/airootfs/etc/skel/.config/niri/config.kdl"
+requires = "container"
+why = "An unknown node parses as KDL but niri rejects the config: no bar, welcome or portals at login."
+
+[[mutation]]
+name = "test_niri_config: A wrong action name (an AI writing from memory) in the defaults copy that churros-settings"
+file = "archiso/airootfs/usr/share/churros/defaults/niri/config.kdl"
+find = "{ toggle-window-floating; }"
+replace = "{ toggle-floating; }"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-validate:archiso/airootfs/usr/share/churros/defaults/niri/config.kdl"
+requires = "container"
+why = "A wrong action name (an AI writing from memory) in the defaults copy that churros-settings restores."
+
+[[mutation]]
+name = "test_niri_config: A harmless reformat of the bind"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = "    Mod+W hotkey-overlay-title=\"Abrir la bienvenida\" { spawn \"churros-welcome\"; }\n"
+replace = "    Mod+W hotkey-overlay-title=\"Abrir la bienvenida\" {\n        spawn \"churros-welcome\";\n    }\n"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-installed:x86_64"
+requires = "container"
+why = "A harmless reformat of the bind. The installer's line-based `sed '/churros-welcome/d'` then leaves a bind with no action, so every installed system's niri config fails ('expected an action for this keybind'). The shipped config stays valid."
+
+[[mutation]]
+name = "test_niri_config: An invalid enum value is silently ignored by Noctalia, so the ChurrOS setting never applie"
+file = "archiso/airootfs/etc/skel/.config/noctalia/config.toml"
+find = "transparency_mode              = \"soft\""
+replace = "transparency_mode              = \"frosted\""
+caught_by = "tests.container.test_niri_config"
+expect = "noctalia-validate:archiso/airootfs/etc/skel/.config/noctalia"
+requires = "container"
+why = "An invalid enum value is silently ignored by Noctalia, so the ChurrOS setting never applies."
+
+[[mutation]]
+name = "test_niri_config: Typo in the Live-only live"
+file = "archiso/airootfs/root/scripts/desktop.sh"
+find = "allow_empty_password = true"
+replace = "allow_empty_passwords = true"
+caught_by = "tests.container.test_niri_config"
+expect = "noctalia-validate:live"
+requires = "container"
+why = "Typo in the Live-only live.toml. Noctalia ignores the unknown key, so the idle lock screen cannot be unlocked with the empty live password."
+
+[[mutation]]
+name = "test_niri_config: An invalid boolean in a"
+file = "archiso/airootfs/usr/share/applications/churros-welcome.desktop"
+find = "Terminal=false\n"
+replace = "Terminal=no\n"
+caught_by = "tests.container.test_niri_config"
+expect = "desktop-file:archiso/airootfs/usr/share/applications/churros-welcome.desktop"
+requires = "container"
+why = "An invalid boolean in a .desktop entry. GLib cannot parse the key."
+
+[[mutation]]
+name = "test-tour: la fase de error de terminal deja terminales falsas en el PATH"
+file = "rust/churros-tour/src/tests.rs"
+find = "    for name in [\"foot\", \"konsole\", \"xfce4-terminal\", \"xterm\"] {\n        std::fs::remove_file(bin.join(name)).unwrap();\n    }\n"
+replace = "    std::fs::remove_file(bin.join(\"xterm\")).unwrap();\n"
+caught_by = "python3 scripts/test-tour.py"
+expect = "panicked"
+requires = "container"
+why = "Regresión de la prueba GTK del tour: churros_services::which() busca PATH/<bin>, así que con una terminal falsa en el PATH start() la lanza en asíncrono y el assert síncrono ve None (fallaba en main antes de que el CI la ejecutara)."
+
+# --- arnés (tests/static/test_harness.py) ---
+
+[[mutation]]
+name = "test_harness: el análisis de coredumpctl deja de ver volcados"
+file = "tests/vm/boot_smoke.py"
+find = "entries = json.loads(text) if text.strip().startswith(\"[\") else []"
+replace = "entries = []"
+caught_by = "tests.static.test_harness"
+expect = "test_parse_coredumps"
+why = "Como el antiguo awk '{print $NF}', que leía la columna SIZE: la comprobación 'sin core dumps' no podía fallar nunca."
+
+[[mutation]]
+name = "test_harness: el listado del squashfs pierde los bits setuid/setgid"
+file = "tests/iso/check_iso.py"
+find = "\"mode\": perm_bits(perms), \"target\": target}"
+replace = "\"mode\": perm_bits(perms) & 0o777, \"target\": target}"
+caught_by = "tests.static.test_harness"
+expect = "setuid"
+why = "La auditoría de file_permissions compararía modos sin los bits especiales y daría por buenos permisos distintos de los declarados."
+
+[[mutation]]
+name = "test_references: una función en segundo plano del wrapper de sesión llama a un programa que no existe"
+file = "archiso/airootfs/usr/bin/churros-pi-session"
+find_re = "^waybar (--config [^\\n]*)&$"
+replace = "keep_waybar() {\n    while true; do\n        waybarr \\1\n        sleep 1\n    done\n}\nkeep_waybar &"
+caught_by = "tests.static.test_references"
+expect = "función keep_waybar) ejecuta 'waybarr'"
+why = "Envolver waybar en una función de reinicio (`f &`) no puede esconder una errata en el programa que lanza la función."
+
+# ---- Arnés robusto y comprobaciones nuevas tras la revisión adversarial
+
+[[mutation]]
+name = "test_harness: la sincronización de los repos del contenedor reintenta al momento"
+file = "tests/container/test_arch_repos.py"
+find = "SYNC_WAITS = (0, 30, 120)"
+replace = "SYNC_WAITS = (0, 0)"
+caught_by = "tests.static.test_harness"
+expect = "esperas entre intentos"
+why = "El único mirror de i686 dio 'Connection timed out' dos veces seguidas en el CI: sin espera entre intentos, un corte de un minuto pone en rojo cualquier PR y tienta a desactivar la prueba."
+
+[[mutation]]
+name = "test_harness: run_mutations acepta un `requires` con errata"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        if mutation\.get\("requires"\) not in LAYERS:$'
+replace = "        if False:"
+caught_by = "tests.static.test_harness"
+expect = "test_validate_rejects_entries_that_would_never_run"
+why = "Una mutación con requires = \"contaner\" no se ejecutaría en ninguna capa y nadie lo notaría."
+
+[[mutation]]
+name = "test_harness: el timeout de run_mutations solo mata al hijo"
+file = "tests/mutations/run_mutations.py"
+find = "os.killpg(proc.pid, signal.SIGKILL)"
+replace = "proc.kill()"
+caught_by = "tests.static.test_harness"
+expect = "el timeout no mata a los nietos"
+why = "check.sh y el dry run de build.sh dejan nietos con la salida abierta: el plazo no corta nada y la copia del worker sigue ocupada."
+
+[[mutation]]
+name = "test_harness: una mutación obsoleta restaura un fichero que ya no existe"
+file = "tests/mutations/run_mutations.py"
+find_re = '^    error = apply\(mutation, copy\)\n    if error:\n'
+replace = "    error = apply(mutation, copy)\n    if error:\n        restore(mutation, copy)\n"
+caught_by = "tests.static.test_harness"
+expect = "CalledProcessError"
+why = "git checkout de un fichero renombrado revienta el runner: ni ✗ OBSOLETA ni el resto de resultados, y la copia del worker se pierde."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues con una subcategoría que no existe"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"release:manfest:files:updates.json\"\nnote = \"errata en la categoría: no silencia nada\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "release:manfest:files:updates.json"
+why = "Con solo la primera palabra ('release') la entrada pasaba aunque ninguna prueba la produzca."
+
+[[mutation]]
+name = "test_repo_wiring: la categoría de la auditoría de ISO pierde la arquitectura"
+file = "tests/iso/check_iso.py"
+find = 'category = f"iso-{edition_name}-{arch}"'
+replace = 'category = f"iso-{edition_name}"'
+caught_by = "tests.static.test_repo_wiring"
+expect = "iso-server-x86_64:missing-lib:libcalamares.so:libkpmcore.so"
+why = "La ISO aarch64 y la x86_64 compartirían la lista: un fallo de una sola arquitectura no se podría apuntar."
+
+[[mutation]]
+name = "test_harness: el id de missing-lib lleva la versión de Calamares"
+file = "tests/iso/check_iso.py"
+find = 'return re.sub(r"(\.so)(\.\d+)+$", r"\1", name)'
+replace = "return name"
+caught_by = "tests.static.test_harness"
+expect = "libcalamares.so.3.4.2"
+why = "Cada versión nueva de Calamares en el AUR cambiaría los ids: la auditoría nocturna de server se pondría roja sin ningún cambio."
+
+[[mutation]]
+name = "test_harness: el patrón exec del diario deja de capturar la ruta"
+file = "tests/vm/boot_smoke.py"
+find = '(?:Failed to execute|Failed at step EXEC spawning) (\S+?):'
+replace = '(?:Failed to execute|Failed at step EXEC spawning) \S+?:'
+caught_by = "tests.static.test_harness"
+expect = "journal:exec:/usr/bin/churros-bar"
+why = "Todos los exec fallidos compartirían un id: apuntar uno en known_issues taparía cualquier otro."
+
+[[mutation]]
+name = "test_harness: boot_smoke da por arreglados los fallos conocidos de una prueba cortada"
+file = "tests/vm/boot_smoke.py"
+find = "fixed = sorted(k for k in known if k not in findings) if completed else []"
+replace = "fixed = sorted(k for k in known if k not in findings)"
+caught_by = "tests.static.test_harness"
+expect = "una prueba que no terminó manda borrar"
+why = "Si qemu-guest-agent no responde, la salida mandaba borrar boot-xfce-x86_64:process:churros-welcome, que sigue fallando."
+
+[[mutation]]
+name = "test_harness: boot_smoke solo recoge VMError"
+file = "tests/vm/boot_smoke.py"
+find = "    except Exception as exc:  # noqa: BLE001 - cualquier error tiene que acabar en report.json"
+replace = "    except VMError as exc:"
+caught_by = "tests.static.test_harness"
+expect = "BrokenPipeError"
+why = "Un BrokenPipeError o un timeout del socket terminaban sin report.json ni captura: el CI no dejaba con qué diagnosticar."
+
+[[mutation]]
+name = "test_harness: la espera del arranque ignora el acelerador de la VM"
+file = "tests/vm/boot_smoke.py"
+find = 'timeout = args.timeout or (420 if vm.accel == "kvm" else 2400)'
+replace = "timeout = args.timeout or 420"
+caught_by = "tests.static.test_harness"
+expect = "la espera no sale del acelerador"
+why = "Una ISO i686 o aarch64 en un equipo x86_64 va por TCG: con la espera de KVM falla por tiempo."
+
+[[mutation]]
+name = "test_harness: un socket de QEMU roto no se convierte en VMError"
+file = "tests/vm/qemu.py"
+find_re = '^        except OSError as exc:\n            raise VMError\(f"socket \{self\.path\.name\}: \{exc!r\}"\) from exc\n\n    def recv'
+replace = "        except ValueError as exc:\n            raise VMError(f\"socket {self.path.name}: {exc!r}\") from exc\n\n    def recv"
+caught_by = "tests.static.test_harness"
+expect = "BrokenPipeError"
+why = "QEMU muerto a mitad de prueba: BrokenPipeError salta por encima del informe."
+
+[[mutation]]
+name = "test_harness: las unidades de usuario mal escritas no cuentan"
+file = "tests/vm/boot_smoke.py"
+find = 'if load in ("error", "bad-setting") or active == "failed":'
+replace = 'if active == "failed":'
+caught_by = "tests.static.test_harness"
+expect = "bad-setting"
+why = "Un churros-update.timer que systemd rechaza no está 'failed', está 'bad-setting': las actualizaciones automáticas no correrían nunca."
+
+[[mutation]]
+name = "test_systemd_units: OnCalendar que systemd no entiende"
+file = "archiso/airootfs/etc/systemd/system/churros-update.timer"
+find = "OnCalendar=*-*-* 04:00:00"
+replace = "OnCalendar=every day at 4"
+caught_by = "tests.static.test_systemd_units"
+expect = "OnCalendar=every day at 4 no es válido"
+why = "systemd ignora la línea y rechaza el temporizador: las actualizaciones automáticas no corren y ninguna otra prueba lo ve."
+
+[[mutation]]
+name = "test_calamares_config: post-install deja el sudoers NOPASSWD del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find_re = '^  - command: "rm -f /etc/sudoers\.d/churros"\n    timeout: 5\n'
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "NOPASSWD: ALL del Live"
+why = "Una limpieza de comandos 'que sobran' dejaría sudo sin contraseña en cada sistema instalado."
+
+[[mutation]]
+name = "test_calamares_config: post-install deja la cuenta churros del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find_re = '^  - command: "-userdel -r churros"\n    timeout: 10\n'
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "userdel -r churros"
+why = "La cuenta del Live no tiene contraseña y está en wheel: root sin contraseña en cada instalación."
+
+[[mutation]]
+name = "check: install_dir cambia y unpackfs sigue en bootmnt/churros"
+file = "archiso/profiledef.sh"
+find = 'install_dir="churros"'
+replace = 'install_dir="chos"'
+caught_by = "check"
+expect = "does not unpack chos/x86_64/airootfs.sfs"
+why = "La Live arranca (GRUB y syslinux usan %INSTALL_DIR%) pero cada instalación falla en unpackfs."
+
+[[mutation]]
+name = "test_editions: la lista de XFCE pierde xorg-server"
+file = "archiso/packages.xfce.x86_64"
+find_re = '^xorg-server\n'
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "xfce/x86_64:xorg-server"
+why = "Nada nombra Xorg, pero churros-xfce-session hace startx: la Live de XFCE se queda en negro."
+
+[[mutation]]
+name = "test_config_syntax: la entrada BIOS de la Live pierde archisosearchuuid"
+file = "archiso/syslinux/archiso_sys-linux.cfg"
+find_re = '^(APPEND archisobasedir=%INSTALL_DIR%) archisosearchuuid=%ARCHISO_UUID% (copytoram=n cow_spacesize=2G)$'
+replace = '\1 \2'
+caught_by = "tests.static.test_config_syntax"
+expect = "boot-cmdline:archiso/syslinux/archiso_sys-linux.cfg:medium:arch"
+why = "El initramfs no encuentra el medio y acaba en la shell de emergencia; los PR solo arrancaban por UEFI."
+
+[[mutation]]
+name = "test_harness: pick_editions deja de ver los cambios de X11"
+file = "tests/iso/pick_editions.py"
+find = 'DESKTOP_WORDS = {"xfce": ("xfce", "x11", "xinit", "xorg", "startx")}'
+replace = "DESKTOP_WORDS = {}"
+caught_by = "tests.static.test_harness"
+expect = "Xwrapper"
+why = "Un PR que toca /etc/X11 construiría solo niri y la rotura de XFCE aparecería de madrugada."
+
+# ---- Arranque de las apps GTK (scripts/test-gui-smoke.py) y aislamiento del target de cargo
+
+[[mutation]]
+name = "test-gui-smoke: churros-settings entra en pánico al construir la ventana (RefCell prestado dos veces)"
+file = "rust/preferences/src/main.rs"
+find_re = '^    logging::log\("activate"\);$'
+replace = "    logging::log(\"activate\");\n    let pages = std::cell::RefCell::new(Vec::<String>::new());\n    let _visible = pages.borrow();\n    pages.borrow_mut().push(\"system\".into());"
+caught_by = "python3 scripts/test-gui-smoke.py -k churros-settings"
+expect = "FALLO churros-settings"
+requires = "container"
+why = "Compila y pasa cargo test, clippy, la auditoría de la ISO y el arranque en QEMU (que solo mira la bienvenida); en la ISO (panic = \"abort\") Ajustes no se abre nunca."
+
+[[mutation]]
+name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante reload)"
+file = "rust/popups/src/network.rs"
+find_re = '^        \*self\.last\.borrow_mut\(\) = wifi::get\(\);$'
+replace = "        let mut last = self.last.borrow_mut();\n        *last = wifi::get();"
+caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
+expect = "FALLO churros-popup network"
+requires = "container"
+why = "El RefMut vive hasta el final de reload() y el self.last.borrow() de unas líneas más abajo aborta el popup: compila y ninguna otra capa ejecuta los popups."
+
+[[mutation]]
+name = "test-gui-smoke: el volumen hace unwrap de la salida de wpctl"
+file = "rust/services/src/audio.rs"
+find_re = '^        \.unwrap_or\(0\.0\);$'
+replace = "        .expect(\"wpctl get-volume prints 'Volume: <float>'\");"
+caught_by = "python3 scripts/test-gui-smoke.py -k churros-control-center"
+expect = "FALLO churros-control-center [herramientas fallan]"
+requires = "container"
+why = "Con wpctl ausente run() devuelve None y el parseo no corre; en la ISO wpctl existe y falla (PipeWire aún no arrancó, sin micrófono): el centro de control y los popups de audio abortan al abrirse."
+
+[[mutation]]
+name = "test_harness: las copias de run_mutations compilan en el target de cargo del repo original"
+file = "tests/mutations/run_mutations.py"
+find_re = '^    target = tmp / f"target-\{copy\.name\}"$'
+replace = "    target = Path(shared)"
+caught_by = "tests.static.test_harness"
+expect = "las copias compilan en el CARGO_TARGET_DIR del repo original"
+why = "Cargo reconoce los crates del workspace en cualquier ruta y decide por fecha: el build-rust.sh del repo original reutilizaría un binario compilado desde una copia mutada y lo metería en la ISO."
+
+[[mutation]]
+name = "test_harness: el timeout de run_mutations mata sin dejar que la prueba cierre lo suyo"
+file = "tests/mutations/run_mutations.py"
+find_re = '^            os\.killpg\(proc\.pid, signal\.SIGTERM\)$'
+replace = "            pass"
+caught_by = "tests.static.test_harness"
+expect = "el timeout no deja a la prueba cerrar lo que abrió"
+why = "test-gui-smoke.py arranca las apps en su propia sesión: con un SIGKILL directo quedan vivas con su pidfile en /tmp/churros del contenedor, junto a gtk4-broadwayd, y el popup del mismo nombre de la ejecución siguiente se apaga (toggle) en vez de abrirse."
+
+[[mutation]]
+name = "test_harness: testlib.workspace_build reutiliza el build del workspace de otra copia"
+file = "tests/testlib.py"
+find_re = '^        forget_workspace_build\(target\)$'
+replace = "        pass"
+caught_by = "tests.static.test_harness"
+expect = "una copia compilaría reutilizando el build de otra copia"
+why = "Con un CARGO_TARGET_DIR fuera del árbol (compartido entre checkouts), cargo da por compilado el workspace con el binario de otro árbol de fechas más nuevas."
+
+[[mutation]]
+name = "test_harness: mutation workers share one CARGO_TARGET_DIR"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        env\["CARGO_TARGET_DIR"\] = str\(target\)$'
+replace = "        pass"
+caught_by = "tests.static.test_harness"
+expect = "run() no pasa el CARGO_TARGET_DIR del worker"
+why = "Cargo fingerprints workspace members by their path relative to the workspace root, so with one shared target dir a worker's mutated tree passes as already built by another worker's binary: container mutations survive, or are credited to the wrong mutation, at random in the parallel weekly run."
+
+# ---- churros-settings: lo que escribe en ~/.config/niri/config.kdl
+
+[[mutation]]
+name = "churros-settings: window-rule regexes written as plain quoted strings"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^    if !value\\.contains\\(.*\\) \\{$"
+replace = "    if true {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "la regex del app-id no vuelve igual"
+requires = "container"
+why = "The original bug: a regex such as ^org\\.churros\\.popup written as \"^org\\.churros\\.popup\" is an invalid KDL escape, and niri rejects the whole config.kdl after saving any window rule in churros-settings."
+
+[[mutation]]
+name = "churros-settings: update_rule re-serializes the whole window-rule"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^        Some\\(rule\\) => update_block\\(&lines\\[start\\.\\.=end\\], rule\\),$"
+replace = "        Some(rule) => serialize_rule(rule).lines().map(String::from).collect(),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "guardar sin cambios la regla"
+requires = "container"
+why = "A 'simpler' update_rule that rebuilds the rule from the form drops what the form does not model (draw-border-with-background false on foot and every ChurrOS app) and reorders it, just by pressing save."
+
+[[mutation]]
+name = "churros-settings: list_rules reads the last match of a window-rule, update_rule edits the first"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = "^            if let Some\\(\\(key, field\\)\\) = matched\\.filter\\(\\|\\(key, _\\)\\| !seen\\.contains\\(key\\)\\) \\{$"
+replace = "            if let Some((key, field)) = matched {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings window_rules_service"
+expect = "guardar sin cambios la regla"
+requires = "container"
+why = "Reading every match line (last one wins) while update_block edits the first: saving unchanged a hand-written rule with two `match app-id=` lines (an OR) copies the second app-id over the first, and that app silently leaves the rule."
+
+[[mutation]]
+name = "churros-settings: add_keybind stops copying config.kdl at the end of binds"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^(                insert_pos = Some\\(out_lines\\.len\\(\\) - 1\\);)$"
+replace = "\\1\n                break;"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_keeps_what_follows_binds"
+expect = "add_keybind perdió lo que va detrás del bloque binds"
+requires = "container"
+why = "The old add_keybind: every new or renamed shortcut deleted the spawn-at-startup lines after binds (Noctalia, portals, polkit agent). niri validate accepts the result, so only the unit test sees it."
+
+[[mutation]]
+name = "churros-settings: add_keybind writes a key that is already bound"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^            if in_binds && same_key\\(bound, key\\) \\{$"
+replace = "            if false && same_key(bound, key) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_refuses_a_key_already_bound"
+expect = "duplica un atajo"
+requires = "container"
+why = "Adding (or renaming to) a key that already has a shortcut writes a second bind; niri rejects the whole config with 'duplicate keybind'."
+
+[[mutation]]
+name = "churros-settings: saving a shortcut unchanged rewrites it from the dialog"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^            let unchanged = new_key == key$"
+replace = "            let unchanged = false && new_key == key"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings saving_a_keybind_unchanged_keeps_the_skel_byte_for_byte"
+expect = "guardar sin cambios el atajo"
+requires = "container"
+why = "The edit dialog has no allow-when-locked, allow-inhibiting or spawn arguments after the first: rewriting an untouched shortcut from it made the media keys stop working on the lock screen and left the brightness keys running `brightnessctl --class=backlight` without `set +10%`. niri validate accepts it."
+
+[[mutation]]
+name = "churros-settings: renaming a shortcut to the same key in another case is refused"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = "^        if same_key\\(old, new\\) \\{$"
+replace = "        if false && same_key(old, new) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings rename_keybind_to_the_same_key_in_another_case"
+expect = "rename_keybind(Mod+w -> Mod+W) se niega"
+requires = "container"
+why = "Mod+w -> Mod+W is the same key for niri: going through add_keybind, its duplicate check refuses the rename because of the shortcut being renamed, and the dialog only says 'No se pudo guardar el atajo' (it also drops the new command typed in the same dialog)."
+
+[[mutation]]
+name = "churros-settings: the cursor size rewrite drops everything before `cursor {`"
+file = "rust/preferences/src/services/cursor.rs"
+find_re = "^            &content\\[\\.\\.=brace_open\\],$"
+replace = "            &content[line_start..=brace_open],"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings set_niri_cursor_size_keeps_the_rest_of_the_config"
+expect = "set_niri_cursor_size cambió algo más que xcursor-size"
+requires = "container"
+why = "The bug the new cursor cases of niri_writers found: moving the cursor size slider rebuilt config.kdl from the `cursor {` line, so the environment block before it (QT_QPA_PLATFORM, GDK_BACKEND, MOZ_ENABLE_WAYLAND) vanished. niri validate accepts the result."
+
+[[mutation]]
+name = "test_niri_config: churros-settings writes blur passes as a decimal"
+file = "rust/preferences/src/services/niri_config.rs"
+find_re = "^            \\(\"passes\", passes\\.to_string\\(\\)\\),$"
+replace = "            (\"passes\", py_float_str(passes as f64)),"
+caught_by = "tests.container.test_niri_config"
+expect = "niri-writers:NiriConfig::set_blur("
+requires = "container"
+why = "Formatting every blur value with py_float_str looks consistent, but niri reads passes as an integer: `passes 3.0` makes it reject the whole config.kdl as soon as the Niri page applies its sliders. No unit test parses what niri accepts."
+
+[[mutation]]
+name = "test_niri_config: an invented niri action in the shortcut dialog list"
+file = "rust/preferences/src/pages/keyboard.rs"
+find_re = "^    \"toggle-window-floating\",$"
+replace = "    \"toggle-floating\","
+caught_by = "tests.container.test_niri_config"
+expect = "niri-writers:KeyboardService::add_keybind(\"Mod+Ctrl+Alt+Z\", \"builtin\", \"toggle-floating\""
+requires = "container"
+why = "A wrong action name (an AI writing from memory) in BUILTIN_ACTIONS: adding that shortcut from churros-settings writes an action niri does not know and it rejects the whole config.kdl."
+
+[[mutation]]
+name = "test_niri_config: a page calls a config.kdl writer that niri_writers.rs does not exercise"
+file = "rust/preferences/src/services/niri_writers.rs"
+find_re = "^        \\[niri_config_cases\\(\\), keyboard_cases\\(\\), window_rules_cases\\(\\), cursor_cases\\(\\)\\]\\.into_iter\\(\\)\\.flatten\\(\\)\\.collect\\(\\);$"
+replace = "        [niri_config_cases(), keyboard_cases(), window_rules_cases()].into_iter().flatten().collect();"
+caught_by = "tests.container.test_niri_config"
+expect = "llama a CursorService::set_size"
+requires = "container"
+why = "Cases dropped (or a writer that never had any): the cursor size slider would go back to having no niri validate check. The guard derives the writer services from the services/*.rs that name config.kdl and write files, so CursorService counts without being listed anywhere."
+
+
+# ---- Tercera revisión: runner, arranque, pick_editions, cableado y entradas de arranque
+
+[[mutation]]
+name = "test_harness: los workers parten del target compartido y no de lo que compiló la línea base"
+file = "tests/mutations/run_mutations.py"
+find = "    source = seed if seed is not None else Path(shared)"
+replace = "    source = Path(shared)"
+caught_by = "tests.static.test_harness"
+expect = "el worker no parte de lo que compiló la línea base"
+why = "Con un target compartido frío o viejo, cada worker repetiría la compilación de GTK con el plazo de una mutación: ✗ MENSAJE por timeout."
+
+[[mutation]]
+name = "test_harness: el target sembrado conserva el build del workspace de otra copia"
+file = "tests/mutations/run_mutations.py"
+find_re = '^        testlib\.forget_workspace_build\(target\)\n    return target$'
+replace = "    return target"
+caught_by = "tests.static.test_harness"
+expect = "el worker reutiliza el build del workspace compilado en otra copia"
+why = "Los binarios del workspace llevan el CARGO_MANIFEST_DIR de quien los compiló: la prueba de un worker leería el skel sin mutar de la base."
+
+[[mutation]]
+name = "test_harness: un arranque que falla a medias no deja journal.txt"
+file = "tests/vm/boot_smoke.py"
+find_re = '^                \(artifacts / "journal\.txt"\)\.write_text\(journal \+ "\\n"\)\n            except Exception as dump:'
+replace = "                pass\n            except Exception as dump:"
+caught_by = "tests.static.test_harness"
+expect = "un fallo a medias no deja journal.txt"
+why = "Un niri colgado a mitad de prueba: el informe sin diario no deja diagnosticar nada desde el CI."
+
+[[mutation]]
+name = "test_harness: pick_editions deja de leer el contenido de los ficheros cambiados"
+file = "tests/iso/pick_editions.py"
+find = '    if not path.startswith(CONTENT_PATHS) or path.endswith(".md"):'
+replace = "    if True:"
+caught_by = "tests.static.test_harness"
+expect = "desktop.sh"
+why = "desktop.sh y el autostart de la bienvenida solo afectan a XFCE/server pero su ruta no lo dice: el PR construiría solo niri."
+
+[[mutation]]
+name = "test_repo_wiring: el paso pick de iso.yml deja de recibir el diff del PR"
+file = ".github/workflows/iso.yml"
+find = "changed=$(git diff --name-only HEAD^1 HEAD)"
+replace = 'changed=""'
+caught_by = "tests.static.test_repo_wiring"
+expect = "un PR que toca la lista de XFCE no construye XFCE"
+why = "Cada PR volvería a construir solo niri: una rotura de XFCE o server aparecería de madrugada, después del merge."
+
+[[mutation]]
+name = "test_repo_wiring: el arranque BIOS vuelve a saltarse en todos los PR"
+file = ".github/workflows/iso.yml"
+find = "needs.matrix.outputs.bios == 'true'"
+replace = "github.event_name != 'pull_request'"
+caught_by = "tests.static.test_repo_wiring"
+expect = "el arranque BIOS no depende de lo que elige pick_editions"
+why = "Un PR que toca syslinux pasaría sin arrancar nunca por BIOS."
+
+[[mutation]]
+name = "test_repo_wiring: una guarda de capa de test.sh que el análisis no sabe leer"
+file = "scripts/cli/test.sh"
+find = 'if [ "$RUN_GUI" -eq 1 ]; then'
+replace = 'if [ "$RUN_GUI" -eq 1 ] && [ -n "${BROADWAY-x}" ]; then'
+caught_by = "tests.static.test_repo_wiring"
+expect = "no sé leer la guarda de capa"
+why = "Una guarda que el análisis no entiende no puede contar como 'sin guarda': cualquier ./churros test parecería ejecutar el tour y quitarlo del CI pasaría."
+
+[[mutation]]
+name = "test_repo_wiring: el análisis de test.sh ignora las guardas anidadas"
+file = "tests/static/test_repo_wiring.py"
+find = "        lines.append((tuple(g for _, g in stack if g), raw))"
+replace = "        lines.append((tuple(g for _, g in stack[:1] if g), raw))"
+caught_by = "tests.static.test_repo_wiring"
+expect = "cuenta como ejecutados ['tests/mutations/run_mutations.py']"
+why = "./churros test --container contaría como si ejecutara las mutaciones de contenedor, que solo corren con --mutations."
+
+[[mutation]]
+name = "test_repo_wiring: CONTAINER_CMD con declare y el container_run sin CHURROS_STRICT"
+file = "scripts/cli/test.sh"
+find_re = '(?s)^    CONTAINER_CMD=\(python3 -m unittest discover(.*?)container_run --upgrade -e "CHURROS_STRICT=\$strict" -- \\$'
+replace = '    declare -a CONTAINER_CMD=(python3 -m unittest discover\1container_run --upgrade -- \\'
+caught_by = "tests.static.test_repo_wiring"
+expect = "lanza tests/container en el contenedor sin pasarle CHURROS_STRICT"
+why = "Con la variable declarada de otra forma, el container_run de --gui (que sí lo pasa) tapaba que el de tests/container no lo pasa."
+
+[[mutation]]
+name = "test_repo_wiring: un paso de rust.yml lanza tests/container con container_run sin modo estricto"
+file = ".github/workflows/rust.yml"
+find = "        run: ./churros test --container\n"
+replace = "        run: |\n          source scripts/lib/container.sh\n          container_engine_init\n          container_run --upgrade -- python3 -m unittest discover -s tests/container -t . -v\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "lanza tests/container con container_run sin -e CHURROS_STRICT=1"
+why = "El contenedor no hereda CI=true: una herramienta que falte sería un SKIP y el job seguiría verde."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues para una edición y arquitectura que no existen"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"iso-xfce-aarch64:missing-lib:calamares:libfoo.so\"\nnote = \"no hay ISO xfce aarch64\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "iso-xfce-aarch64:missing-lib:calamares:libfoo.so"
+why = "Ninguna auditoría produce iso-xfce-aarch64: la entrada no silencia nada y nadie la borraría."
+
+[[mutation]]
+name = "test_repo_wiring: entrada de known_issues con la categoría sin su prefijo wiring:"
+file = "tests/known_issues.toml"
+find_re = '\Z'
+replace = "\n[[issue]]\nid = \"test-script:scripts/test-tour.py\"\nnote = \"falta wiring: delante\"\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "test-script:scripts/test-tour.py"
+why = "La categoría real es wiring:test-script: la entrada no silencia nada."
+
+[[mutation]]
+name = "test_config_syntax: la entrada BIOS de accesibilidad pierde su APPEND"
+file = "archiso/syslinux/archiso_sys-linux.cfg"
+find_re = '^APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% accessibility=on copytoram=n cow_spacesize=2G\n'
+replace = ""
+caught_by = "tests.static.test_config_syntax"
+expect = "no-cmdline:archspeech"
+why = "Sin APPEND el kernel arranca sin archisobasedir ni archisosearchuuid y la entrada acaba en la shell de emergencia."
+
+[[mutation]]
+name = "check: el unpackfs de i686 copia el kernel de boot/x86_64"
+file = "installer/calamares/modules/i686/unpackfs.conf"
+find = "churros/boot/i686/vmlinuz-linux"
+replace = "churros/boot/x86_64/vmlinuz-linux"
+caught_by = "check"
+expect = "sources outside /run/archiso/bootmnt/churros/{,boot/}i686/"
+why = "Ese fichero no existe en la ISO i686: unpackfs aborta todas las instalaciones."
+
+# ---- churros-settings: atajos equivalentes para niri, reglas con `;` y el formulario de reglas
+
+[[mutation]]
+name = "churros-settings: same_key forgets that Control is Ctrl for niri"
+file = "rust/preferences/src/services/keyboard.rs"
+find_re = '^                "control" => "ctrl"\.to_string\(\),$'
+replace = ""
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings add_keybind_refuses_a_key_already_bound"
+expect = "add_keybind(Mod+Control+T) duplica un atajo"
+requires = "container"
+why = "niri parses Ctrl/Control, Super/Win, Mod5/ISO_Level3_Shift, Mod3/ISO_Level5_Shift and Prior/Page_Up as the same key. Without the alias, adding Mod+Control+T (or renaming a shortcut to it) next to an existing Mod+Ctrl+T writes a second bind and niri rejects the whole config.kdl ('duplicate keybind')."
+
+[[mutation]]
+name = "churros-settings: read_rule takes the second token of a window-rule property again"
+file = "rust/preferences/src/services/window_rules_service.rs"
+find_re = '^                if let Some\(parsed\) = property_token\(stripped\)\.and_then\(\|v\| parse_property\(key, v\)\) \{$'
+replace = "                if let Some(parsed) = stripped.split_whitespace().nth(1).and_then(|v| parse_property(key, v)) {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings saving_a_rule_unchanged_keeps_the_skel_byte_for_byte"
+expect = "(\"c\") cambia config.kdl"
+requires = "container"
+why = "`opacity 0.9;` is valid for niri, but the second whitespace token is `0.9;`: list_rules reads null, the form sends null and update_block deletes the opacity, open-floating and corner-radius lines just by pressing save on that rule. niri validate accepts the result."
+
+[[mutation]]
+name = "churros-settings: the rule editor opens a rule without opacity at opacity 0"
+file = "rust/preferences/src/pages/window_rules.rs"
+find_re = '^        opacity: rule\["opacity"\]\.as_f64\(\)\.unwrap_or\(1\.0\),$'
+replace = "        opacity: rule[\"opacity\"].as_f64().unwrap_or_default(),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings editing_a_rule_after_another_saves_it_unchanged"
+expect = "el formulario de pavucontrol no es el de un formulario vacío"
+requires = "container"
+why = "form_values must give every control the value of an empty form when the rule does not have it (the old on_edit_rule left the opacity of the rule edited before, so pavucontrol got `opacity 0.8` from foot). unwrap_or_default() gives 0: saving pavucontrol would write `opacity 0.0`, an invisible window. niri validate accepts it."
+
+[[mutation]]
+name = "test_harness: pick_editions busca $EDITION en el texto ya pasado a minúsculas"
+file = "tests/iso/pick_editions.py"
+find = 'BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition", re.IGNORECASE)'
+replace = 'BRANCHES_ON_EDITION = re.compile(r"\$\{?EDITION\b|churros-edition")'
+caught_by = "tests.static.test_harness"
+expect = "un script que decide por $EDITION no construye todas las ediciones"
+why = "content() pasa el texto a minúsculas: sin IGNORECASE, un script común que solo decide por $EDITION no construye XFCE ni server en el PR."
+
+[[mutation]]
+name = "test_calamares_config: fix-boot recorre los presets con una variable de shell"
+file = "installer/calamares/modules/shellprocess-fixboot.conf"
+find_re = '^  - "sed -i -e .*/etc/mkinitcpio\.d/linux\*\.preset"$'
+replace = "  - \"for p in /etc/mkinitcpio.d/linux*.preset; do sed -i \\\"s/PRESETS=('archiso')/PRESETS=('default')/\\\" \\\"$p\\\"; done\""
+caught_by = "tests.static.test_calamares_config"
+expect = "undefined-variable:p"
+why = "Calamares expande todo `$` de un comando de shellprocess: `$p` es 'Missing variables', fix-boot aborta y con él la instalación (el bucle que llegó en main)."
+
+[[mutation]]
+name = "test_editions: el kernel propio sale de la lista y vmlinuz-linux deja de tener de dónde salir"
+file = "archiso/packages.x86_64"
+find_re = '^linux-churrosvyper\n'
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/x86_64:linux]"
+why = "GRUB, syslinux y unpackfs arrancan vmlinuz-linux, que customize_airootfs.sh enlaza al kernel propio solo si está instalado: sin él, la ISO no tiene kernel."
+
+[[mutation]]
+name = "test_editions: un paquete local instala un fichero que ya trae el airootfs"
+file = "pkgs/linux-churrosvyper/PKGBUILD"
+find = '"$pkgdir/etc/mkinitcpio.d/linux-churrosvyper.preset"'
+replace = '"$pkgdir/etc/mkinitcpio.d/linux.preset"'
+caught_by = "tests.static.test_editions"
+expect = "pkg-collision:linux-churrosvyper:/etc/mkinitcpio.d/linux.preset"
+why = "mkarchiso copia el airootfs antes de pacstrap: pacman aborta con 'exists in filesystem' y no hay ISO (pasó con el preset de linux-churrosvyper)."
+
+[[mutation]]
+name = "test_editions: el enlace del initramfs en /boot vuelve a ser absoluto"
+file = "branding/customize_airootfs.sh"
+find = "ln -sfn initramfs-linux-churrosvyper.img /boot/initramfs-linux.img"
+replace = "ln -sfn /boot/initramfs-linux-churrosvyper.img /boot/initramfs-linux.img"
+caught_by = "tests.static.test_editions"
+expect = "boot-link:branding/customize_airootfs.sh:/boot/initramfs-linux.img"
+why = "mkarchiso copia /boot fuera del chroot con cp -a y resuelve el enlace en el equipo de build: 'install: cannot stat .../boot/initramfs-linux.img' y no hay ISO niri (o se lleva el initramfs del host)."
+
+[[mutation]]
+name = "test_calamares_config: la simulación de fix-boot deja de ver el preset que escribe customize_airootfs.sh"
+file = "tests/static/test_calamares_config.py"
+find = '        if name.removesuffix(".preset") in listed:'
+replace = '        if False:'
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
+why = "Sin ese preset la simulación solo ve linux.preset y la instalación de niri x86_64 parece pasar: mkinitcpio -P falla en el destino con el kernel ChurrOSvyper."

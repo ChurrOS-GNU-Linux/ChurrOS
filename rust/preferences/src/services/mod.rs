@@ -6,6 +6,7 @@ pub mod backup_service;
 pub mod connectivity;
 pub mod cursor;
 pub mod datetime;
+pub mod desktop_apps;
 pub mod display;
 pub mod fonts;
 pub mod foot_config;
@@ -28,3 +29,8 @@ pub mod users;
 pub mod wallpaper;
 pub mod waybar;
 pub mod window_rules_service;
+
+#[cfg(test)]
+mod niri_writers;
+#[cfg(test)]
+pub(crate) mod test_support;

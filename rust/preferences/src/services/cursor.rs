@@ -182,7 +182,9 @@ fn rewrite_cursor_block(block: &str, size: i64) -> String {
 /// Se implementa aquí (y no en services/niri_config.rs) porque el port Rust de
 /// NiriConfig solo cubre animations/prefer-no-csd. La página cursor.py lo llama
 /// dentro de un try/except que ignora errores: aquí los fallos se silencian.
-fn set_niri_cursor_size(size: f64) {
+/// (pub(crate) para services::niri_writers: set_size además llama a
+/// gsettings y xfconf-query.)
+pub(crate) fn set_niri_cursor_size(size: f64) {
     let size_i = size as i64;
     let path = niri_config_path();
     let Ok(content) = fs::read_to_string(&path) else {
@@ -220,9 +222,11 @@ fn set_niri_cursor_size(size: f64) {
 
         let block = &content[brace_open + 1..close];
         let new_block = rewrite_cursor_block(block, size_i);
+        // Desde el principio del fichero: lo que va antes de `cursor {`
+        // (environment en el config de ChurrOS) también se queda.
         new_content = Some(format!(
             "{}{}{}",
-            &content[line_start..=brace_open],
+            &content[..=brace_open],
             new_block,
             &content[close..]
         ));
@@ -342,5 +346,33 @@ impl CursorService {
 
         // Equivalente a: NiriConfig.set_cursor_size(size) dentro de try/except
         set_niri_cursor_size(size);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::test_support::{skel_niri_config, TempHome};
+
+    #[test]
+    fn set_niri_cursor_size_keeps_the_rest_of_the_config() {
+        // La reescritura del bloque cursor empezaba en su propia línea: todo
+        // lo de antes (environment con QT_QPA_PLATFORM y GDK_BACKEND en el
+        // config de ChurrOS) desaparecía al mover el tamaño del cursor, y
+        // niri lo da por bueno.
+        let skel = skel_niri_config();
+        assert!(skel.contains("\ncursor {\n    xcursor-size 24\n}\n"), "el skel cambió: actualiza este test");
+        let home = TempHome::new("cursor-size", &skel);
+        set_niri_cursor_size(32.0);
+        assert_eq!(
+            home.read(),
+            skel.replacen("    xcursor-size 24\n", "    xcursor-size 32\n", 1),
+            "set_niri_cursor_size cambió algo más que xcursor-size"
+        );
+
+        // Sin bloque cursor: se añade al final.
+        home.write("layout {\n    gaps 8\n}");
+        set_niri_cursor_size(8.0);
+        assert_eq!(home.read(), "layout {\n    gaps 8\n}\ncursor {\n    xcursor-size 8\n}\n");
     }
 }

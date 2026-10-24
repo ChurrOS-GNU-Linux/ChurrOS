@@ -15,11 +15,11 @@ installer/calamares/            →  settings.conf, módulos y branding (slidesh
 branding/customize_airootfs.sh  →  instala el paquete de Calamares en la ISO durante el build
 ```
 
-La instalación es offline: `unpackfs` copia al disco el sistema del Live (squashfs y kernel). `netinstall` y `packages` no están en la secuencia; sus ficheros (`netinstall.conf`, `netinstall.yaml`, `packages.conf`) siguen en `installer/calamares/modules/` sin usarse. El repo `[churros]` (`Server = file:///root/packages`) no lo registra ningún paso: viene declarado en `archiso/pacman.<arch>.conf` y `post-install` lo retira del sistema instalado.
+La instalación es offline: `unpackfs` copia al disco el sistema del Live (squashfs y kernel). `netinstall` y `packages` no están en la secuencia; sus ficheros (`netinstall.conf`, `netinstall.yaml`, `packages.conf`) siguen en `installer/calamares/modules/` sin usarse. El repo `[churros]` (`Server = file:///root/packages`) no lo registra ningún paso de Calamares. Está declarado en `archiso/pacman.<arch>.conf`, que mkarchiso solo usa para pacstrap al construir la ISO: no está en el `/etc/pacman.conf` del Live (`tests/iso/check_iso.py` anota `pacman_conf_has_churros_repo`). Los paquetes locales (calamares, yay, wlogout, python-pywal, bazaar) llegan a la ISO por pacstrap. `post-install` retira el bloque `[churros]` si aparece en el sistema instalado.
 
 La parte propia son dos cosas.
 
-**1. La configuración.** [`installer/calamares/settings.conf`](../installer/calamares/settings.conf) ordena la secuencia (es la fuente de verdad del orden) y añade cinco instancias de `shellprocess`:
+**1. La configuración.** [`installer/calamares/settings.conf`](../installer/calamares/settings.conf) ordena la secuencia (es la fuente de verdad del orden; `tests/static/test_calamares_config.py` la comprueba) y añade cinco instancias de `shellprocess`:
 
 | Instancia (`id`) | Fichero en `modules/` | Cuándo y qué hace |
 |---|---|---|

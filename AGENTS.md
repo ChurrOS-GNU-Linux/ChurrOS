@@ -6,6 +6,7 @@
 ./churros build              # Build ISO (default: niri edition)
 ./churros build --edition xfce # Build ISO with XFCE edition
 ./churros build --edition server # Build ISO with the headless server edition
+./churros build --edition pi --arch arm64 # Raspberry Pi Lite edition (labwc, aarch64 only)
 ./churros build --arch arm64 # Build the aarch64 ISO (default: host architecture, uname -m; same for run)
 ./churros build --arch i686  # Build the 32-bit ISO (Arch Linux 32 repos; same for run)
 ./churros build --container  # Same build inside the Arch container (Containerfile; podman or docker, --privileged)
@@ -14,9 +15,14 @@
 ./churros run --nokvm        # Force software emulation (no /dev/kvm)
 ./churros run --fresh        # Reset OVMF_VARS.fd so UEFI boots from CD-ROM instead of an existing install
 ./churros clean              # Remove work/ and out/ (also runs sudo rm -rf)
-./churros check              # Static checks: bash, python, package lists, desktop files, Calamares branding, po files
+./churros check              # Static checks (scripts/cli/check.sh) + the tests/static suite
+./churros test               # Same as check; layers: --container, --rust, --gui, --iso [ISO], --boot [ISO], --mutations
 ./churros apps               # Open distro apps on the host (GTK preview is dummy; Calamares uses a tmp overlay)
 ./churros doctor             # Check tools per distro (Arch: mkarchiso & co.; elsewhere: podman/docker for --container)
+./churros info               # Project information
+./churros version            # CLI version
+./churros logo               # Print the ChurrOS logo
+./churros cluster            # distcc build cluster over SSH for the ChurrOSvyper kernel (init/scan/auth/probe/start/status/stop/build/monitor)
 ./install-deps.sh            # Install dev deps with pacman, apt or dnf
 ./scripts/build-calamares.sh # Build Calamares into archiso/packages/ (.pkg.tar.zst, or .xz)
 ./scripts/build-aur.sh       # Build python-pywal + yay + wlogout AUR packages
@@ -44,13 +50,26 @@ A trap on EXIT cleans generated files out of `archiso/airootfs/` (`root/customiz
 
 ## Testing
 
-The Rust crates carry unit tests (`#[test]` in `services`, `preferences`, `churros-welcome` and `churros-tour`). `./churros rust` runs `cargo build`, `cargo test` and `cargo clippy` over the workspace, the same as CI (`.github/workflows/rust.yml`, on x86_64 and arm64); `ci.yml` also runs `cargo test -p churros-services`. Run `./churros rust` before a PR that touches `rust/`. Two more layers of verification exist.
+Full guide: `docs/testing.md`. Layers, cheapest first (each catches what the previous one cannot see):
 
-`./churros check` runs the static checks (`scripts/cli/check.sh`): bash syntax, shellcheck at error level, Python syntax, duplicate entries in the `packages.*` lists (x86_64, i686, editions), commands spawned by niri that resolve to a binary/crate/package, desktop `Exec`/`TryExec` resolution, Calamares exec order and shellprocess configs, Calamares branding (`componentName`, slideshow API 2, image files), Calamares host preview (`./churros apps calamares`), `msgfmt --check` on `po/*.po`, and relative links in tracked Markdown files plus the `docs/README.md` index (every `docs/**/*.md` must be listed there). It needs no ISO build and runs in seconds. The same script runs in CI (`.github/workflows/ci.yml`) on every push to `main` and every pull request.
+1. `./churros test` (= `./churros check`, seconds, no ISO): `scripts/cli/check.sh` plus every module in `tests/static/` (`python3 -m unittest discover -s tests/static -t .`). The modules model the whole system from the repo: shell scripts found by shebang (`bash -n`, `zsh -n`, shellcheck), the `file_permissions` contract, every command executed by niri/.desktop/XFCE/labwc/waybar/greetd/systemd/pacman hooks/Calamares/Rust resolved against the package list of each edition × arch, the edition matrix of `build.sh`, systemd units and links, Calamares (strict YAML, sequence order, shellprocess commands), config syntax (JSON/JSONC/TOML/XML/KDL/.desktop/GRUB theme), the Rust deploy/asset/CLI contract, a dry run of the real `build.sh` with stubbed tools, the update bundle, and test wiring/docs drift. It also runs `scripts/test-polkit-rules.js`, `scripts/test-privileged-helpers.py`, `scripts/test-network-services.py` and `scripts/test-apply-wallpaper.sh`, and it checks relative links in tracked Markdown plus the `docs/README.md` index (every `docs/**/*.md` must be listed there). CI (`ci.yml`) runs it with `CHURROS_STRICT=1`: a missing tool or a skipped test fails.
+2. `./churros test --mutations`: `tests/mutations/mutations.toml` lists realistic regressions; each must make its test fail. A surviving mutation means a test was weakened. Runs in `ci.yml`.
+3. `./churros rust`, `./churros test --gui` (in the container, under GTK Broadway: `scripts/test-tour.py` drives the tour's widgets; `scripts/test-gui-smoke.py` builds release and starts every deployed app and every popup twice, with the external tools absent and failing, and fails if one dies or panics within 5 s) and `./churros test --container` (`tests/container/`: package lists against the real Arch repos, `tests/command_providers.toml`/`unit_providers.toml` against `pacman -F`, `niri validate` on the shipped configs and on every config.kdl churros-settings writes). Run in `rust.yml` (x86_64 and arm64). The Rust crates carry `#[test]` (`services`, `preferences`, `churros-welcome` and `churros-tour`, among others); `./churros rust` runs `cargo test` over the workspace.
+4. `./churros test --iso [ISO]` (`tests/iso/check_iso.py`): audits a built ISO without booting it (El Torito, search uuid, real modes inside `airootfs.sfs`, ELF arch and libraries of the Rust apps and Calamares, greetd session, users, pkglist, systemd links, `/etc/calamares`).
+5. `./churros test --boot [ISO]` (`tests/vm/boot_smoke.py`): boots the ISO in QEMU through the real firmware path and inspects the Live session through `qemu-guest-agent` (failed system and user units, the active `churros` session opened by greetd, desktop processes, niri windows incl. Settings and the control center, journal, core dumps, screenshot). Artifacts in `out/boot-*`. `iso.yml` runs 4 and 5 with KVM on PRs that touch what goes into the ISO (niri plus every x86_64 edition the PR touches, picked by `tests/iso/pick_editions.py`; UEFI, plus BIOS when syslinux/profiledef/tests/vm change) and nightly for every x86_64 edition under UEFI and BIOS.
 
-`./churros check` also runs the privileged-execution tests (see `docs/privileged-execution.md`): `scripts/test-polkit-rules.js` (Node, no dependencies; skipped with a notice if `node` is missing) checks every decision of the polkit rule and that each real caller still uses the argv the rule allows; `scripts/test-privileged-helpers.py` runs `churros-update-utils` against a fake root, `churros-write-root-config` and the edition → session table without root. CI also runs `scripts/test-polkit-pkexec.sh` (`.github/workflows/polkit.yml`) against real polkitd and pkexec in an Arch container; it needs root, so do not run it on your machine. If you change a pkexec caller, change `50-churros-store.rules` and the caller table in `scripts/test-polkit-rules.js` with it.
+`ci.yml` also runs `cargo test -p churros-services` on the GitHub runner (that crate does not need the Arch container). The rest of `rust/` is `./churros rust` in `rust.yml`.
 
-Behaviour on the live system is verified in QEMU:
+Rules (most contributions are AI-assisted; these keep the net intact):
+- Never delete, skip or weaken a test, a `check.sh` section or a CI step to get green. If a test fails, fix the change or explain the test bug in the PR.
+- A real bug a test finds that is not fixed in the same change goes to `tests/known_issues.toml` with its id and a note. Fixed entries must be removed (the test fails until they are): the list only shrinks.
+- Every bug fix comes with the test that would have caught it and a mutation in `tests/mutations/mutations.toml`.
+- Shared knowledge lives in `tests/testlib.py` (editions × arch, package lists, `file_permissions`, deployed crates, command → package). A command whose binary is not named like its package goes into `tests/command_providers.toml`.
+- mkarchiso copies `airootfs` with `cp -af --no-preserve=ownership,mode`: the git exec bit is lost. Anything executed on the ISO needs an entry in `profiledef.sh` `file_permissions`.
+
+`scripts/test-polkit-pkexec.sh` (`.github/workflows/polkit.yml`) runs against real polkitd and pkexec in an Arch container; it needs root, so do not run it on your machine. If you change a pkexec caller, change `50-churros-store.rules` and the caller table in `scripts/test-polkit-rules.js` with it.
+
+Manual verification in QEMU (what is not automated yet: the Calamares install to disk and the first boot of the installed system):
 
 ```bash
 ./churros run
@@ -60,7 +79,7 @@ Behaviour on the live system is verified in QEMU:
 - VM disk: `vm/ChurrOS.qcow2` (64G qcow2, created on first run)
 - EFI vars: `vm/OVMF_VARS.fd` (copied from `/usr/share/edk2/x64/OVMF_VARS.4m.fd`)
 - Serial log: `vm_serial.log` (in root, gitignored)
-- 4 GB RAM, 4 cores + `-cpu host` with KVM (2 cores, plain q35 without). niri needs 3D: build.sh picks `virtio-vga-gl` if `/dev/dri` exists, else `virtio-gpu` (niri falls back to llvmpipe).
+- 4 GB RAM, 4 cores + `-cpu host` with KVM (2 cores, plain q35 without). niri needs 3D: run.sh picks `virtio-vga-gl` if `/dev/dri` exists, else `virtio-gpu`. niri 26.04 does NOT fall back to llvmpipe ("software EGL renderers are skipped"): without virgl it starts with no output and the screen stays black. `tests/vm` gives the guest virgl even on a GPU-less host (Mesa in a private Xvfb).
 
 ## Project Layout
 
@@ -89,7 +108,7 @@ archiso/                      ArchISO profile root
     root/scripts/             Live-ISO runtime scripts (users, services, desktop, cleanup)
     usr/share/churros/        Assets runtime de las apps Rust (welcome, preferences, control-center, tour) + scripts
 branding/                     Visual identity
-  customize_airootfs.sh       Runs in the airootfs chroot during mkarchiso (build time, not at live boot): applies os-release/issue/motd, creates live user, installs Calamares via bsdtar, configures local [churros] pacman repo
+  customize_airootfs.sh       Runs at build time in the mkarchiso chroot (arch-chroot), then mkarchiso deletes it: applies os-release/issue/motd, creates the live user, installs Calamares via bsdtar
   files/                      os-release, issue, motd, logos, wallpapers
 installer/
   calamares/settings.conf     Instance + sequence definition (see below)
@@ -119,9 +138,9 @@ docs/                         Project documentation
 
 - `shellprocess@boot-nocow` runs after `mount` and **MUST** come before `unpackfs`: `chattr +C` + `compression=none` on the target `/boot` so vmlinuz is never stored as btrfs zstd (GRUB `premature end of file`).
 - `shellprocess@pacman-init` (keyring init) **MUST** come before `shellprocess@fix-boot` (mkinitcpio preset rewrite + kernel modules) — both already ordered this way; do not reorder.
-- There is **no** `shellprocess@churros-repo`. The `[churros]` repo (`Server = file:///root/packages`) is declared in `archiso/pacman.<arch>.conf`, so it is already in the live environment's pacman.conf and Calamares carries it into the target. `netinstall` and `packages` are no longer in the sequence (removed in d6b9dab in favour of `churros-tour`); the local AUR packages a profile ships (yay, wlogout, python-pywal) are in its `packages.*` list and reach the target through `unpackfs`. The `[churros]` block is removed again by `shellprocess@post-install` (unanchored `sed /churros/d` is forbidden — use the anchored `[churros]` block removal).
+- There is **no** `shellprocess@churros-repo`. The `[churros]` repo (`Server = file:///root/packages`) is declared in `archiso/pacman.<arch>.conf`, which mkarchiso only uses for pacstrap at build time: it is not in the live `/etc/pacman.conf` (`tests/iso/check_iso.py` records `pacman_conf_has_churros_repo`), so the local packages (calamares, yay, wlogout, python-pywal, bazaar) reach the ISO through pacstrap, not through `netinstall` (not in the sequence; removed in d6b9dab in favour of `churros-tour`, which installs optional apps on first boot). `shellprocess@post-install` still removes a `[churros]` block if one exists (unanchored `sed /churros/d` is forbidden — use the anchored `[churros]` block removal).
 - `shellprocess@post-install` (cleanup: drops `[churros]`, `userdel -r churros`, removes live-only `/root` artifacts) is the last exec step before `umount`.
-- `shellprocess@grub-theme` runs right after `bootloader`: copies `branding/grub-theme` (deployed to `/usr/share/churros/grub-theme/` at live boot) into `/boot/grub/themes/churros/`, appends `GRUB_THEME` to the target's `/etc/default/grub`, reruns `grub-mkconfig -o /boot/grub/grub.cfg`, then `make-boot-grub-readable` so GRUB can read `/boot` on btrfs+zstd.
+- `shellprocess@grub-theme` runs right after `bootloader`: copies `branding/grub-theme` (copied to `/usr/share/churros/grub-theme/` in the airootfs at build time) into `/boot/grub/themes/churros/`, appends `GRUB_THEME` to the target's `/etc/default/grub`, reruns `grub-mkconfig -o /boot/grub/grub.cfg`, then `make-boot-grub-readable` so GRUB can read `/boot` on btrfs+zstd.
 
 Config files per instance: `shellprocess-pacman.conf`, `shellprocess-fixboot.conf`, `shellprocess-grub-theme.conf`, `shellprocess-cleanup.conf`, `shellprocess-boot-nocow.conf`. Module IDs in `instances:` are `pacman-init`, `fix-boot`, `grub-theme`, `post-install`, `boot-nocow` — five, no more.
 

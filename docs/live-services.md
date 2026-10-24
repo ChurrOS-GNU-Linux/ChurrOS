@@ -479,7 +479,7 @@ Herramienta de administración para crear, listar, limpiar y restaurar snapshots
 
 ## Orden de arranque
 
-Resumen del arranque del Live (lo que hace `customize_airootfs.sh` ya está dentro de la imagen):
+Resumen de cómo arranca la sesión. Lo que hace `customize_airootfs.sh` ya quedó dentro de la imagen al construirla y no corre aquí:
 
 1. systemd monta `/etc/pacman.d/gnupg` (tmpfs).
 2. `pacman-init.service` inicializa el keyring.

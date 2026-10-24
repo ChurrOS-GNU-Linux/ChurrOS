@@ -31,7 +31,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
         "Edición",
         None,
         Some("system.svg"),
-        Some("Developer Preview"),
+        Some(&SystemService::edition()),
         None,
         None,
     ));
@@ -106,11 +106,22 @@ pub fn build(navigator: gtk::Stack) -> Page {
     hardware.add(&Row::new(
         "Gráficos",
         None,
-        Some("about.svg"),
+        Some("display.svg"),
         Some(&SystemService::gpu()),
         None,
         None,
     ));
+    let gpu_driver = SystemService::gpu_driver();
+    if gpu_driver != "Desconocido" {
+        hardware.add(&Row::new(
+            "Controlador gráfico",
+            None,
+            Some("display.svg"),
+            Some(&gpu_driver),
+            None,
+            None,
+        ));
+    }
 
     page.add(hardware.widget());
 

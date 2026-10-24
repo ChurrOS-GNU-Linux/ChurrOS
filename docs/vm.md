@@ -49,7 +49,7 @@ En x86_64:
 | `-cpu` | `host` | Solo con KVM; sin KVM no se pasa `-cpu`. |
 | `-smp` | `4` | 2 sin KVM. |
 | `-m` | `4096` | 4 GiB de RAM. |
-| `-device virtio-vga-gl` | `-display gtk,gl=on,show-cursor=on` | Niri necesita 3D (virgl). Sin `/dev/dri` en el host: `-device virtio-gpu` con `gl=off`, y Niri cae a llvmpipe. |
+| `-device virtio-vga-gl` | `-display gtk,gl=on,show-cursor=on` | Niri necesita 3D (virgl). Sin `/dev/dri` en el host, `run` usa `-device virtio-gpu` con `gl=off`. Niri 26.04 no cae a llvmpipe: sin virgl arranca sin pantalla (negra). |
 | `-device qemu-xhci -device usb-tablet` | — | Controlador USB y puntero absoluto. |
 | `-device intel-hda -device hda-duplex` | — | Audio (x86_64 e i686). |
 | `-device virtio-serial-pci` + `qemu-vdagent` | `clipboard=on` | Portapapeles compartido vía spice-vdagent. |
@@ -118,7 +118,7 @@ No hay ISO de esa arquitectura en `out/`. Responde `y` para construirla, o ejecu
 
 ### La VM arranca pero la pantalla queda en negro
 
-Prueba `./churros run --nokvm` (no usa `-cpu host`) y revisa `vm_serial.log`. Si el host no tiene `/dev/dri`, `run` ya usa `virtio-gpu` sin aceleración y Niri arranca con llvmpipe, más lento.
+Niri 26.04 descarta el renderizado por software (`software EGL renderers are skipped`): sin virgl arranca sin salida y la pantalla se queda negra. `./churros run` elige `virtio-vga-gl` si el host tiene `/dev/dri` y, si no, `virtio-gpu` sin 3D, que no basta. `--nokvm` solo quita KVM (`-cpu host`); no enciende virgl. Revisa `vm_serial.log`. La capa `./churros test --boot` le da virgl al invitado aunque el host no tenga GPU (Mesa en un Xvfb privado). En VirtualBox o VMware hay que activar la aceleración 3D.
 
 ### Empezar de cero
 
@@ -146,8 +146,8 @@ Después de construir la ISO aarch64, valida en este orden:
 
 - [ ] El menú GRUB aparece con el tema y la entrada Live.
 - [ ] El sistema Live termina el arranque sin errores críticos en `vm_serial.log`.
-- [ ] `niri` inicia; `llvmpipe` es aceptable si virgl no está disponible.
-- [ ] Noctalia (barra), el lanzador (`Mod+Space`), `foot`, Welcome y los popups abren.
+- [ ] `niri` inicia con salida. Necesita virgl: niri 26.04 descarta el renderizado por software (llvmpipe) y sin 3D arranca sin pantalla (negra).
+- [ ] Noctalia (barra), el lanzador (`Mod+Space`), `foot`, Welcome y los popups abren. Waybar, Fuzzel y Mako siguen instalados como alternativa.
 - [ ] `lscpu | grep Architecture` muestra `aarch64`.
 - [ ] Calamares completa una instalación GPT/btrfs.
 - [ ] El log de instalación contiene `grub-install --target=arm64-efi` y `grub-mkconfig`.

@@ -28,7 +28,7 @@ Nombre con el tipo de cambio delante: `fix/…`, `feat/…`, `docs/…`, `perf/�
 
 ### Commits
 
-Se sigue la forma de Conventional Commits, `tipo(ámbito): descripción`, con el ámbito opcional. Los tipos habituales son `feat`, `fix`, `docs`, `perf`, `build`, `ci`, `chore`, `style`, `test` y `refactor`. Ejemplos reales:
+Se sigue la forma de Conventional Commits, `tipo(ámbito): descripción`, con el ámbito opcional. Los tipos habituales son `feat`, `fix`, `docs`, `perf`, `build`, `ci`, `chore`, `style`, `test` y `refactor`. El prefijo suele ir en inglés; la descripción, en español o en inglés (el historial usa los dos). Ejemplos reales:
 
 ```text
 fix(container): sin límite de procesos en el build privilegiado
@@ -42,18 +42,21 @@ La descripción puede ir en español o en inglés; el historial usa los dos. No 
 
 ## Pruebas según el tipo de cambio
 
-Ejecuta siempre `./churros check`. Tarda unos segundos y no construye la ISO. Revisa la sintaxis de Bash y Python, ShellCheck, las listas de paquetes, los comandos que lanza Niri y su integración con Noctalia, las entradas `.desktop`, la secuencia y el branding de Calamares, el perfil de cada arquitectura, las reglas polkit y los helpers privilegiados, que los `.po` compilen y que los enlaces de la documentación funcionen.
+La guía de capas, qué cubre cada una y las reglas para no debilitarlas están en [Pruebas](testing.md).
+
+Ejecuta siempre `./churros test` (es lo mismo que `./churros check`: `scripts/cli/check.sh` y `tests/static`). Tarda alrededor de un minuto y no construye la ISO. Revisa scripts (sintaxis de Bash y Python, ShellCheck), permisos de lo que se ejecuta en la ISO, que cada comando que lanza el sistema exista en su edición, Calamares, unidades systemd, sintaxis de configuraciones, el contrato de las apps Rust, un build en seco, las listas de paquetes, Niri y Noctalia, las entradas `.desktop`, el perfil de cada arquitectura, las reglas polkit y los helpers privilegiados, que los `.po` compilen y que los enlaces de la documentación funcionen. Con `CHURROS_STRICT=1` (o `CI=true`, que es como corre la CI) una herramienta que falta o una prueba saltada es un fallo; en local solo avisa.
 
 | Si tu cambio toca | Ejecuta además |
 |---|---|
-| Solo documentación (`*.md`) | Nada más: con `./churros check` basta. Si editas desde la web de GitHub, la CI lo ejecuta en el PR. |
-| Apps Rust (`rust/`) | `./churros rust`: build, tests y clippy de todo el workspace, igual que la CI. Corre en el contenedor de build; `--host` lo ejecuta en tu equipo. Para ver una app sin construir la ISO: `./churros apps welcome`, `settings`, `control-center`, `tour` o `popup <nombre>`. |
-| Build, paquetes, escritorio, sistema Live o instalador (`archiso/`, `branding/`, `scripts/`, `installer/`, `Containerfile*`) | `./churros build` y `./churros run`, y comprueba a mano en QEMU lo que has cambiado (ver [VM](vm.md)). |
+| Solo documentación (`*.md`) | Nada más: con `./churros test` basta. Si editas desde la web de GitHub, la CI lo ejecuta en el PR. |
+| Apps Rust (`rust/`) | `./churros rust` (build, `#[test]` y clippy) y `./churros test --gui`. Corre en el contenedor de build; `./churros rust --host` lo ejecuta en tu equipo. Para ver una app sin construir la ISO: `./churros apps welcome`, `settings`, `control-center`, `tour` o `popup <nombre>`. Para iterar un binario sin el contenedor: `cargo build --release --manifest-path rust/Cargo.toml` (queda en `rust/target/release/<nombre>`). |
+| Listas de paquetes (`archiso/packages.*`) o la configuración de niri (también lo que Ajustes escribe) | `./churros test --container`. |
+| Build, paquetes, escritorio, arranque, sistema Live o instalador (`archiso/`, `branding/`, `scripts/`, `installer/`, `Containerfile*`) | `./churros build`, `./churros test --iso --boot`, y comprueba a mano en QEMU lo que has cambiado (ver [VM](vm.md)). |
 | Reglas polkit o helpers privilegiados | Lee antes [Ejecución privilegiada](privileged-execution.md). `./churros check` ya ejecuta `scripts/test-polkit-rules.js` y `scripts/test-privileged-helpers.py`. |
 
 Si un cambio en una app Rust afecta a cómo se comporta en el sistema Live, pruébala también en QEMU.
 
-En cada pull request la CI ejecuta `./churros check` (job `Static checks`, el único obligatorio para fusionar), `./churros rust` en x86_64 y arm64, y las reglas polkit contra `pkexec` y polkitd reales en un contenedor Arch. Si el PR toca el perfil arm64 o los scripts de build, también construye la ISO aarch64.
+En cada pull request la CI ejecuta `./churros test` y `./churros test --mutations` (`ci.yml`, con modo estricto), `./churros rust`, `./churros test --gui` y `./churros test --container` en x86_64 y en arm64 (`rust.yml`), y las reglas polkit contra `pkexec` y polkitd reales en un contenedor Arch (`polkit.yml`). Si el PR toca lo que entra en la ISO, `iso.yml` la construye y la arranca (`--iso` y `--boot`) en las ediciones x86_64 afectadas. Si toca el perfil arm64, `iso-arm64.yml` construye esa ISO y audita su contenido. Un fallo real que no se arregla en el mismo cambio se anota en `tests/known_issues.toml` (la lista solo se acorta). Cada arreglo lleva la prueba que lo habría detectado y una mutación en `tests/mutations/mutations.toml`. No se borra, se salta ni se suaviza una prueba para que el CI pase.
 
 ---
 
@@ -72,7 +75,7 @@ Si un cambio modifica el comportamiento, el mismo PR actualiza el documento que 
 | Servicios y scripts del sistema Live | [live-services.md](live-services.md) |
 | Identidad visual | [branding.md](branding.md) |
 | Arte o componentes de terceros | [licencias.md](licencias.md) |
-| Comandos de build, pruebas o convenciones | [AGENTS.md](../AGENTS.md) |
+| Comandos de build, pruebas o convenciones | [AGENTS.md](../AGENTS.md) y [testing.md](testing.md) |
 
 Un documento nuevo se añade al [índice de la documentación](README.md).
 

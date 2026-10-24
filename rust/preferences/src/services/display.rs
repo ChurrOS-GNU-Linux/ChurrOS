@@ -157,6 +157,14 @@ impl DisplayService {
         self.backend == DisplayBackend::Niri
     }
 
+    /// Todos los monitores conectados.
+    pub fn monitors(&self) -> Vec<Monitor> {
+        match self.backend {
+            DisplayBackend::Niri => niri_monitors(),
+            DisplayBackend::Hyprland => hyprland_monitors(),
+        }
+    }
+
     /// Monitor actual: niri -> el primero; hyprland -> el enfocado.
     pub fn current_monitor(&self) -> Option<Monitor> {
         match self.backend {

@@ -46,6 +46,36 @@ fn profile_desc(id: &str) -> String {
     format!("Perfil: {id}")
 }
 
+/// Governor, planificador y GameMode (no dependen de powerprofilesctl).
+fn performance_group() -> Group {
+    let mut group = Group::new("Rendimiento y Gaming");
+    group.add(&Row::new(
+        "Governor de CPU",
+        None,
+        Some("power.svg"),
+        Some(&PowerService::cpu_governor()),
+        None,
+        None,
+    ));
+    group.add(&Row::new(
+        "Planificador del Kernel",
+        None,
+        Some("system.svg"),
+        Some(&PowerService::kernel_scheduler()),
+        None,
+        None,
+    ));
+    group.add(&Row::new(
+        "Feral GameMode",
+        Some("Optimización automática para juegos (prioridad de CPU/GPU)"),
+        Some("applications.svg"),
+        Some(&PowerService::gamemode_status()),
+        None,
+        None,
+    ));
+    group
+}
+
 pub fn build(navigator: gtk::Stack) -> Page {
     let page = Page::new(
         Some(navigator),
@@ -68,6 +98,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
             None,
         ));
         page.add(info_group.widget());
+        page.add(performance_group().widget());
         return page;
     }
 
@@ -117,6 +148,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     profile_group.add(&combo);
     page.add(profile_group.widget());
+
+    // ============ Rendimiento y Gaming ============
+    page.add(performance_group().widget());
 
     // ============ Advertencias ============
     let msg = match current.as_str() {

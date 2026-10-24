@@ -2,7 +2,7 @@
 
 Índice de toda la documentación del repositorio, ordenado según lo que vengas a hacer. Si buscas descargar la ISO, empieza por el [README principal](../README.md).
 
-`./churros check` comprueba que cada documento de `docs/` aparece en este índice y que los enlaces relativos de los `.md` apuntan a ficheros que existen.
+`./churros check` (y `./churros test`, que lo incluye) comprueba que cada documento de `docs/` aparece en este índice y que los enlaces relativos de los `.md` apuntan a ficheros que existen.
 
 ## Usar ChurrOS
 
@@ -22,8 +22,9 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 |-----------|----------------|
 | [Contributing](contributing.md) | Cómo contribuir, con o sin programar: flujo de trabajo, pruebas según el tipo de cambio, licencia de las contribuciones y uso de IA. |
 | [Principios](principios.md) | Los principios del proyecto y cómo se decide; todo PR se revisa contra ellos. |
+| [Pruebas](testing.md) | Capas de pruebas (`./churros test` y sus opciones), CI, problemas conocidos y autoprueba por mutaciones. |
 | [Getting Started](getting-started.md) | Preparar el entorno de desarrollo en Arch u otra distro (con contenedor). |
-| [CLI](cli.md) | Referencia de `./churros` (build, run, check, rust, apps, doctor, clean). |
+| [CLI](cli.md) | Referencia de `./churros` (build, run, check, test, rust, apps, doctor, cluster, clean). |
 | [VM](vm.md) | Probar la ISO en QEMU/KVM. |
 
 ## Referencia técnica

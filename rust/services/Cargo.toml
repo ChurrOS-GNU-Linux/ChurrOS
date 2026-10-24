@@ -2,6 +2,7 @@
 name = "churros-services"
 version = "1.3.0"
 edition = "2024"
+license.workspace = true
 description = "ChurrOS services layer (audio, battery, bluetooth, brightness, ethernet, power, wifi) — port Rust de services/"
 
 [lib]

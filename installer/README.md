@@ -25,7 +25,7 @@ installer/
 
 ## Secuencia de instalación (`settings.conf`)
 
-`settings.conf` define cinco instancias `shellprocess` (`boot-nocow`, `pacman-init`, `fix-boot`, `grub-theme` y `post-install`). La fase de ejecución sigue este orden, y el orden importa:
+`settings.conf` define cinco instancias `shellprocess` (`boot-nocow`, `pacman-init`, `fix-boot`, `grub-theme` y `post-install`). La fase de ejecución sigue este orden, y el orden importa (`tests/static/test_calamares_config.py` lo comprueba):
 
 ```text
 partition                    -> Crea y formatea las particiones (btrfs por defecto).
@@ -44,7 +44,7 @@ shellprocess@post-install    -> Limpieza: quita el repo [churros], Calamares y s
 umount                       -> Desmonta las particiones.
 ```
 
-`pacman-init` tiene que ir antes que `fix-boot`, y `boot-nocow` antes que `unpackfs`. No hay paso `netinstall` ni `packages`: las aplicaciones opcionales las instala [ChurrOS Tour](../docs/churros-tour.md) en el primer inicio del sistema instalado.
+`pacman-init` tiene que ir antes que `fix-boot`, y `boot-nocow` antes que `unpackfs`. No hay paso `netinstall` ni `packages`: los paquetes locales (calamares, yay, wlogout, python-pywal, bazaar) ya vienen en la ISO por pacstrap, y las aplicaciones opcionales las instala [ChurrOS Tour](../docs/churros-tour.md) en el primer inicio del sistema instalado.
 
 ---
 

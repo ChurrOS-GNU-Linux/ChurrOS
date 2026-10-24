@@ -1,0 +1,68 @@
+# Qué paquete instala cada unidad systemd que el perfil activa o enlaza
+# (multi-user.target.wants, services.sh, Calamares services-systemd) y que no
+# está en archiso/airootfs/etc/systemd/system. La unidad de un paquete solo
+# existe en las ediciones cuya lista lo incluye.
+#
+# Lo usan tests/static/test_systemd_units.py y test_editions.py. Cada entrada
+# está comprobada con las listas de ficheros de pacman en el contenedor Arch
+# (`pacman -Fy && pacman -F /usr/lib/systemd/system/<unidad>`), y las de
+# aarch64 contra Arch Linux ARM con archiso/pacman.aarch64.conf.
+#
+# [units]          unidad de sistema -> paquete. Las instancias (getty@tty1)
+#                  se buscan por su plantilla (getty@.service).
+# [user_units]     unidad de usuario (/usr/lib/systemd/user) -> paquete.
+# [unit_commands]  comando que ejecuta una unidad o un hook de pacman y que
+#                  testlib.resolve_command todavía no conoce -> paquete
+#                  (pacman -F /usr/bin/<comando>).
+# [pulled_by]      paquete que no está en la lista pero llega como dependencia
+#                  directa de otro que sí está (o que llega igual):
+#                  paquete = ["paquete que depende de él", ...]
+#                  (pacman -Si <paquete-de-la-lista>, en las tres arquitecturas).
+# [provides]       nombre virtual (Depends = de un hook) -> paquete que lo
+#                  provee (pacman -Si: Provides).
+
+[units]
+"ananicy-cpp.service" = "ananicy-cpp"
+"ModemManager.service" = "modemmanager"
+"NetworkManager.service" = "networkmanager"
+"NetworkManager-wait-online.service" = "networkmanager"
+"bluetooth.service" = "bluez"
+"espeakup.service" = "espeakup"
+"getty@.service" = "systemd"
+"graphical.target" = "systemd"
+"greetd.service" = "greetd"
+"multi-user.target" = "systemd"
+"pcscd.socket" = "pcsclite"
+"plymouth-quit.service" = "plymouth"
+"plymouth-quit-wait.service" = "plymouth"
+"plymouth-start.service" = "plymouth"
+"sockets.target" = "systemd"
+"sound.target" = "systemd"
+"sysinit.target" = "systemd"
+"systemd-resolved.service" = "systemd"
+"systemd-time-wait-sync.service" = "systemd"
+"systemd-timesyncd.service" = "systemd"
+"systemd-udev-settle.service" = "systemd"
+"timers.target" = "systemd"
+"ufw.service" = "ufw"
+
+[user_units]
+"timers.target" = "systemd"
+
+[unit_commands]
+chvt = "kbd"                 # livecd-talk.service ExecStartPre=/usr/bin/chvt
+pacman-key = "pacman"        # pacman-init.service
+rm = "coreutils"             # zzzz99-remove-custom-hooks-from-airootfs.hook
+sh = "bash"                  # Exec = /bin/sh -c ... de los hooks (/bin -> usr/bin)
+systemctl = "systemd"        # livecd-talk.service ExecStartPost=systemctl start ...
+
+[pulled_by]
+kbd = ["systemd"]                 # systemd depende de kbd (chvt)
+pacman-mirrorlist = ["pacman"]    # uncomment-mirrors.hook (Depends); pacman depende de él
+pcsclite = ["wpa_supplicant"]     # pcscd.socket; wpa_supplicant depende de pcsclite
+kcoreaddons = ["kcrash"]          # kcrash depende de kcoreaddons
+qt6-base = ["kcrash"]             # kcrash depende de qt6-base
+qt6-translations = ["qt6-base"]   # qt6-base depende de qt6-translations
+
+[provides]
+sh = "bash"

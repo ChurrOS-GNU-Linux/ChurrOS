@@ -18,20 +18,22 @@ Ejemplo:
 ./churros run --fresh
 ```
 
-El dispatcher `churros` se sitúa en la raíz del repositorio y reenvía los argumentos posteriores al subcomando a `scripts/cli/<comando>.sh`. Solo son comandos los de su lista explícita (`build`, `run`, `clean`, `check`, `rust`, `doctor`, `info`, `version`, `logo` y `apps`): un `.sh` más en ese directorio no queda expuesto por existir. Un comando desconocido muestra la ayuda y termina con código 1.
+El dispatcher `churros` se sitúa en la raíz del repositorio y reenvía los argumentos posteriores al subcomando a `scripts/cli/<comando>.sh`. Solo son comandos los de su lista explícita (`build`, `run`, `clean`, `check`, `test`, `rust`, `doctor`, `info`, `version`, `logo`, `apps` y `cluster`): un `.sh` más en ese directorio no queda expuesto por existir. Un comando desconocido muestra la ayuda y termina con código 1.
 
 ---
 
 ## Comandos disponibles
 
-### build
+## build
 
 Construye una imagen ISO de ChurrOS.
 
 ```bash
 ./churros build
+./churros build --edition niri
 ./churros build --edition xfce
 ./churros build --edition server
+./churros build --edition pi --arch arm64
 ./churros build --container
 ./churros build --container --arch arm64
 ./churros build --container --arch arm64 --edition pi
@@ -65,7 +67,7 @@ El repositorio local está en `archiso/packages/` (x86_64 e i686) y en `archiso/
 
 ---
 
-### run
+## run
 
 Arranca la ISO en una máquina virtual con QEMU.
 
@@ -98,7 +100,7 @@ Sin KVM, `run` indica que usa emulación por software pero no busca la causa. El
 
 ---
 
-### clean
+## clean
 
 Elimina los artefactos de la compilación.
 
@@ -128,7 +130,7 @@ No borra `archiso/airootfs/usr/bin/churros-tour`, que el build sí retira al ter
 
 ---
 
-### check
+## check
 
 Ejecuta las comprobaciones estáticas del repositorio.
 
@@ -140,22 +142,43 @@ Revisa, por temas:
 
 - Scripts: sintaxis de Bash, ShellCheck a nivel de error (los avisos de estilo solo se cuentan) y sintaxis de Python.
 - Paquetes y ediciones: duplicados en `archiso/packages*.x86_64`, `archiso/packages.i686` y `archiso/packages.aarch64` (no revisa `packages.pi.aarch64`), el perfil archiso de cada arquitectura, que cada edición x86_64 esté cableada en `build.sh`, `stamp-os-release.sh` y `edition-session.sh`, y que `usr/share/churros/defaults/` coincida con el skel.
-- Escritorio: los comandos que lanza Niri, su integración con Noctalia (atajos, fondo), Xwayland en Niri, los `Exec=`/`TryExec=` de los `.desktop` y la sesión X11 de XFCE. Los comandos se resuelven contra `archiso/packages.aarch64` salvo que se pase otra arquitectura en la variable `TARGET_ARCH` (por ejemplo, `TARGET_ARCH=x86_64 ./churros check`).
+- Escritorio: los comandos que lanza Niri, su integración con Noctalia (atajos, fondo), Xwayland en Niri, los `Exec=`/`TryExec=` de los `.desktop` y la sesión X11 de XFCE. En esta sección de `check.sh` los comandos de Niri se resuelven contra `archiso/packages.aarch64` salvo que se pase otra arquitectura en `TARGET_ARCH` (por ejemplo, `TARGET_ARCH=x86_64 ./churros check`).
 - Instalador: orden crítico de Calamares, configuración de cada `shellprocess`, branding (`componentName`, slideshow API 2, imágenes), la vista previa de `./churros apps calamares`, `finished.conf` y la libpython del paquete de Calamares.
 - Arranque y Live: módulos GRUB de aarch64, firmware pflash de QEMU y login del Live, `initial_session` de greetd y el tamaño del overlay del Live (`cow_spacesize`).
 - Sistema: snapshots Btrfs (rollback), extensión de los paquetes y binfmt de aarch64, versión de la distro (`VERSION`, `os-release` por edición).
-- Ejecución privilegiada: la regla polkit, `scripts/test-polkit-rules.js` (se omite con un aviso si no hay `node`), `scripts/test-privileged-helpers.py` y `scripts/test-network-services.py`.
+- Ejecución privilegiada: la regla polkit, `scripts/test-polkit-rules.js`, `scripts/test-privileged-helpers.py` y `scripts/test-network-services.py`. Sin `node` o sin `zstd`, esas pruebas se omiten.
 - `po/*.po`: que compilen con `msgfmt --check`. Es un catálogo heredado de la interfaz en Python; las apps Rust no usan gettext.
 - Documentación: que los enlaces relativos de los `.md` versionados existan y que cada documento de `docs/` esté en [el índice](README.md).
+- `tests/static` (ver [Pruebas](testing.md)): scripts por shebang, `file_permissions`, comandos de cada edición (no solo la de `TARGET_ARCH`), Calamares, unidades systemd, sintaxis de configuraciones, contrato de las apps Rust, un build en seco y que esta documentación no se desvíe del código.
 - Higiene del repositorio: avisa si hay ficheros generados en git.
 
-La lista completa está en `scripts/cli/check.sh`. Termina con código 0 si todo pasa y 1 si algo falla; los avisos (`!`) se informan pero no bloquean. No construye la ISO ni necesita root, y tarda unos segundos.
-
-La CI lo ejecuta en cada push a `main` y en cada pull request (`.github/workflows/ci.yml`).
+La lista completa está en `scripts/cli/check.sh`. Termina con código 0 si todo pasa y 1 si algo falla. Los avisos (`!`) se informan pero no bloquean. Con `CHURROS_STRICT=1` (o `CI=true`) una herramienta que falta o una prueba saltada cuentan como fallo. No construye la ISO ni necesita root, y tarda alrededor de un minuto. En cada pull request `ci.yml` lo ejecuta dentro de `./churros test`, y además `./churros test --mutations`.
 
 ---
 
-### rust
+## test
+
+Ejecuta las capas de pruebas. Sin opciones es lo mismo que `./churros check`.
+
+```bash
+./churros test                  # capa estática (check.sh + tests/static)
+./churros test --container      # tests/container en el contenedor Arch
+./churros test --rust           # ./churros rust
+./churros test --gui            # apps GTK en Broadway, en el contenedor (test-tour.py y test-gui-smoke.py)
+./churros test --iso [ISO]      # auditoría del contenido de la ISO (por defecto, la última de out/)
+./churros test --boot [ISO]     # arranque en QEMU y comprobaciones dentro de la sesión Live
+./churros test --mutations      # autoprueba de la batería
+```
+
+Las capas se pueden combinar (`./churros test --iso --boot`). Detalle de cada una en [Pruebas](testing.md).
+
+`--gui` es lo que `./churros rust` no ve: `cargo test` no abre ninguna ventana. Arranca cada app desplegada y cada popup compilados en release, como en la ISO, y ejecuta los tests de widgets del recorrido, sobre un `gtk4-broadwayd` privado. Si tocas `rust/`, ejecuta las dos.
+
+En cada pull request, `ci.yml` ejecuta `./churros test` y `./churros test --mutations`. `rust.yml` ejecuta `./churros rust`, `./churros test --gui` y `./churros test --container` (en x86_64 y en arm64). `iso.yml` construye la ISO y ejecuta `--iso` y `--boot` cuando el PR toca lo que entra en la ISO.
+
+---
+
+## rust
 
 Compila y prueba las apps Rust (`rust/`) con los mismos pasos que la CI: `cargo build --all-targets`, `cargo test` y `cargo clippy --all-targets` sobre el workspace, con `--locked`. Los avisos de clippy no hacen fallar el comando; un error de compilación sí.
 
@@ -169,7 +192,7 @@ Por defecto corre en el contenedor porque gtk4-rs y libadwaita-rs piden versione
 
 ---
 
-### doctor
+## doctor
 
 Comprueba las herramientas del entorno de desarrollo y la aceleración KVM.
 
@@ -191,7 +214,7 @@ En Arch, Debian/Ubuntu y Fedora, cada fallo indica el paquete que lo resuelve. A
 
 ---
 
-### apps
+## apps
 
 Abre las apps propias de ChurrOS en el host, sin construir la ISO ni QEMU. No se puede ejecutar como root.
 
@@ -214,7 +237,7 @@ No sustituye `./churros run`.
 
 ---
 
-### info
+## info
 
 Muestra información del proyecto y del entorno: versión, rama, arquitectura, kernel y directorios.
 
@@ -224,7 +247,7 @@ Muestra información del proyecto y del entorno: versión, rama, arquitectura, k
 
 ---
 
-### version
+## version
 
 Muestra el contenido del fichero `VERSION`, que es la versión de la distribución. La CLI no tiene una versión propia.
 
@@ -234,13 +257,33 @@ Muestra el contenido del fichero `VERSION`, que es la versión de la distribuci�
 
 ---
 
-### logo
+## logo
 
 Muestra el logotipo de ChurrOS en ASCII.
 
 ```bash
 ./churros logo
 ```
+
+## cluster
+
+Gestiona el cluster de compilación distribuida (distcc por SSH) que acelera la
+compilación del kernel ChurrOSvyper. La configuración local va en
+`cluster.conf` (plantilla: `cluster.conf.example`; no se versiona).
+
+```bash
+./churros cluster init      # crea cluster.conf desde la plantilla
+./churros cluster scan      # detecta los nodos de la red
+./churros cluster auth      # copia las llaves SSH a cada nodo
+./churros cluster probe     # comprueba SSH, hardware y software de cada nodo
+./churros cluster start     # arranca distccd en los nodos (stop para pararlo)
+./churros cluster status    # estado de los workers e hilos totales
+./churros cluster build     # compila el kernel con el cluster
+./churros cluster monitor   # monitor de la compilación (distccmon)
+```
+
+`./churros build --cluster` usa el cluster para compilar el kernel cuando no
+puede descargar el paquete precompilado.
 
 ---
 

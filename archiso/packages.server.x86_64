@@ -79,6 +79,7 @@ mesa
 mesa-utils
 mkinitcpio
 mkinitcpio-archiso
+mkinitcpio-nfs-utils
 mmc-utils
 mousepad
 mtools

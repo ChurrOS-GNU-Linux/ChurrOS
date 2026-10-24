@@ -1,0 +1,29 @@
+# Containerfile.distccd — Worker de compilación distribuida para ChurrOS
+# Diseñado para ejecutarse en nodos Rocky Linux (rootless podman) o cualquier host.
+# Proporciona el toolchain idéntico de Arch Linux (Clang, LLVM, distcc).
+
+ARG BASE_IMAGE=docker.io/library/archlinux:latest
+FROM ${BASE_IMAGE}
+
+# Desactivar sandbox de Landlock para entornos de contenedores sin privilegios
+RUN grep -q '^DisableSandboxFilesystem' /etc/pacman.conf \
+    || sed -i '/^\[options\]/a DisableSandboxFilesystem' /etc/pacman.conf
+
+# Inicializar llaves e instalar toolchain necesario para compilar el kernel ChurrOSvyper
+RUN pacman-key --init \
+    && pacman-key --populate archlinux \
+    && pacman -Syu --noconfirm --needed \
+        distcc \
+        clang \
+        llvm \
+        lld \
+        binutils \
+        coreutils \
+        procps-ng \
+    && pacman -Scc --noconfirm
+
+EXPOSE 3632
+
+# Por defecto escucha en el puerto 3632 permitiendo conexiones desde la red
+ENTRYPOINT ["distccd", "--no-detach", "--daemon", "--port", "3632", "--log-stderr", "--stats", "--stats-port", "3633"]
+CMD ["--allow", "0.0.0.0/0"]

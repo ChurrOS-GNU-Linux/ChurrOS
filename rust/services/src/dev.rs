@@ -99,7 +99,16 @@ pub fn is_mutation(cmd: &[&str]) -> bool {
         "timedatectl" => args.iter().any(|a| a.starts_with("set-")),
         "ufw" => !has_arg(args, "status"),
         "pacman" => !args.iter().any(|a| *a == "-Q" || a.starts_with("-Q")),
-        "flatpak" => has_arg(args, "update") || has_arg(args, "install") || has_arg(args, "remove"),
+        "flatpak" => {
+            has_arg(args, "update")
+                || has_arg(args, "install")
+                || has_arg(args, "uninstall")
+                || has_arg(args, "remove")
+        }
+        // Simulación sin root: -d, -dk1, --dryrun...
+        "paccache" => !args.iter().any(|a| {
+            *a == "--dryrun" || (a.starts_with('-') && !a.starts_with("--") && a.contains('d'))
+        }),
         "swapon" => !args.iter().any(|a| *a == "--show"),
         "niri" => has_arg(args, "action") || has_arg(args, "quit"),
         "hyprctl" => has_arg(args, "dispatch"),

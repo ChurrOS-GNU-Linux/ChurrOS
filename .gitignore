@@ -5,11 +5,16 @@
 *.tmp
 .cache/
 work/
+work-kernel/
 out/
 build/
+windows/output/
 __pycache__/
 *.pyc
 *.pyo
+
+# Cluster local configuration
+cluster.conf
 
 # Editor / IDE
 .vscode/
