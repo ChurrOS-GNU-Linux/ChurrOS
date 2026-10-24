@@ -15,16 +15,17 @@ terminal-border: "0"
 terminal-font: "DejaVu Sans Regular 16"
 
 + boot_menu {
-    left = 50%-290
-    top = 50%-100
-    width = "580"
-    height = "200"
+    left = 35%
+    top = 39%
+    width = 30%
+    height = 24%
+    icon_width = "0"
     item_color = "#94A3B8"
     selected_item_color = "#F97316"
     item_font = "DejaVu Sans Regular 16"
     selected_item_font = "DejaVu Sans Bold 16"
-    item_height = "42"
-    item_spacing = "10"
+    item_height = "38"
+    item_spacing = "8"
 }
 
 + label {
