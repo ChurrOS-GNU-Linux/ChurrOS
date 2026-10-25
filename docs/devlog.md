@@ -2,6 +2,16 @@
 
 Registro del desarrollo, de lo más reciente a lo más antiguo. Cada entrada describe el estado en su fecha; algunas indican entre paréntesis lo que cambió después. Lo que hace hoy cada pieza está en el resto de la [documentación](README.md).
 
+## 2026-10-25 — ChurrOS 1.4
+
+Release pública **v1.4** (tag `v1.4`; ISOs Niri y XFCE en download.churroslinux.org). Instalación en segundo plano de paquetes en ChurrOS Tour y alineación integral de versión:
+
+- **Instalación desatendida en ChurrOS Tour**: descarga e instalación en segundo plano de paquetes y aplicaciones (incluyendo soporte AUR/yay y paquetes de pacman), visualizando barras de progreso en tiempo real por paquete sin necesidad de abrir terminales interactivas ni requerir contraseñas repetidas.
+- **Alineación de versión 1.4**: Sincronización de `VERSION`, todos los crates de Rust a `1.4.0` con `Cargo.lock` actualizado, `/etc/churros-version`, Fastfetch branding, Calamares installer (`branding.desc`) y manifiestos de actualización.
+- **Comprobaciones y estabilidad**: Suite de tests estáticos, validación de mutaciones y comprobaciones de empaquetado 100% en verde.
+
+---
+
 ## 2026-10-16 — El repositorio pasa a la organización ChurrOS-GNU-Linux
 
 Las URL del repositorio en el código, la documentación y el branding apuntan a `github.com/ChurrOS-GNU-Linux/ChurrOS` (20bf066, PR #176).

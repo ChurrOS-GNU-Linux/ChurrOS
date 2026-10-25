@@ -6,8 +6,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk::prelude::*;
-
 use crate::services::niri_config::NiriConfig;
 use crate::services::pywal::PywalService;
 use crate::services::settings;
