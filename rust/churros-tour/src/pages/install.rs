@@ -1,10 +1,9 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
 
 use churros_tour::installation::{INSTALL_SCRIPT, InstallReport, InstallState, write_autostart};
-use glib::ControlFlow;
+use gio::prelude::*;
 use gtk::prelude::*;
 
 #[derive(Clone)]
@@ -23,7 +22,7 @@ pub fn build() -> InstallPage {
     let title = gtk::Label::new(Some("Instalando y Configurando"));
     title.add_css_class("page-title");
     let subtitle = gtk::Label::new(Some(
-        "Actualizaremos el sistema e instalaremos las aplicaciones elegidas. Revisa y confirma la operación en la terminal.",
+        "Descargaremos e instalaremos las aplicaciones seleccionadas en segundo plano.",
     ));
     subtitle.add_css_class("page-subtitle");
     subtitle.set_wrap(true);
@@ -52,30 +51,6 @@ pub fn build() -> InstallPage {
     }
 }
 
-fn detect_terminal() -> (String, Vec<String>) {
-    let edition = churros_services::version::edition();
-    let candidates: &[&str] = match edition.as_str() {
-        "xfce" => &["xfce4-terminal", "konsole", "xterm"],
-        _ => &["foot", "konsole", "xfce4-terminal", "xterm"],
-    };
-    for &bin in candidates {
-        if churros_services::which(bin) {
-            let flags: &[&str] = match bin {
-                // These must remain attached to the launched shell, even when a
-                // terminal instance is already open in the desktop session.
-                "konsole" => &["--separate", "--nofork", "--hide-menubar", "-e"],
-                "xfce4-terminal" => &["--disable-server", "--hide-menubar", "-x"],
-                "foot" => &["-a", "churros-installer", "-W", "80x24", "-e"],
-                _ => &["-e"],
-            };
-            return (bin.into(), flags.iter().map(|s| (*s).into()).collect());
-        }
-    }
-    // Sin terminal disponible: devolver error explícito en vez de un
-    // binario que no existe (el usuario vería un error críptico de spawn).
-    ("".into(), Vec::new())
-}
-
 impl InstallPage {
     pub fn is_running(&self) -> bool {
         self.state.get() == InstallState::Running
@@ -101,6 +76,7 @@ impl InstallPage {
             return;
         }
         self.progress.set_fraction(0.0);
+        self.progress.set_show_text(false);
         // Host previews can navigate the whole flow but cannot install or write autostart.
         if std::env::var_os("CHURROS_TOUR_PREVIEW").is_some() {
             self.state.set(InstallState::Complete);
@@ -120,81 +96,198 @@ impl InstallPage {
             done(true);
             return;
         }
-        // Preserve retry on the next login even if the window or terminal is interrupted.
+        // Preserve retry on the next login even if the window is interrupted.
         if let Err(e) = handle_autostart(true) {
             self.failed(&format!("No se pudo conservar el inicio del Tour: {e}. Corrige el error y vuelve a intentarlo."));
             done(false);
             return;
         }
-        let report = match InstallReport::new() {
-            Ok(report) => report,
-            Err(e) => {
-                self.failed(&format!("No se pudo preparar la instalación: {e}"));
-                done(false);
-                return;
-            }
-        };
-        let (terminal, flags) = detect_terminal();
-        if terminal.is_empty() {
-            self.failed("No hay terminal disponible para el instalador");
+        if !churros_services::which("yay") {
+            self.failed("No se encontró el gestor de paquetes yay en el sistema.");
             done(false);
             return;
         }
-        let mut args = vec![terminal];
-        args.extend(flags);
-        args.extend([
-            "sh".into(),
-            "-c".into(),
-            INSTALL_SCRIPT.into(),
-            "churros-tour".into(),
-        ]);
-        args.push(report.path().to_string_lossy().into_owned());
-        args.extend(packages);
-        let os_args: Vec<_> = args.iter().map(std::ffi::OsStr::new).collect();
-        let process = match gio::Subprocess::newv(&os_args, gio::SubprocessFlags::NONE) {
-            Ok(process) => process,
-            Err(e) => {
-                self.failed(&format!(
-                    "Error al lanzar la terminal: {e}. Vuelve atrás para reintentar."
-                ));
-                done(false);
-                return;
-            }
-        };
+
         self.state.set(InstallState::Running);
-        self.status.set_label(
-            "Actualizando e instalando. Revisa la terminal para confirmar la operación...",
-        );
-        let page = self.clone();
-        glib::timeout_add_local(Duration::from_millis(100), move || {
-            if !page.is_running() {
-                return ControlFlow::Break;
-            }
-            page.progress.pulse();
-            ControlFlow::Continue
-        });
-        let page = self.clone();
-        let waited = process.clone();
-        process.wait_async(gio::Cancellable::NONE, move |result| {
-            // A terminal exiting is not evidence that yay succeeded. Both the
-            // process and the private report from the shell must confirm success.
-            let success = result.is_ok() && waited.is_successful() && report.succeeded();
-            if success {
-                page.state.set(InstallState::Complete);
-                page.progress.set_fraction(1.0);
-                page.status.set_label("¡Instalación completada! Puedes finalizar el recorrido.");
-            } else {
-                page.failed("La instalación falló o fue interrumpida. Revisa la terminal y vuelve atrás para reintentar. El Tour seguirá disponible al iniciar.");
-            }
-            done(success);
-        });
+        let packages_rc = Rc::new(packages);
+        let done_rc: Rc<dyn Fn(bool)> = Rc::new(done);
+        install_package_step(self.clone(), packages_rc, 0, done_rc);
     }
 
     fn failed(&self, message: &str) {
         self.state.set(InstallState::Failed);
         self.progress.set_fraction(0.0);
+        self.progress.set_show_text(false);
         self.show_error(message);
     }
+}
+
+fn parse_percent(line: &str) -> Option<f64> {
+    if let Some(pos) = line.find('%') {
+        let before = &line[..pos];
+        let digits: String = before
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let digits: String = digits.chars().rev().collect();
+        digits.parse::<f64>().ok()
+    } else {
+        None
+    }
+}
+
+fn update_install_feedback(
+    page: &InstallPage,
+    app_name: &str,
+    index: usize,
+    total: usize,
+    line: &str,
+) {
+    if let Some(pct) = parse_percent(line) {
+        let intra = (pct / 100.0).clamp(0.0, 1.0);
+        let fraction = (index as f64 + intra) / total as f64;
+        page.progress.set_fraction(fraction);
+        page.progress.set_text(Some(&format!("{}/{} ({app_name} {:.0}%)", index + 1, total, pct)));
+        page.status.set_label(&format!("Descargando {app_name}... ({pct:.0}%)"));
+    } else if line.contains("Making package") || line.contains("Compilando") || line.contains("Entering fakeroot") {
+        let fraction = (index as f64 + 0.6) / total as f64;
+        page.progress.set_fraction(fraction);
+        page.status.set_label(&format!("Compilando {app_name}..."));
+    } else if line.contains("installing ") || line.contains("Instalando ") {
+        let fraction = (index as f64 + 0.85) / total as f64;
+        page.progress.set_fraction(fraction);
+        page.status.set_label(&format!("Instalando {app_name}..."));
+    } else if line.contains("Synchronizing") || line.contains("Sincronizando") {
+        page.status.set_label("Sincronizando repositorios...");
+    }
+}
+
+fn track_output(
+    stream: gio::DataInputStream,
+    page: InstallPage,
+    app_name: String,
+    index: usize,
+    total: usize,
+    last_line: Rc<RefCell<String>>,
+) {
+    let page_clone = page.clone();
+    let app_name_clone = app_name.clone();
+    let stream_clone = stream.clone();
+    let last_line_clone = last_line.clone();
+
+    stream.read_line_utf8_async(glib::Priority::DEFAULT, gio::Cancellable::NONE, move |res| {
+        if let Ok(Some(line)) = res {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                *last_line_clone.borrow_mut() = trimmed.to_string();
+                update_install_feedback(&page_clone, &app_name_clone, index, total, trimmed);
+            }
+            track_output(stream_clone, page_clone, app_name_clone, index, total, last_line_clone);
+        }
+    });
+}
+
+fn install_package_step(
+    page: InstallPage,
+    packages: Rc<Vec<String>>,
+    index: usize,
+    done: Rc<dyn Fn(bool)>,
+) {
+    let total = packages.len();
+    if index >= total {
+        page.state.set(InstallState::Complete);
+        page.progress.set_fraction(1.0);
+        page.progress.set_show_text(true);
+        page.progress.set_text(Some(&format!("{total}/{total} completadas")));
+        page.status.set_label("¡Instalación completada! Puedes finalizar el recorrido.");
+        done(true);
+        return;
+    }
+
+    let pkg = &packages[index];
+    let app_name = churros_tour::catalog::app_name(pkg);
+    let fraction = index as f64 / total as f64;
+    page.progress.set_fraction(fraction);
+    page.progress.set_show_text(true);
+    page.progress.set_text(Some(&format!("{index}/{total}")));
+    page.status.set_label(&format!(
+        "Instalando {app_name} ({}/{}) en segundo plano...",
+        index + 1,
+        total
+    ));
+
+    let report = match InstallReport::new() {
+        Ok(report) => report,
+        Err(e) => {
+            page.failed(&format!("No se pudo preparar la instalación: {e}"));
+            done(false);
+            return;
+        }
+    };
+
+    let args = [
+        "sh".into(),
+        "-c".into(),
+        INSTALL_SCRIPT.into(),
+        "churros-tour".into(),
+        report.path().to_string_lossy().into_owned(),
+        pkg.clone(),
+    ];
+    let os_args: Vec<_> = args.iter().map(std::ffi::OsStr::new).collect();
+    let process = match gio::Subprocess::newv(
+        &os_args,
+        gio::SubprocessFlags::STDOUT_PIPE | gio::SubprocessFlags::STDERR_MERGE,
+    ) {
+        Ok(process) => process,
+        Err(e) => {
+            page.failed(&format!(
+                "Error al iniciar la instalación de {app_name}: {e}. Vuelve atrás para reintentar."
+            ));
+            done(false);
+            return;
+        }
+    };
+
+    let last_line = Rc::new(RefCell::new(String::new()));
+    if let Some(pipe) = process.stdout_pipe() {
+        let stream = gio::DataInputStream::new(&pipe);
+        track_output(
+            stream,
+            page.clone(),
+            app_name.to_string(),
+            index,
+            total,
+            last_line.clone(),
+        );
+    }
+
+    let page_clone = page.clone();
+    let packages_clone = packages.clone();
+    let done_clone = done.clone();
+    let app_name_clone = app_name.to_string();
+    let waited = process.clone();
+    let last_line_clone = last_line.clone();
+
+    process.wait_async(gio::Cancellable::NONE, move |result| {
+        let success = result.is_ok() && waited.is_successful() && report.succeeded();
+        if success {
+            install_package_step(page_clone, packages_clone, index + 1, done_clone);
+        } else {
+            let err_detail = last_line_clone.borrow();
+            let msg = if err_detail.is_empty() {
+                format!(
+                    "La instalación de {app_name_clone} falló o fue interrumpida. Vuelve atrás para reintentar. El Tour seguirá disponible al iniciar."
+                )
+            } else {
+                format!(
+                    "La instalación de {app_name_clone} falló ({err_detail}). Vuelve atrás para reintentar. El Tour seguirá disponible al iniciar."
+                )
+            };
+            page_clone.failed(&msg);
+            done_clone(false);
+        }
+    });
 }
 
 fn handle_autostart(active: bool) -> std::io::Result<()> {

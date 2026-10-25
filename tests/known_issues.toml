@@ -97,7 +97,6 @@ note = "fix-boot en aarch64 termina con '/usr/share/churros/scripts/publish-aarc
 id = "calamares-sim:fix-boot:aarch64:kver-missing:linux-aarch64.preset"
 note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no existe en el destino. Aunque fix-boot pasara, 'mkinitcpio -P' (paso initcpio) saldría con 'specified kernel image does not exist'. Arreglo: el de calamares-sim:fix-boot:aarch64:command-fails, o ALL_kver='/boot/vmlinuz-linux-aarch64' en el sistema instalado."
 
-
 [[issue]]
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
 note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/initramfs-linux-cachyos.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."

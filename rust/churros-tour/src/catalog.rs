@@ -129,6 +129,17 @@ impl Selection {
     }
 }
 
+pub fn app_name(package: &str) -> &str {
+    for (_, _, apps) in CATEGORIES {
+        for (id, name) in *apps {
+            if *id == package {
+                return name;
+            }
+        }
+    }
+    package
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

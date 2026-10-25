@@ -18,6 +18,7 @@ ethtool
 exfatprogs
 f2fs-tools
 fsarchiver
+git
 gptfdisk
 grub
 hdparm

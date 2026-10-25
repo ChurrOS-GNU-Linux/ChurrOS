@@ -1,0 +1,3 @@
+# Permitir a los usuarios administradores (wheel) instalar paquetes sin contraseña
+# Permite que yay y el instalador del Tour funcionen en segundo plano sin pedir contraseña.
+%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/pacman

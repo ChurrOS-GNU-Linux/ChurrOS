@@ -336,11 +336,11 @@ if [ "$TARGET_ARCH" = aarch64 ]; then
         -device "scsi-cd,bus=scsi0.0,drive=cdrom0,bootindex=0"
         -drive "id=cdrom0,if=none,format=raw,readonly=on,file=$ISO"
         -device "virtio-blk-pci,drive=disk0,bootindex=1"
-        -drive "id=disk0,if=none,format=qcow2,file=$DISK"
+        -drive "id=disk0,if=none,format=qcow2,file=$DISK,cache=writeback,discard=unmap"
     )
 else
     QEMU_CMD+=(
-        -drive "file=$DISK,format=qcow2,if=virtio"
+        -drive "file=$DISK,format=qcow2,if=virtio,cache=writeback,discard=unmap"
         -cdrom "$ISO"
         -boot order=c
     )

@@ -292,7 +292,7 @@ class VM:
                     "-device", "scsi-cd,bus=scsi0.0,drive=cd0,bootindex=0",
                     "-drive", f"id=cd0,if=none,format=raw,readonly=on,media=cdrom,file={self.iso}"]
         if self.disk:
-            cmd += ["-drive", f"file={self.disk},if=virtio,format=qcow2"]
+            cmd += ["-drive", f"file={self.disk},if=virtio,format=qcow2,cache=writeback,discard=unmap"]
         return cmd
 
     def display_args(self) -> list[str]:
