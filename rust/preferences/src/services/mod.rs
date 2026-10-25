@@ -29,3 +29,8 @@ pub mod users;
 pub mod wallpaper;
 pub mod waybar;
 pub mod window_rules_service;
+
+#[cfg(test)]
+mod niri_writers;
+#[cfg(test)]
+pub(crate) mod test_support;

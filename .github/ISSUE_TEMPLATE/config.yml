@@ -3,6 +3,9 @@ contact_links:
   - name: Documentación
     url: https://github.com/ChurrOS-GNU-Linux/ChurrOS/tree/main/docs
     about: Guías del proyecto (build, escritorio, contribución, etc.).
+  - name: Código de conducta
+    url: https://github.com/ChurrOS-GNU-Linux/ChurrOS/blob/main/CODE_OF_CONDUCT.md
+    about: Normas de convivencia del proyecto y cómo reportar un incidente.
   - name: Discord de ChurrOS
     url: https://discord.gg/4nAJbbzvd
     about: Comunidad y contacto con administradores (para seguridad, usar DM privado).

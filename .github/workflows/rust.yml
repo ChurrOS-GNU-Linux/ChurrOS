@@ -2,12 +2,26 @@ name: Rust
 
 # La CI de ./churros (ci.yml) solo compila churros-services, porque es el
 # único crate sin dependencias de GTK. Aquí se compila y se prueba el
-# workspace completo: hasta ahora un error en welcome, settings, control
-# center, popups o tour solo aparecía al construir la ISO.
+# workspace completo (cargo build, test y clippy): un error de compilación
+# en welcome, settings, control center, popups o tour ya no espera a la ISO.
+#
+# Compilar no es arrancar. cargo test no abre ninguna ventana: los fallos en
+# tiempo de ejecución solo se ven en las pruebas que ejecutan las apps en
+# Broadway (gtk4-broadwayd), dentro del contenedor:
+#   - scripts/test-tour.py: los tests #[ignore] del recorrido, que manejan
+#     por API sus páginas de personalización e instalación;
+#   - scripts/test-gui-smoke.py: solo arranca cada binario desplegado (y
+#     churros-popup con cada popup) en release, con los programas externos
+#     ausentes y fallando, y falla si muere o entra en pánico en los
+#     primeros segundos.
+# Un pánico al usar la bienvenida, los ajustes, el centro de control o los
+# popups después del arranque sigue sin verse hasta probarlos a mano.
 #
 # gtk4-rs 0.11 pide GTK >= 4.22 y libadwaita-rs 0.9 pide libadwaita >= 1.9.
 # Ubuntu no llega a esas versiones, así que el job usa la imagen del
-# Containerfile (Arch) y el mismo comando que en local: ./churros rust.
+# Containerfile (Arch) y los mismos comandos que en local: ./churros rust y,
+# para las dos pruebas de Broadway, ./churros test --gui (aquí en pasos
+# separados, para ver cuál falla).
 #
 # La imagen se construye en cada ejecución, sin caché de capas, y además una
 # vez por semana: Arch es rolling, y si un cambio de paquetes rompe el
@@ -38,6 +52,7 @@ jobs:
   apps:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
 
     strategy:
       fail-fast: false
@@ -68,12 +83,14 @@ jobs:
       - uses: actions/checkout@v7
 
       # ./churros rust compila en rust/target/container (lo monta en el
-      # contenedor con el UID del runner).
+      # contenedor con el UID del runner); test-gui-smoke.py añade release/.
+      # actions/cache no vuelve a guardar si la clave coincide: el prefijo
+      # v2- fuerza una caché nueva que incluya release/.
       - name: Cache cargo target
         uses: actions/cache@v4
         with:
           path: rust/target/container
-          key: ${{ matrix.cache }}${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
+          key: ${{ matrix.cache }}v2-${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
           restore-keys: ${{ matrix.cache }}
 
       - name: Build container image
@@ -100,3 +117,47 @@ jobs:
       # el workspace arrastra avisos previos.
       - name: ./churros rust
         run: ./churros rust
+
+      # La prueba GTK del recorrido está marcada #[ignore] en cargo test:
+      # scripts/test-tour.py la ejecuta en Broadway (gtk4-broadwayd), con
+      # sockets privados y HOME temporal. Reutiliza lo que compiló el paso
+      # anterior.
+      - name: Tour GTK test (Broadway)
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -- python3 scripts/test-tour.py
+
+      # Arranque de cada app GTK desplegada (deploy = true) y de churros-popup
+      # con cada nombre de POPUPS, compiladas en release como en la ISO
+      # (panic = "abort"), con los programas externos ausentes y fallando:
+      # falla si una muere o entra en pánico en sus primeros segundos. Ni
+      # cargo test ni el arranque de la ISO en QEMU (que solo mira la
+      # bienvenida) ejecutan settings, control center o popups.
+      - name: GUI startup smoke test (Broadway)
+        # Independiente de la prueba del tour: que esa falle no esconde esta.
+        if: ${{ !cancelled() }}
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -e CHURROS_STRICT=1 -- python3 scripts/test-gui-smoke.py
+
+      # tests/container: las listas de paquetes contra los repos reales de
+      # esta arquitectura (pacman), la tabla comando -> paquete (pacman -F) y
+      # `niri validate` sobre la configuración que se instala.
+      - name: ./churros test --container
+        # No depende de la prueba del tour: que esta falle no puede esconder
+        # la capa de contenedor.
+        if: ${{ !cancelled() }}
+        env:
+          CHURROS_STRICT: 1
+        run: ./churros test --container
+
+      # Autoprueba de tests/container (semanal y a mano; tarda ~10 min): cada
+      # mutación con requires = "container" de tests/mutations/mutations.toml
+      # tiene que hacer fallar su prueba.
+      - name: ./churros test --container --mutations
+        if: github.event_name != 'pull_request' && matrix.iso-tools
+        env:
+          CHURROS_STRICT: 1
+        run: ./churros test --container --mutations

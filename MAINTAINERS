@@ -51,8 +51,10 @@
 /scripts/cli/build.sh            @Hoyuse @sebaspi0922
 /churros                         @Hoyuse @sebaspi0922
 
-# ── Continuous integration ───────────────────────────────────────────────────
+# ── Continuous integration y pruebas ────────────────────────────────────────
 /.github/workflows/              @Hoyuse @sebaspi0922
+/tests/                          @sebaspi0922 @Hoyuse
+/scripts/cli/test.sh             @sebaspi0922
 
 # ── Shell de escritorio (Niri / Noctalia) ────────────────────────────────────
 /archiso/airootfs/etc/skel/.config/niri/          @Hoyuse

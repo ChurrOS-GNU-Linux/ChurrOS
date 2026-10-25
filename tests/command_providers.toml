@@ -1,0 +1,159 @@
+# Qué paquete instala cada comando que ejecuta la configuración de ChurrOS.
+#
+# Lo usa testlib.resolve_command: un comando que lanza niri, un .desktop, una
+# unidad systemd, un hook de pacman o Calamares tiene que salir del airootfs,
+# de un crate Rust desplegado o de un paquete de la lista de la edición.
+# Si el comando se llama igual que su paquete (foot, niri, fuzzel) no hace
+# falta entrada. tests/container comprueba esta tabla contra los repos de Arch
+# (pacman -F), así que una entrada mal puesta también falla.
+#
+# [commands]  nombre del comando -> paquete
+# [paths]     ruta absoluta que no está en el airootfs -> paquete
+# [implicit]  paquete que llega como dependencia de otro de la lista:
+#             paquete = { pulled_by = ["paquete-de-la-lista", ...] }
+#
+# Cada entrada se comprobó con `pacman -Fq /usr/bin/<comando>` (y `pacman -Si`
+# para [implicit]) en el contenedor localhost/churros-builder (Arch x86_64).
+# wal sale del AUR (repo local [churros]), donde pacman -F no llega.
+
+[commands]
+# Órdenes del sistema base (dependencias de `base`).
+sleep = "coreutils"
+cat = "coreutils"
+rmdir = "coreutils"
+ln = "coreutils"
+chmod = "coreutils"
+chown = "coreutils"
+chgrp = "coreutils"
+head = "coreutils"
+tail = "coreutils"
+sort = "coreutils"
+uniq = "coreutils"
+tr = "coreutils"
+cut = "coreutils"
+wc = "coreutils"
+touch = "coreutils"
+basename = "coreutils"
+dirname = "coreutils"
+readlink = "coreutils"
+realpath = "coreutils"
+stat = "coreutils"
+install = "coreutils"
+whoami = "coreutils"
+tee = "coreutils"
+seq = "coreutils"
+sync = "coreutils"
+mktemp = "coreutils"
+nproc = "coreutils"
+uname = "coreutils"
+nohup = "coreutils"
+du = "coreutils"
+df = "coreutils"
+ls = "coreutils"
+md5sum = "coreutils"
+sha256sum = "coreutils"
+yes = "coreutils"
+mount = "util-linux"
+umount = "util-linux"
+runuser = "util-linux"
+su = "util-linux"
+lsblk = "util-linux"
+blkid = "util-linux"
+findmnt = "util-linux"
+flock = "util-linux"
+logger = "util-linux"
+ps = "procps-ng"
+free = "procps-ng"
+uptime = "procps-ng"
+watch = "procps-ng"
+systemd-run = "systemd"
+busctl = "systemd"
+hostnamectl = "systemd"
+localectl = "systemd"
+udevadm = "systemd"
+systemd-cat = "systemd"
+coredumpctl = "systemd"
+useradd = "shadow"
+usermod = "shadow"
+passwd = "shadow"
+chpasswd = "shadow"
+groupadd = "shadow"
+gpasswd = "shadow"
+find = "findutils"
+xargs = "findutils"
+gawk = "gawk"
+ss = "iproute2"
+bash = "bash"
+pacman = "pacman"
+makepkg = "pacman"
+repo-add = "pacman"
+# coreutils, util-linux, procps-ng, shadow, gawk, glibc, iproute2, systemd y
+# pacman llegan con `base` (testlib.BASE_DEPENDS).
+awk = "gawk"
+cp = "coreutils"
+date = "coreutils"
+env = "coreutils"
+id = "coreutils"
+mkdir = "coreutils"
+mv = "coreutils"
+rm = "coreutils"
+getent = "glibc"
+ip = "iproute2"
+journalctl = "systemd"
+loginctl = "systemd"
+systemctl = "systemd"
+timedatectl = "systemd"
+pacman-key = "pacman"
+pgrep = "procps-ng"
+pkill = "procps-ng"
+rfkill = "util-linux"
+setsid = "util-linux"
+swapon = "util-linux"
+userdel = "shadow"
+# /usr/bin/sh es el enlace de bash.
+sh = "bash"
+chvt = "kbd"
+lspci = "pciutils"
+btrfs = "btrfs-progs"
+chattr = "e2fsprogs"
+grub-mkconfig = "grub"
+plymouth-set-default-theme = "plymouth"
+checkupdates = "pacman-contrib"
+paccache = "pacman-contrib"
+pkexec = "polkit"
+gsettings = "glib2"
+fc-list = "fontconfig"
+xdg-open = "xdg-utils"
+notify-send = "libnotify"
+regreet = "greetd-regreet"
+# Escritorio niri y apps Rust
+bluetoothctl = "bluez-utils"
+nmcli = "networkmanager"
+wpctl = "wireplumber"
+makoctl = "mako"
+powerprofilesctl = "power-profiles-daemon"
+wal = "python-pywal"
+# XFCE
+startx = "xorg-xinit"
+startxfce4 = "xfce4-session"
+xflock4 = "xfce4-session"
+xfce4-session-logout = "xfce4-session"
+xfconf-query = "xfconf"
+xfce4-display-settings = "xfce4-settings"
+xfce4-keyboard-settings = "xfce4-settings"
+xfce4-mouse-settings = "xfce4-settings"
+xfce4-settings-manager = "xfce4-settings"
+xfce4-popup-whiskermenu = "xfce4-whiskermenu-plugin"
+
+[paths]
+"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1" = "polkit-gnome"
+
+[implicit]
+# systemd depende de kbd (chvt de livecd-talk.service).
+kbd = { pulled_by = ["systemd"] }
+# Dependencias directas de foot, fuzzel, gtk4 y firefox.
+fontconfig = { pulled_by = ["foot", "fuzzel", "gtk4", "firefox"] }
+# Dependencia directa de gtk4, polkit, networkmanager, libnotify y mako.
+glib2 = { pulled_by = ["gtk4", "polkit", "networkmanager", "libnotify", "mako"] }
+# xfce4-session depende de xorg-xinit (startx, y el xinit de startxfce4).
+xorg-xinit = { pulled_by = ["xfce4-session"] }

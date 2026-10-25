@@ -265,4 +265,12 @@ os-prober
 udisks2
 zenity
 qt6-translations
+
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
 zram-generator
+
+# Lector de pantalla de la entrada Accessibility (livecd-talk.service)
+espeakup
+
+# Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
+modemmanager
