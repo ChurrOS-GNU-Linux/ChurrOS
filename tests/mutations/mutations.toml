@@ -851,7 +851,7 @@ file = "branding/grub-theme/theme.txt"
 find = "    color = \"#64748B\"\n}\n"
 replace = "    color = \"#64748B\"\n"
 caught_by = "tests.static.test_config_syntax"
-expect = "no es un contenedor"
+expect = "dentro de '+ label'"
 why = "Falta la llave que cierra '+ label': boot_menu queda dentro de label y GRUB descarta el tema"
 
 
@@ -2307,5 +2307,5 @@ file = "tests/static/test_calamares_config.py"
 find = '        if name.removesuffix(".preset") in listed:'
 replace = '        if False:'
 caught_by = "tests.static.test_calamares_config"
-expect = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
-why = "Sin ese preset la simulación solo ve linux.preset y la instalación de niri x86_64 parece pasar: mkinitcpio -P falla en el destino con el kernel ChurrOSvyper."
+expect = "kver-missing:linux-cachyos.preset"
+why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh y las entradas de known_issues de fix-boot quedan huérfanas."

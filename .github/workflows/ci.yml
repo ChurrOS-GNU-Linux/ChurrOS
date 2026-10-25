@@ -54,10 +54,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # La línea base de --mutations ejecuta check.sh, que en modo estricto
+      # exige actionlint. Misma instalación que en «Static checks».
       - name: Install test tools
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck gettext zstd zsh desktop-file-utils python3-yaml
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz' | sha256sum -c
+          sudo tar -C /usr/local/bin -xzf /tmp/actionlint.tar.gz actionlint
 
       # Cada mutación de tests/mutations/mutations.toml es una regresión real
       # (un paquete quitado, un permiso perdido, un paso de Calamares fuera de
