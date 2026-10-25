@@ -2,27 +2,25 @@
     ChurrOS ReGreet Theme — Bento Glass (Figma Inspired)
     ────────────────────────────────────────────────────
     Official ChurrOS Design System Tokens:
-    - Primary Accent:  ChurrOS Orange (#F97316)
-    - Hover Accent:    #FB923C
-    - Active Accent:   #EA580C
-    - Midnight Dark:   #111827
-    - Graphite Glass:  rgba(31, 41, 55, 0.88)
-    - Surface Glass:   rgba(255, 255, 255, 0.08)
-    - Border Glass:    rgba(255, 255, 255, 0.14)
-    - Specular Light:  inset 0 1px 0 rgba(255, 255, 255, 0.22)
-    - Text Primary:    #F8FAFC (Soft White)
-    - Text Secondary:  #A8A8A8 (Muted Gray)
-    - Radii: Bento Box 22px, Floating Pills 9999px
+    - Primary Accent:   ChurrOS Orange (#F97316)
+    - Hover Accent:     #FB923C
+    - Active Accent:    #EA580C
+    - Chocolate Glass:  rgba(24, 18, 15, 0.82)
+    - Warm Pill Bg:     rgba(255, 255, 255, 0.08)
+    - Border Glass:     rgba(255, 235, 215, 0.16)
+    - Specular Glow:    inset 0 1px 0 rgba(255, 245, 230, 0.22)
+    - Text Primary:     #FFFDF8 (Warm White)
+    - Text Secondary:   #D6C7B8 (Warm Muted Cream)
+    - Radii:            Bento Box 26px, Floating Pills 9999px
 */
 
 @define-color accent_color #F97316;
 @define-color accent_hover #FB923C;
 @define-color accent_active #EA580C;
-@define-color bg_midnight #111827;
-@define-color bg_graphite rgba(31, 41, 55, 0.88);
-@define-color text_primary #F8FAFC;
-@define-color text_secondary #A8A8A8;
-@define-color border_glass rgba(255, 255, 255, 0.14);
+@define-color bg_chocolate rgba(24, 18, 15, 0.82);
+@define-color text_primary #FFFDF8;
+@define-color text_secondary #D6C7B8;
+@define-color border_glass rgba(255, 235, 215, 0.16);
 
 window {
     background-color: transparent;
@@ -31,49 +29,54 @@ window {
 }
 
 /* =========================================================================
-   1. Reloj Superior (Floating Glass Pill)
+   1. Reloj Superior (Floating Warm Glass Pill)
    ========================================================================= */
 frame.widget-clock,
 .widget-clock {
-    background-color: rgba(31, 41, 55, 0.78);
-    border: 1px solid @border_glass;
-    border-top-width: 0px;
-    border-bottom-left-radius: 20px;
-    border-bottom-right-radius: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-    padding: 10px 28px;
+    background-color: rgba(24, 18, 15, 0.78) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-top-width: 0px !important;
+    border-bottom-left-radius: 20px !important;
+    border-bottom-right-radius: 20px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.40) !important;
+    padding: 10px 32px !important;
 }
 
 frame.widget-clock label,
 .widget-clock label {
     font-family: 'JetBrains Mono', 'Inter', monospace;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     color: @text_primary;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
 }
 
 /* =========================================================================
    2. Tarjeta Central Bento Glass (Login Hero Card)
+   - margin-left: 220px desplaza la tarjeta hacia la derecha para NO tapar
+     la mascota conejo de ChurrOS que está en el lateral izquierdo.
    ========================================================================= */
 frame.background:not(.widget-clock),
 .login-box {
-    background-color: @bg_graphite;
-    border: 1px solid @border_glass;
-    border-radius: 24px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22),
-                0 24px 64px rgba(0, 0, 0, 0.60);
-    padding: 36px 32px;
+    background-color: @bg_chocolate !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 26px !important;
+    box-shadow: inset 0 1px 0 rgba(255, 245, 230, 0.22),
+                0 24px 64px rgba(45, 15, 5, 0.45) !important;
+    padding: 34px 30px !important;
+    margin-left: 220px !important;
 }
 
 /* Título de bienvenida y mensajes de estado */
 #message_label,
 label.title {
-    font-size: 22px;
+    font-size: 21px;
     font-weight: 600;
     color: @text_primary;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.50);
-    margin-bottom: 8px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.50);
+    margin-bottom: 6px;
 }
 
 /* Etiquetas laterales (User:, Session:, Password:) */
@@ -86,20 +89,29 @@ label.entry-label {
     letter-spacing: 0.3px;
 }
 
+/* Separador horizontal: sutil y translúcido (reemplaza la línea negra fea) */
+separator {
+    background: rgba(255, 255, 255, 0.10) !important;
+    border: none !important;
+    min-height: 1px !important;
+    margin: 16px 0 8px 0 !important;
+}
+
 /* =========================================================================
    3. Entradas de Texto y Contraseña (Pills)
    ========================================================================= */
 entry,
 passwordentry,
 .password-entry {
-    background-color: rgba(17, 24, 39, 0.68);
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_primary;
-    caret-color: @accent_color;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 9999px !important;
+    color: @text_primary !important;
+    caret-color: @accent_color !important;
     font-size: 14px;
-    padding: 10px 20px;
-    min-height: 44px;
+    padding: 8px 18px !important;
+    min-height: 42px !important;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
     transition: all 180ms ease;
 }
@@ -107,147 +119,161 @@ passwordentry,
 entry:focus,
 passwordentry:focus,
 .password-entry:focus {
-    background-color: rgba(17, 24, 39, 0.88);
-    border-color: @accent_color;
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    border-color: @accent_color !important;
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.35),
-                0 6px 20px rgba(0, 0, 0, 0.40);
+                0 4px 16px rgba(0, 0, 0, 0.30) !important;
 }
 
 entry placeholder,
 passwordentry placeholder {
-    color: #6B7280;
+    color: #A89F95;
 }
 
 /* Desplegable de sesión y usuario */
 combobox,
 combobox > box,
 combobox button {
-    background-color: rgba(17, 24, 39, 0.68);
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_primary;
-    font-size: 13px;
-    padding: 6px 16px;
-    min-height: 40px;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 9999px !important;
+    color: @text_primary !important;
+    font-size: 13px !important;
+    padding: 6px 16px !important;
+    min-height: 40px !important;
     transition: all 150ms ease;
 }
 
 combobox:hover,
 combobox button:hover {
-    background-color: rgba(17, 24, 39, 0.88);
-    border-color: @accent_color;
+    background-color: rgba(255, 255, 255, 0.14) !important;
+    border-color: @accent_color !important;
 }
 
-/* Botones de alternar edición manual */
+/* Botones circulares de alternar edición manual (lápiz) */
 togglebutton,
 #user_toggle,
 #sess_toggle {
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_primary;
-    padding: 8px 12px;
-    min-height: 40px;
-    min-width: 40px;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 9999px !important;
+    color: @text_primary !important;
+    padding: 8px 12px !important;
+    min-height: 40px !important;
+    min-width: 40px !important;
     transition: all 150ms ease;
 }
 
 togglebutton:hover,
 #user_toggle:hover,
 #sess_toggle:hover {
-    background-color: rgba(249, 115, 22, 0.20);
-    border-color: @accent_color;
-    color: #FFFFFF;
+    background-color: rgba(249, 115, 22, 0.22) !important;
+    border-color: @accent_color !important;
+    color: #FFFFFF !important;
 }
 
 togglebutton:checked,
 #user_toggle:checked,
 #sess_toggle:checked {
-    background-color: @accent_color;
-    border-color: @accent_hover;
-    color: #FFFFFF;
+    background-color: @accent_color !important;
+    border-color: @accent_hover !important;
+    color: #FFFFFF !important;
 }
 
 /* =========================================================================
-   4. Botones de Acción (Login & Cancel)
+   4. Botón de Login (Naranja Cálido ChurrOS, sin el azul genérico de Adwaita)
    ========================================================================= */
+window button.suggested-action,
 button.suggested-action,
 #login_button {
-    background-color: @accent_color;
-    border: 1px solid @accent_hover;
-    border-radius: 9999px;
-    color: #FFFFFF;
-    font-weight: 600;
-    font-size: 14px;
-    padding: 10px 26px;
-    min-height: 42px;
-    box-shadow: 0 4px 18px rgba(249, 115, 22, 0.40);
+    background: linear-gradient(135deg, #FB923C, #EA580C) !important;
+    background-color: @accent_color !important;
+    background-image: linear-gradient(135deg, #FB923C, #EA580C) !important;
+    border: 1px solid #FDBA74 !important;
+    border-radius: 9999px !important;
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    padding: 10px 28px !important;
+    min-height: 42px !important;
+    box-shadow: 0 4px 18px rgba(234, 88, 12, 0.45) !important;
     transition: all 160ms ease;
 }
 
+window button.suggested-action:hover,
 button.suggested-action:hover,
 #login_button:hover {
-    background-color: @accent_hover;
-    box-shadow: 0 6px 26px rgba(249, 115, 22, 0.55);
+    background: linear-gradient(135deg, #FDBA74, #F97316) !important;
+    box-shadow: 0 6px 24px rgba(249, 115, 22, 0.60) !important;
 }
 
+window button.suggested-action:active,
 button.suggested-action:active,
 #login_button:active {
-    background-color: @accent_active;
+    background: #EA580C !important;
     transform: scale(0.97);
 }
 
 #cancel_button,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle) {
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_primary;
-    font-size: 14px;
-    font-weight: 500;
-    padding: 8px 22px;
-    min-height: 40px;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 9999px !important;
+    color: @text_primary !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 20px !important;
+    min-height: 38px !important;
     transition: all 150ms ease;
 }
 
 #cancel_button:hover,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle):hover {
-    background-color: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #FFFFFF;
+    background-color: rgba(255, 255, 255, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    color: #FFFFFF !important;
 }
 
 /* =========================================================================
-   5. Barra Inferior (Reboot & Power Off Pills)
+   5. Botones de Apagado y Reinicio (Píldoras Elegantes, no bloques rojos)
    ========================================================================= */
+window button.destructive-action,
 button.destructive-action,
 #reboot_button,
 #poweroff_button {
-    background-color: rgba(31, 41, 55, 0.75);
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_secondary;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 22px;
-    min-height: 38px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    background: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 9999px !important;
+    color: @text_secondary !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 8px 22px !important;
+    min-height: 36px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20) !important;
     transition: all 150ms ease;
 }
 
+window button.destructive-action:hover,
 button.destructive-action:hover,
 #reboot_button:hover,
 #poweroff_button:hover {
-    background-color: rgba(239, 68, 68, 0.18);
-    border-color: rgba(239, 68, 68, 0.50);
-    color: #F87171;
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.30);
+    background: rgba(239, 68, 68, 0.20) !important;
+    background-color: rgba(239, 68, 68, 0.20) !important;
+    border-color: rgba(239, 68, 68, 0.45) !important;
+    color: #FCA5A5 !important;
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25) !important;
 }
 
+window button.destructive-action:active,
 button.destructive-action:active,
 #reboot_button:active,
 #poweroff_button:active {
-    background-color: rgba(220, 38, 38, 0.35);
+    background-color: rgba(220, 38, 38, 0.35) !important;
     transform: scale(0.97);
 }
 
@@ -256,18 +282,18 @@ button.destructive-action:active,
    ========================================================================= */
 infobar,
 #notif_info {
-    background-color: rgba(31, 41, 55, 0.92);
-    border: 1px solid @border_glass;
-    border-radius: 16px;
-    color: @text_primary;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
+    background-color: rgba(24, 18, 15, 0.92) !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 16px !important;
+    color: @text_primary !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50) !important;
 }
 
 infobar.error,
 #notif_info.error {
-    background-color: rgba(127, 29, 29, 0.88);
-    border-color: rgba(239, 68, 68, 0.45);
-    color: #FECACA;
+    background-color: rgba(127, 29, 29, 0.90) !important;
+    border-color: rgba(239, 68, 68, 0.45) !important;
+    color: #FECACA !important;
 }
 
 #notif_label {
@@ -278,32 +304,33 @@ infobar.error,
 
 popover,
 popover.background {
-    background-color: rgba(17, 24, 39, 0.96);
-    border: 1px solid @border_glass;
-    border-radius: 18px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.70);
-    padding: 8px;
+    background-color: rgba(24, 18, 15, 0.96) !important;
+    border: 1px solid @border_glass !important;
+    border-radius: 18px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.70) !important;
+    padding: 8px !important;
 }
 
 popover contents {
-    background: transparent;
-    border-radius: 16px;
+    background: transparent !important;
+    border-radius: 16px !important;
 }
 
 popover modelbutton,
 popover button,
 menuitem {
-    border-radius: 12px;
-    padding: 8px 14px;
-    color: @text_primary;
-    font-size: 13px;
-    font-weight: 500;
+    border-radius: 12px !important;
+    padding: 8px 14px !important;
+    color: @text_primary !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
     transition: all 120ms ease;
 }
 
 popover modelbutton:hover,
 popover button:hover,
 menuitem:hover {
-    background-color: rgba(249, 115, 22, 0.20);
-    color: @accent_color;
+    background-color: rgba(249, 115, 22, 0.20) !important;
+    color: @accent_color !important;
 }
+
