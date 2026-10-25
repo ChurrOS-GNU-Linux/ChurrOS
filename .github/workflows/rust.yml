@@ -1,9 +1,9 @@
 name: Rust
 
-# La CI de ./churros (ci.yml) solo compila churros-services, porque es el
-# único crate sin dependencias de GTK. Aquí se compila y se prueba el
-# workspace completo (cargo build, test y clippy): un error de compilación
-# en welcome, settings, control center, popups o tour ya no espera a la ISO.
+# Aquí se compila y se prueba el workspace completo (cargo build, test y
+# clippy), incluido churros-services: ci.yml ya no lanza cargo test. Un error
+# de compilación en welcome, settings, control center, popups o tour no
+# espera a la ISO.
 #
 # Compilar no es arrancar. cargo test no abre ninguna ventana: los fallos en
 # tiempo de ejecución solo se ven en las pruebas que ejecutan las apps en
@@ -46,13 +46,15 @@ permissions:
 
 concurrency:
   group: rust-${{ github.ref }}
-  cancel-in-progress: true
+  # En main (push y el schedule semanal) no se cancela: se encolan.
+  # Solo un PR nuevo cancela la ejecución anterior.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   apps:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
@@ -87,7 +89,7 @@ jobs:
       # actions/cache no vuelve a guardar si la clave coincide: el prefijo
       # v2- fuerza una caché nueva que incluya release/.
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: rust/target/container
           key: ${{ matrix.cache }}v2-${{ hashFiles('Containerfile', 'rust/Cargo.lock') }}
@@ -106,6 +108,8 @@ jobs:
         run: |
           source scripts/lib/container.sh
           container_engine_init
+          # $tool se expande en el bash del contenedor, no en el runner.
+          # shellcheck disable=SC2016
           container_run -- bash -c '
             for tool in mkarchiso mksquashfs xorriso grub-mkstandalone mkfs.fat mcopy mmd \
                         makepkg repo-add cargo node python3; do

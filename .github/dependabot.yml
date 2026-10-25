@@ -1,0 +1,8 @@
+# Solo las acciones de GitHub (uses:). Cargo, pacman y las imágenes de
+# contenedor no se actualizan por aquí.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

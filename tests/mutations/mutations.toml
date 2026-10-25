@@ -1446,20 +1446,20 @@ why = "workflow sin permissions"
 [[mutation]]
 name = "test_repo_wiring: job de ISO sin timeout"
 file = ".github/workflows/iso-arm64.yml"
-find = "    timeout-minutes: 360\n"
+find = "    timeout-minutes: 90\n"
 replace = ""
 caught_by = "tests.static.test_repo_wiring"
 expect = "[workflow:timeout:iso-arm64.yml:iso]"
 why = "job de ISO sin timeout"
 
 [[mutation]]
-name = "test_repo_wiring: el build+arranque de ISO pierde concurrency en PR"
+name = "test_repo_wiring: el build+arranque de ISO pierde concurrency"
 file = ".github/workflows/iso.yml"
 find_re = "^concurrency:\n(?:.*\n)*?  cancel-in-progress: true\n"
 replace = ""
 caught_by = "tests.static.test_repo_wiring"
 expect = "[workflow:concurrency:iso.yml:iso]"
-why = "el build+arranque de ISO pierde concurrency en PR"
+why = "el build+arranque de ISO pierde concurrency: un schedule o un dispatch se apila sobre el que ya corre"
 
 [[mutation]]
 name = "test_repo_wiring: CHURROS_STRICT=0 en el CI"
@@ -1469,6 +1469,15 @@ replace = "        run: CHURROS_STRICT=0 bash scripts/test-polkit-pkexec.sh"
 caught_by = "tests.static.test_repo_wiring"
 expect = "el modo estricto se desactiva"
 why = "CHURROS_STRICT=0 en el CI"
+
+[[mutation]]
+name = "test_repo_wiring: check.sh deja de ejecutar actionlint"
+file = "scripts/cli/check.sh"
+find = "if command -v actionlint >/dev/null 2>&1; then\n"
+replace = "if false; then\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "no ejecuta actionlint"
+why = "sin actionlint en check.sh, un workflow roto pasa el chequeo estático"
 
 [[mutation]]
 name = "test_repo_wiring: el job de checks desactiva el modo estricto"
