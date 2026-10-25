@@ -17,7 +17,7 @@ Esta edición tiene una restricción propia que conviene entender antes de usarl
 | Pieza | Qué lleva |
 |---|---|
 | La **ISO** | Un XFCE mínimo. Es lo que ves al arrancar y lo que hospeda el instalador. |
-| El **sistema instalado** | Arranca sin escritorio. `configure-server` deshabilita greetd al terminar la instalación e intenta quitar los paquetes del escritorio; hoy esa parte falla (ver [Qué quita al instalar](#qué-quita-al-instalar)). |
+| El **sistema instalado** | Arranca sin escritorio. `configure-server` deshabilita greetd al terminar la instalación y quita los paquetes del escritorio (ver [Qué quita al instalar](#qué-quita-al-instalar)). |
 | El **arranque** | `multi-user.target`: consola de texto, sin display manager. |
 
 Es decir: el escritorio de la ISO es una herramienta de instalación, no parte del producto final.
@@ -89,9 +89,13 @@ Además, el usuario que creas en el instalador hereda del skel un timer de usuar
 
 ## Qué quita al instalar
 
-`configure-server` intenta borrar los 22 paquetes de escritorio de la ISO (XFCE, `cage`, `greetd`, `greetd-regreet`, `thunar`, `gvfs`…) con una sola orden `pacman -Rns`. Con la lista actual esa orden falla y no borra ninguno: paquetes de `packages.server.x86_64` que no están en el purge dependen de paquetes que sí lo están (`xfwm4` de `xfconf`, `gvfs-mtp` de `gvfs`, `thunar-archive-plugin` y `thunar-volman` de `thunar`), y pacman cancela la transacción entera. El error queda en `/var/log/churros-server.log`, y `verify-install`, que comprueba que no exista `/usr/bin/startxfce4`, deja un aviso en `/var/log/churros-install-verify.log`. Aun así, el escritorio no arranca: greetd queda deshabilitado y el destino por defecto es `multi-user.target`.
+`configure-server` borra los 26 paquetes de escritorio (XFCE, `cage`, `greetd`, `thunar`, `gvfs`…) con un solo `pacman -Rns`. Con `-s` caen también sus dependencias que ya nada usa (`libxfce4ui`, `exo`, `garcon`, `greetd-agreety`, `vte3`…): unos 60 paquetes en total. Lo que la lista instala explícitamente y no está en el purge (`xorg-server`, `tumbler`, `network-manager-applet`…) se queda, porque `-s` nunca quita paquetes instalados explícitamente.
 
-Lo que sí se borra, porque no depende de pacman:
+La lista incluye también los paquetes de `packages.server.x86_64` que dependen de los de escritorio, aunque no sean «el escritorio»: `xfwm4` (de `xfconf`), `thunar-archive-plugin` y `thunar-volman` (de `thunar`) y `gvfs-mtp` (de `gvfs`). Hace falta porque `pacman -R` es todo o nada: si un paquete que se queda depende de uno que se quita, rechaza la transacción entera (`removing xfconf breaks dependency 'xfconf' required by xfwm4`) y no borra ninguno. Antes pasaba exactamente eso: el escritorio no arrancaba, pero seguía instalado.
+
+Si añades un paquete a la lista de la edición, mira si depende de alguno de los que se quitan (`pactree -su <paquete>` en Arch lista todas sus dependencias) y, si es así, añádelo también a `DESKTOP_PKGS`. `./churros check` falla si un paquete de las familias XFCE, Thunar, GVFS o greetd queda en la lista sin estar en el purge, o si el purge nombra un paquete que la lista no instala; las dependencias de otras familias no las ve, porque necesitan las bases de pacman.
+
+Además de los paquetes, quita:
 
 - Los binarios de las apps propias, que son ficheros en `/usr/bin` y no paquetes: `churros-welcome`, `churros-settings`, `churros-control-center`, `churros-popup`, `churros-tour`, `churros-apply-wallpaper`, `churros-pick-image`.
 - Los lanzadores del panel de XFCE, que apuntan a esos binarios.
@@ -99,7 +103,7 @@ Lo que sí se borra, porque no depende de pacman:
 - `/etc/greetd/environments`.
 - En el `config.kdl` de Niri (skel y homes): todas las líneas `spawn-at-startup` y las que mencionan `churros-welcome` o `churros-tour`.
 
-Otros paquetes gráficos de la lista no están en el purge y se quedarían instalados aunque funcionara, entre ellos `xfwm4`, `xorg-server`, `gtk4`, `libadwaita` y `bazaar` (la tienda Flatpak).
+Otros paquetes gráficos de la lista no están en el purge y se quedarían instalados aunque funcionara, entre ellos `xorg-server`, `gtk4`, `libadwaita` y `bazaar` (la tienda Flatpak).
 
 Todo va registrado en `/var/log/churros-server.log`. Cada paso es tolerante a fallos: si algo falla, la instalación termina igual y queda en el log.
 
@@ -163,7 +167,6 @@ El paquete de Arch ya lee los registros de `sshd` desde el journal (`sshd_backen
 4. **No se prueba en CI.** La CI solo construye la ISO aarch64 (`iso-arm64.yml`); `rust.yml` compila las apps y `ci.yml` pasa los chequeos estáticos. El build y el arranque de esta edición no se prueban automáticamente y en el repositorio no hay constancia de una instalación probada en QEMU o en hardware.
 5. **SSH con contraseña.** Es lo que deja Calamares. Pasar a solo claves (`PasswordAuthentication no`) es una decisión que no se ha tomado todavía.
 6. **Actualización desatendida.** El timer actualiza sin ventana de mantenimiento ni aviso (ver [Actualizaciones automáticas](#actualizaciones-automáticas)).
-7. **El escritorio de la ISO se queda en el disco.** El `pacman -Rns` de `configure-server` falla por dependencias y no quita ningún paquete (ver [Qué quita al instalar](#qué-quita-al-instalar)).
 
 ---
 
@@ -178,3 +181,14 @@ El paquete de Arch ya lee los registros de `sshd` desde el journal (`sshd_backen
 | `archiso/airootfs/root/scripts/desktop.sh` | La sesión Live usa las variables de XFCE |
 | `branding/stamp-os-release.sh` | `VARIANT="Server Edition"`, `VARIANT_ID="server"` |
 | `installer/calamares/modules/shellprocess-cleanup.conf` | Ejecuta `configure-server` |
+
+---
+
+## Verificación hecha
+
+- Cada nombre de paquete comprobado contra las bases de pacman de Arch; los 26 del purge existen en la lista de la edición, así que `pacman -Rns` no se encuentra con nombres fantasma.
+- El `pacman -Rns` del purge simulado contra las bases `core` y `extra` de Arch (cierre completo de `packages.server.x86_64`, más los extras de `netinstall`): ningún paquete que se queda depende de uno que se quita, y `-s` arrastra 36 dependencias más. Con la lista anterior de 22 la transacción fallaba por `xfwm4`, `gvfs-mtp`, `thunar-archive-plugin`, `thunar-volman` y `libxfce4ui`.
+- Los seis paquetes añadidos (`chrony`, `fail2ban`, `htop`, `tmux`, `lsof`, `jq`, `strace`, `git`, `procps-ng`, `pciutils`) existen en los repos.
+- `bash -n` en los scripts tocados, YAML del módulo de Calamares válido y `./churros check` en verde.
+
+**Lo que no está verificado: el build y el arranque.** En el entorno donde se escribió esto no hay `mkarchiso`. Antes de dar la edición por buena hay que construir la ISO y arrancar un servidor instalado desde ella.
