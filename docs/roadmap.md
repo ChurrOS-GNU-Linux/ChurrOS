@@ -6,7 +6,7 @@ Hoja de ruta de ChurrOS: qué está hecho y qué falta. Puede cambiar conforme e
 
 ## Estado actual
 
-La última versión publicada es la **1.3** (12 de octubre de 2026): ISOs x86_64 de las ediciones Niri y XFCE en [download.churroslinux.org](https://download.churroslinux.org/). En el repositorio también se construyen la edición Servidor (x86_64) y la edición Niri para aarch64, y de forma experimental la edición Raspberry Pi Lite (aarch64) y un port i686 sin sesión gráfica ni instalador. Detalle en el [README](../README.md#ediciones).
+La última versión publicada es la **1.4** (25 de octubre de 2026): ISOs x86_64 de las ediciones Niri y XFCE en [download.churroslinux.org](https://download.churroslinux.org/). En el repositorio también se construyen la edición Servidor (x86_64) y la edición Niri para aarch64, y de forma experimental la edición Raspberry Pi Lite (aarch64) y un port i686 sin sesión gráfica ni instalador. Detalle en el [README](../README.md#ediciones).
 
 ChurrOS sigue en etapa temprana. El objetivo principal es consolidar esa base (identidad de arranque, repositorio propio firmado y documentación de usuario) antes de ampliar el alcance, como piden los [principios](principios.md).
 

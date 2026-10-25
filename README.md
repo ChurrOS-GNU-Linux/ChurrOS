@@ -49,8 +49,8 @@ Este repositorio contiene el perfil de la ISO, el overlay del sistema Live, la c
 
 | Edición | Arquitectura | Escritorio | Estado |
 |---|---|---|---|
-| Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.3) |
-| XFCE | x86_64 | XFCE | ISO publicada (1.3) |
+| Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.4) |
+| XFCE | x86_64 | XFCE | ISO publicada (1.4) |
 | Servidor | x86_64 | Ninguno en el sistema instalado | Se construye desde el repositorio; no hay ISO publicada |
 | Niri | aarch64 (UEFI) | Niri + Noctalia | Se construye desde el repositorio; no hay ISO publicada |
 | Raspberry Pi Lite (`pi`) | aarch64 | labwc + Waybar | Experimental: no se construye en la CI ni hay ISO publicada |
@@ -99,9 +99,9 @@ Es la más ligera de las ediciones x86_64. Habilita `sshd`, `chronyd`, NetworkMa
 
 ## Descarga
 
-Las ISO se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La versión actual es la 1.3, publicada para x86_64 en dos ediciones: Niri (unos 2,27 GiB) y XFCE (unos 2,22 GiB). Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/). Las [releases de GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases) no incluyen la ISO actual.
+Las ISO se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La versión actual es la 1.4, publicada para x86_64 en dos ediciones: Niri (unos 2,27 GiB) y XFCE (unos 2,22 GiB). Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/). Las [releases de GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases) no incluyen la ISO actual.
 
-Las ISO 1.3 todavía no tienen publicada su suma SHA-256. Cuando la tengan, compárala antes de instalar con la de tu descarga:
+Las ISO 1.4 tienen publicada su suma SHA-256 en `SHA256SUMS`. Compárala antes de instalar con la de tu descarga:
 
 ```bash
 sha256sum ChurrOS-*.iso
@@ -446,7 +446,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Estado actual
 
-Versión del proyecto: **1.3** ( [`VERSION`](VERSION) ).
+Versión del proyecto: **1.4** ( [`VERSION`](VERSION) ).
 
 ChurrOS cuenta con ISO personalizada, las ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
 
