@@ -50,7 +50,7 @@ de paquetes existentes se describen antes de la operación.
 ## Instalación, cierre y errores
 
 La instalación se realiza en segundo plano, sin abrir ventanas de terminal ni
-requerir confirmación interactiva. La regla `/etc/sudoers.d/10-churros-pacman`
+requerir confirmación interactiva. La regla `/etc/sudoers.d/99-churros-pacman`
 permite a los administradores del grupo `wheel` ejecutar `/usr/bin/pacman` sin
 contraseña, lo que permite a `yay` operar de manera desatendida tanto para
 paquetes de los repositorios oficiales como para compilaciones de AUR.

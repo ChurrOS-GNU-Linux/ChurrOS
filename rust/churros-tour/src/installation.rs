@@ -9,6 +9,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const INSTALL_SCRIPT: &str = r#"
 report=$1
 shift
+exec </dev/null
+
+if [ ! -f /var/lib/pacman/sync/core.db ] || [ ! -f /var/lib/pacman/sync/extra.db ]; then
+    sudo -n pacman -Sy --noconfirm >/dev/null 2>&1 || true
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+    sudo -n pacman -S --needed --noconfirm git >/dev/null 2>&1 || true
+fi
+
 for pkg in "$@"; do
     if [ "$pkg" = "google-chrome" ]; then
         gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys 4EB27DBFB8E3B61F >/dev/null 2>&1 || true
