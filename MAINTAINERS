@@ -75,10 +75,10 @@
 # ── Traducciones ────────────────────────────────────────────────────────────
 /po/                             @elgatolinux
 
-# ── Colaboradores ────────────────────────────────────────────────────────────
-# @CRISTOP-bot es la cuenta personal de Cristopher Borjas. Aunque el nombre
-# incluya "bot", es una cuenta humana y no un bot automatizado; puede recibir
-# preguntas y revisiones dirigidas a Cristopher.
+# ── Automatización ──────────────────────────────────────────────────────────
+# @CRISTOP-bot es la cuenta del bot que publica y actualiza el repositorio.
+# Aparece en el historial de commits, pero no es una persona a la que dirigir
+# dudas ni revisiones.
 
 # ── Otros temas ─────────────────────────────────────────────────────────────
 # Seguridad: los reportes de vulnerabilidades no van en issues públicos. El

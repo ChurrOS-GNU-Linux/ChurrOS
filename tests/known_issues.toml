@@ -236,14 +236,6 @@ note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-
 
 # --- test_build_dryrun ---
 [[issue]]
-id = "build:edition-list-backup-overwritten"
-note = "scripts/cli/build.sh (paso 0) copia archiso/packages.<arch> a packages.<arch>.orig sin mirar si ya existe, al contrario que el .bak de greetd/config.toml. Si un build --edition xfce|server se interrumpe (SIGKILL, OOM, docker kill) packages.x86_64 se queda con la lista de esa edición; el siguiente build --edition server|xfce la guarda como copia de seguridad y al terminar la restaura: packages.x86_64 queda con la lista XFCE y la de niri se pierde (solo se recupera con git)."
-
-[[issue]]
-id = "build:edition-list-not-restored-for-niri"
-note = "Tras un build --edition xfce|server interrumpido, el build por defecto (niri) no recupera archiso/packages.x86_64 del .orig que quedó: el paso 0 de scripts/cli/build.sh solo corre para ediciones distintas de niri y el trap solo restaura con PACKAGES_BACKED_UP=1. mkarchiso construye la ISO niri con la lista de XFCE (sin niri, foot ni base-devel) y greetd hace autologin a `niri`, que no está instalado. El árbol queda con packages.x86_64 modificado y el .orig."
-
-[[issue]]
 id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
 note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."
 
