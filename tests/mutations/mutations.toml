@@ -2319,3 +2319,13 @@ caught_by = "tests.static.test_build_dryrun"
 expect = "build:aarch64-build-deletes-x86_64-local-packages"
 why = "The ARM build must inspect and reindex only its architecture-specific local package repository; scanning archiso/packages deletes reusable x86_64 packages."
 
+
+
+[[mutation]]
+name = "test_build_dryrun: A later build no longer recovers the package list after SIGKILL"
+file = "scripts/cli/build.sh"
+find = "recover_interrupted_package_list\n"
+replace = ": # recovery removed\n"
+caught_by = "tests.static.test_build_dryrun"
+expect = "build:edition-list-not-restored-for-niri"
+why = "If the recovery hook disappears, the existing SIGKILL regression must catch that a subsequent niri build uses the previous edition's package list."

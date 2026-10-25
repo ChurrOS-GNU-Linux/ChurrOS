@@ -216,6 +216,17 @@ cleanup_temp() {
 
 trap cleanup_temp EXIT
 
+# Si el proceso anterior murió (SIGKILL/OOM), el trap no pudo restaurar la
+# lista temporal de paquetes. Recuperar primero la copia original antes de
+# seleccionar otra edición; esto también cubre el siguiente build niri.
+recover_interrupted_package_list() {
+    if [ -f "$PACKAGE_LIST.orig" ]; then
+        echo "[recovery] Restoring package list left by an interrupted build..."
+        mv -f "$PACKAGE_LIST.orig" "$PACKAGE_LIST"
+    fi
+}
+recover_interrupted_package_list
+
 echo "======================================"
 echo "      ChurrOS Build System"
 echo "      Edition: ${EDITION^^}"
