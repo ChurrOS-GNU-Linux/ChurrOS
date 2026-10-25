@@ -1,0 +1,378 @@
+"""Configs de niri, Noctalia y .desktop validados por sus propios programas.
+
+Corre en el contenedor de build (Containerfile, Arch Linux) con
+`./churros test --container`, como test_arch_repos. Fuera de él el módulo se
+salta, también en modo estricto. Instala con pacman (el contenedor es
+desechable) niri, noctalia, desktop-file-utils y python-yaml, y comprueba:
+
+  - `niri validate` sobre cada niri/config.kdl del airootfs (el del skel y la
+    copia de /usr/share/churros/defaults) y sobre el config que deja el
+    instalador: los comandos de los shellprocess de Calamares que tocan
+    .config/niri/config.kdl, sacados de sus .conf (con el overlay de cada
+    arquitectura) y aplicados en el orden de exec de settings.conf a una
+    copia. niri rechaza nodos desconocidos y binds sin acción, cosas que un
+    parser de KDL da por buenas, y el niri de Arch cambia de sintaxis sin que
+    cambie el repo.
+  - `niri validate` sobre lo que escribe churros-settings en config.kdl
+    (rust/preferences: niri_config.rs, keyboard.rs, window_rules_service.rs,
+    cursor.rs). El test de cargo services::niri_writers aplica cada llamada
+    que hacen las páginas (pages/), con los extremos de sus controles, a una
+    copia del config del skel, comprueba que guardar sin cambios no cambia
+    nada, y deja cada resultado en CHURROS_NIRI_WRITERS_OUT; aquí se compila
+    y ejecuta (cargo --offline --locked, el CARGO_TARGET_DIR del contenedor:
+    después de ./churros rust ya está compilado) y niri valida cada fichero.
+    Una regex de app-id escrita sin escapar, una opacidad entera o un atajo
+    repetido hacen que niri rechace el config entero. Cada llamada de una
+    página a un servicio que escribe config.kdl (los de services/ que lo
+    nombran y escriben ficheros) tiene que tener un caso, o estar declarada
+    como no escritora en NOT_NIRI_WRITERS de niri_writers.rs.
+  - `noctalia config validate` sobre cada config de Noctalia del airootfs y
+    sobre el del Live: el del skel más los .toml que root/scripts/*.sh
+    escriben en ~/.config/noctalia (live.toml de desktop.sh). Cuentan los
+    errores y los avisos de sección, ajuste o valor desconocidos (Noctalia
+    los ignora al cargar); un tipo equivocado no lo detecta noctalia.
+  - `desktop-file-validate` (errores, no avisos ni pistas) sobre cada
+    .desktop del repo: una clave mal escrita o un booleano inválido hacen
+    que GLib/garcon ignoren la entrada.
+"""
+from __future__ import annotations
+
+import fcntl
+from functools import lru_cache
+import importlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import tempfile
+import unittest
+
+from tests import testlib
+
+SUDO = [] if os.geteuid() == 0 else ["sudo", "-n"]
+PACKAGES = ("niri", "noctalia", "desktop-file-utils", "python-yaml")
+PACMAN_LOCK = Path(tempfile.gettempdir()) / "churros-pacman.lock"
+NIRI_CONFIG = re.compile(r"(?<!\S)\S*/\.config/niri/config\.kdl(?!\S)")
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+WORK: Path | None = None
+
+
+def setUpModule():
+    global WORK
+    if not Path("/etc/arch-release").exists():
+        raise unittest.SkipTest("solo corre en el contenedor Arch de build (no hay /etc/arch-release)")
+    if os.environ.get("CHURROS_IN_CONTAINER") != "1":
+        raise unittest.SkipTest("solo corre dentro del contenedor de build (./churros test --container; CHURROS_IN_CONTAINER != 1)")
+    WORK = Path(tempfile.mkdtemp(prefix="churros-configs-"))
+
+
+def tearDownModule():
+    if WORK is not None:
+        shutil.rmtree(WORK, ignore_errors=True)
+
+
+@lru_cache(maxsize=None)
+def install_error() -> str | None:
+    """Instala PACKAGES; devuelve el error o None.
+
+    Si ya están (pacman -T no toca la base de datos), no llama a -S: pacman
+    toma db.lck aunque no haya nada que instalar y no espera a que se
+    libere, y las mutaciones ejecutan este módulo en paralelo ("unable to
+    lock database"). Si faltan, instala con un cerrojo entre procesos.
+    Si la base de datos de la imagen es vieja y el mirror ya no tiene esa
+    versión, -S falla: entonces -Syu (el contenedor es desechable).
+    """
+    if testlib.run(["pacman", "-T", *PACKAGES]).returncode == 0:
+        return None
+    lock = os.open(PACMAN_LOCK, os.O_RDONLY | os.O_CREAT, 0o666)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        result = None
+        for operation in ("-S", "-Syu"):
+            result = testlib.run([*SUDO, "pacman", operation, "--needed", "--noconfirm", *PACKAGES], timeout=1800)
+            if result.returncode == 0:
+                importlib.invalidate_caches()  # python-yaml recién instalado
+                return None
+        return f"pacman no pudo instalar {' '.join(PACKAGES)}:\n{result.stdout}"
+    finally:
+        os.close(lock)
+
+
+def require_packages(testcase: unittest.TestCase) -> None:
+    error = install_error()
+    if error:
+        testcase.fail(error)
+
+
+def scratch(name: str) -> Path:
+    path = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=WORK))
+    for sub in ("home", "config", "state", "cache", "runtime"):
+        (path / sub).mkdir(mode=0o700)
+    return path
+
+
+def tool_env(base: Path) -> dict[str, str]:
+    """HOME y XDG_* propios: nada del usuario que corre la prueba se cuela."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("XDG_") and key not in {"NIRI_CONFIG", "WAYLAND_DISPLAY", "DISPLAY"}}
+    env.update(HOME=str(base / "home"), XDG_CONFIG_HOME=str(base / "config"), XDG_STATE_HOME=str(base / "state"),
+               XDG_CACHE_HOME=str(base / "cache"), XDG_RUNTIME_DIR=str(base / "runtime"), NO_COLOR="1")
+    return env
+
+
+def niri_validate(path: Path) -> str | None:
+    """Salida de niri validate si rechaza el fichero, o None."""
+    result = testlib.run(["niri", "validate", "-c", str(path)], env=tool_env(scratch("niri")))
+    return None if result.returncode == 0 else ANSI.sub("", result.stdout).strip()
+
+
+def airootfs_files(pattern: str) -> list[Path]:
+    return [path for path in testlib.repo_files() if path.is_relative_to(testlib.AIROOTFS) and path.match(pattern)]
+
+
+# ------------------------------------------------------------- instalador
+
+def calamares_conf(arch: str, name: str) -> Path:
+    """El .conf que apply-calamares.sh deja en la ISO: el de <arch>/ si existe."""
+    modules = testlib.ROOT / "installer/calamares/modules"
+    return modules / arch / name if (modules / arch / name).exists() else modules / name
+
+
+def installer_niri_commands(arch: str) -> list[tuple[str, str]]:
+    """(fichero, comando) de los shellprocess que tocan el config de niri, en orden de exec."""
+    import yaml
+    settings = yaml.safe_load(testlib.read_text(testlib.ROOT / "installer/calamares/settings.conf"))
+    configs = {f"{item['module']}@{item['id']}": item.get("config", f"{item['module']}.conf")
+               for item in settings.get("instances", [])}
+    steps = [step for block in settings.get("sequence", []) for step in block.get("exec", [])]
+    found = []
+    for step in steps:
+        if step.split("@", 1)[0] != "shellprocess":
+            continue
+        path = calamares_conf(arch, configs.get(step, "shellprocess.conf"))
+        script = (yaml.safe_load(testlib.read_text(path)) or {}).get("script", [])
+        for entry in [script] if isinstance(script, str) else script:
+            command = entry.get("command") if isinstance(entry, dict) else entry
+            if isinstance(command, str) and NIRI_CONFIG.search(command):
+                found.append((testlib.rel(path), command))
+    return found
+
+
+def apply_installer_commands(commands: list[tuple[str, str]], target: Path) -> list[str]:
+    """Ejecuta los comandos sobre `target`; devuelve los fallos.
+
+    La primera ruta .config/niri/config.kdl del comando pasa a ser `target` y
+    las demás se quitan: el skel y /home/<usuario> son el mismo fichero en ese
+    momento (el módulo users copia /etc/skel antes de shellprocess@post-install).
+    El '-' inicial solo hace que Calamares ignore el fallo; aquí un fallo
+    significa que la transformación no se aplicó y se informa.
+    """
+    errors = []
+    for source, command in commands:
+        seen = []
+
+        def substitute(match: re.Match) -> str:
+            seen.append(match.group(0))
+            return shlex.quote(str(target)) if len(seen) == 1 else ""
+
+        shell = NIRI_CONFIG.sub(substitute, command.lstrip("-"))
+        result = testlib.run(["sh", "-c", shell], cwd=target.parent)
+        if result.returncode != 0:
+            errors.append(f"{source}: `{command}` falló sobre una copia del config:\n{result.stdout.strip()}")
+    return errors
+
+
+# ------------------------------------------------------------- churros-settings
+
+SETTINGS_CRATE = "churros-settings"
+SETTINGS_PAGES = testlib.ROOT / "rust/preferences/src/pages"
+SETTINGS_SERVICES = testlib.ROOT / "rust/preferences/src/services"
+WRITERS_TEST = "services::niri_writers::"
+FILE_WRITE = re.compile(r"\b(?:fs::write|File::create|OpenOptions)\b")
+
+
+def settings_writer_services() -> set[str]:
+    """Servicios de churros-settings que escriben el config.kdl de niri.
+
+    Los `impl Servicio` de cada services/*.rs que nombra config.kdl y escribe
+    ficheros, salvo los módulos #[cfg(test)] de mod.rs. (wallpaper.rs lo lee,
+    pero no escribe nada.) Así un servicio nuevo que lo escribe entra solo.
+    """
+    mod_rs = testlib.read_text(SETTINGS_SERVICES / "mod.rs")
+    test_only = set(re.findall(r"#\[cfg\(test\)\]\s*(?:pub(?:\([\w:]+\))?\s+)?mod\s+(\w+)\s*;", mod_rs))
+    services = set()
+    for path in sorted(SETTINGS_SERVICES.glob("*.rs")):
+        text = testlib.read_text(path)
+        if path.stem not in test_only and "config.kdl" in text and FILE_WRITE.search(text):
+            services.update(re.findall(r"^impl (\w+) \{", text, re.MULTILINE))
+    return services
+
+
+def settings_writers_in_pages() -> set[str]:
+    """`Servicio::función` de un servicio que escribe config.kdl y que llama alguna página."""
+    services = sorted(settings_writer_services())
+    if not services:
+        return set()
+    call = re.compile(rf"\b({'|'.join(services)})::(\w+)\s*\(")
+    found = set()
+    for path in sorted(SETTINGS_PAGES.glob("*.rs")):
+        for service, function in call.findall(testlib.read_text(path)):
+            if not function.startswith(("get_", "list_")) and function != "reload":
+                found.add(f"{service}::{function}")
+    return found
+
+
+def run_settings_writers(cargo: str, out: Path):
+    """Ejecuta el test de cargo que deja en `out` un config.kdl por llamada."""
+    env = dict(os.environ, CHURROS_NIRI_WRITERS_OUT=str(out))
+    return testlib.run([cargo, "test", "--offline", "--locked", "--manifest-path", str(testlib.ROOT / "rust/Cargo.toml"),
+                        "-p", SETTINGS_CRATE, "--", WRITERS_TEST], env=env, timeout=1800)
+
+
+# ------------------------------------------------------------- noctalia
+
+def live_noctalia_files() -> dict[str, str]:
+    """{nombre: contenido} de los .toml que los scripts del Live escriben en
+    ~/.config/noctalia con un heredoc (desktop.sh: live.toml)."""
+    found = {}
+    pattern = re.compile(r"cat\s+>\s*\S*/\.config/noctalia/([\w.-]+\.toml)\s*<<-?\s*'?(\w+)'?\n(.*?)\n\s*\2\s*$",
+                         re.DOTALL | re.MULTILINE)
+    for path in sorted((testlib.AIROOTFS / "root/scripts").glob("*.sh")):
+        for name, _, body in pattern.findall(testlib.read_text(path)):
+            found[name] = body + "\n"
+    return found
+
+
+def noctalia_validate(base: Path, target: Path | None = None) -> str | None:
+    """Salida de noctalia config validate si hay errores o ajustes desconocidos.
+
+    noctalia solo sale con 1 por errores de sintaxis. Una sección, un ajuste o
+    un valor de enum desconocidos son avisos ("WARN <fichero>:<l>:<c>: <clave>:
+    unknown ...") y Noctalia los ignora al cargar: el ajuste no se aplica (un
+    allow_empty_password mal escrito deja el Live sin poder desbloquear).
+    """
+    cmd = ["noctalia", "config", "validate"] + ([str(target)] if target else [])
+    result = testlib.run(cmd, env=tool_env(base))
+    output = ANSI.sub("", result.stdout).strip()
+    unknown = [line for line in output.splitlines() if re.match(r"WARN\s", line) and ": unknown " in line]
+    return output if result.returncode != 0 or unknown else None
+
+
+# ------------------------------------------------------------------ pruebas
+
+class NiriConfigTest(unittest.TestCase):
+    def test_niri_validate_shipped_configs(self):
+        require_packages(self)
+        configs = airootfs_files("*/niri/config.kdl")
+        self.assertIn(testlib.AIROOTFS / "etc/skel/.config/niri/config.kdl", configs, "no se encontró el config de niri del skel")
+        findings = {}
+        for path in configs:
+            error = niri_validate(path)
+            if error:
+                findings[f"niri-validate:{testlib.rel(path)}"] = f"niri validate rechaza {testlib.rel(path)}:\n{error}"
+        testlib.assert_findings(self, "niri-validate", findings)
+
+    def test_niri_validate_installed_config(self):
+        """El config.kdl que queda tras shellprocess@post-install sigue siendo válido."""
+        require_packages(self)
+        testlib.require_module(self, "yaml")
+        skel = testlib.AIROOTFS / "etc/skel/.config/niri/config.kdl"
+        arches = sorted({item.arch for item in testlib.EDITIONS if item.desktop == "niri" and item.installer})
+        findings = {}
+        for arch in arches:
+            commands = installer_niri_commands(arch)
+            if not commands:
+                continue
+            target = scratch(f"installed-{arch}") / "config.kdl"
+            shutil.copyfile(skel, target)
+            errors = apply_installer_commands(commands, target)
+            error = niri_validate(target)
+            if error:
+                errors.append(f"niri validate rechaza el config.kdl instalado:\n{error}")
+            if errors:
+                applied = "\n".join(f"    {source}: {command}" for source, command in commands)
+                findings[f"niri-installed:{arch}"] = (
+                    f"config de niri del sistema instalado ({arch}), skel más:\n{applied}\n" + "\n".join(errors)
+                )
+        testlib.assert_findings(self, "niri-installed", findings)
+
+    def test_niri_validate_settings_writers(self):
+        """Lo que churros-settings escribe en config.kdl (cada llamada de pages/ sobre el skel) lo acepta niri."""
+        require_packages(self)
+        cargo = testlib.require_tool(self, "cargo")
+        out = scratch("settings-writers") / "out"
+        result = run_settings_writers(cargo, out)
+        manifest = out / "cases.json"
+        if result.returncode != 0 or not manifest.exists():
+            tail = "\n".join(result.stdout.splitlines()[-60:])
+            self.fail(f"cargo test -p {SETTINGS_CRATE} -- {WRITERS_TEST} falló o no dejó {manifest.name} "
+                      f"(--offline usa el registro que deja ./churros rust):\n{tail}")
+        cases = json.loads(manifest.read_text())["cases"]
+
+        pages = settings_writers_in_pages()
+        for call in ("WindowRulesService::update_rule", "CursorService::set_size"):
+            self.assertIn(call, pages, f"no se encontraron las llamadas de {testlib.rel(SETTINGS_PAGES)} a los "
+                                       f"servicios que escriben config.kdl ({sorted(settings_writer_services())})")
+        covered = {writer for case in cases for writer in case["writers"]}
+        not_writers = set(json.loads(manifest.read_text()).get("not_writers", []))
+        missing = sorted(pages - covered - not_writers)
+        self.assertFalse(missing, f"{testlib.rel(SETTINGS_PAGES)} llama a {', '.join(missing)} y "
+                                  "rust/preferences/src/services/niri_writers.rs no tiene ningún caso que lo pruebe "
+                                  "(si no escribe config.kdl, va en NOT_NIRI_WRITERS)")
+
+        findings = {}
+        for case in cases:
+            error = niri_validate(out / case["file"])
+            if error:
+                findings[f"niri-writers:{case['name']}"] = (
+                    f"niri validate rechaza config.kdl tras {case['name']} (sobre el skel; "
+                    f"rust/preferences/src/services/niri_writers.rs):\n{error}")
+        testlib.assert_findings(self, "niri-writers", findings)
+
+
+class NoctaliaConfigTest(unittest.TestCase):
+    def test_noctalia_config_validate(self):
+        require_packages(self)
+        directories = sorted({path.parent for path in airootfs_files("*/noctalia/config.toml")})
+        skel = testlib.AIROOTFS / "etc/skel/.config/noctalia"
+        self.assertIn(skel, directories, "no se encontró el config de Noctalia del skel")
+        findings = {}
+        for directory in directories:
+            error = noctalia_validate(scratch("noctalia"), directory)
+            if error:
+                findings[f"noctalia-validate:{testlib.rel(directory)}"] = f"noctalia config validate da errores o ajustes desconocidos en {testlib.rel(directory)}:\n{error}"
+        # Sesión Live: desktop.sh copia el skel a /home/churros/.config y añade
+        # sus .toml. Sin ruta, noctalia valida la unión como al arrancar.
+        extra = live_noctalia_files()
+        if extra:
+            base = scratch("noctalia-live")
+            shutil.copytree(skel, base / "config/noctalia")
+            for name, body in extra.items():
+                (base / "config/noctalia" / name).write_text(body)
+            error = noctalia_validate(base)
+            if error:
+                findings["noctalia-validate:live"] = (
+                    f"noctalia config validate da errores o ajustes desconocidos en el config del Live (skel + {', '.join(sorted(extra))} de root/scripts):\n{error}"
+                )
+        testlib.assert_findings(self, "noctalia-validate", findings)
+
+
+class DesktopFilesTest(unittest.TestCase):
+    def test_desktop_file_validate(self):
+        require_packages(self)
+        files = [path for path in testlib.repo_files() if path.suffix == ".desktop" and not path.is_symlink()]
+        self.assertTrue(files, "no se encontró ningún .desktop")
+        findings = {}
+        for path in files:
+            result = testlib.run(["desktop-file-validate", str(path)])
+            if result.returncode != 0:
+                errors = [line.split(": ", 1)[-1] for line in result.stdout.splitlines() if ": error: " in line]
+                findings[f"desktop-file:{testlib.rel(path)}"] = (
+                    f"desktop-file-validate rechaza {testlib.rel(path)}:\n    " + "\n    ".join(errors or [result.stdout.strip()])
+                )
+        testlib.assert_findings(self, "desktop-file", findings)
+
+
+if __name__ == "__main__":
+    unittest.main()

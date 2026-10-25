@@ -36,6 +36,6 @@ impl AboutService {
     }
 
     pub fn license() -> &'static str {
-        "GPL-3.0"
+        "GPL-3.0-only"
     }
 }

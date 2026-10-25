@@ -13,7 +13,7 @@ use crate::widgets::page::Page;
 use crate::widgets::slider_row::SliderRow;
 use crate::widgets::switch_row::SwitchRow;
 
-const LAYOUTS: [&str; 6] = ["es", "us", "latam", "fr", "de", "it"];
+pub(crate) const LAYOUTS: [&str; 6] = ["es", "us", "latam", "fr", "de", "it"];
 
 fn run_gsettings(args: &[&str]) -> String {
     let mut cmd: Vec<&str> = vec!["gsettings"];

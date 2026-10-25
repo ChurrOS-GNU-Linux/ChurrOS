@@ -121,6 +121,49 @@ fn run_capture(args: &[&str], timeout_secs: u64) -> Option<String> {
     Some(buf.trim().to_string())
 }
 
+/// Resumen de paccache: nº de paquetes y espacio ("1.69 GiB").
+#[derive(Debug, PartialEq)]
+struct PaccacheSummary {
+    count: u64,
+    size: String,
+}
+
+/// "==> finished dry run: 354 candidates (disk space saved: 1.69 GiB)"
+/// "==> finished: 354 packages removed (disk space saved: 1.69 GiB)"
+/// "==> no candidate packages found for pruning"
+fn parse_paccache(output: &str) -> Option<PaccacheSummary> {
+    if output.contains("no candidate packages found") {
+        return Some(PaccacheSummary { count: 0, size: "0 B".to_string() });
+    }
+    let line = output.lines().find(|l| l.contains("(disk space saved:"))?;
+    let (head, tail) = line.split_once("(disk space saved:")?;
+    let size = tail.trim().trim_end_matches(')').trim().to_string();
+    let count = head
+        .rsplit_once(':')
+        .map(|(_, r)| r)
+        .unwrap_or(head)
+        .split_whitespace()
+        .find_map(|w| w.parse::<u64>().ok())?;
+    Some(PaccacheSummary { count, size })
+}
+
+/// Primera línea útil de un error (sin el prefijo "error:" / "==> ERROR:").
+fn first_error_line(stderr: &str, stdout: &str) -> Option<String> {
+    [stderr, stdout]
+        .iter()
+        .flat_map(|s| s.lines())
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| {
+            l.trim_start_matches("==>")
+                .trim()
+                .trim_start_matches("ERROR:")
+                .trim_start_matches("error:")
+                .trim()
+                .to_string()
+        })
+}
+
 /// Líneas no vacías de una salida.
 fn lines(out: &str) -> Vec<String> {
     out.lines()
@@ -408,6 +451,61 @@ impl UpdateService {
 
     // -------------------------------------------------------- timer
 
+    // ---------- Limpieza ----------
+
+    /// Espacio que liberaría `clean_cache()`: simulación con la misma
+    /// retención (`-k1`). None si paccache no está o falla.
+    pub fn check_cache_cleanup() -> Option<String> {
+        let (code, out, err) =
+            churros_services::run(&["paccache", "-dk1", "--nocolor"], 30_000)?;
+        if code != 0 {
+            return None;
+        }
+        let summary = parse_paccache(&format!("{out}\n{err}"))?;
+        Some(match summary {
+            PaccacheSummary { count: 0, .. } => "Caché al día (0 B recuperables)".to_string(),
+            PaccacheSummary { count, size } => {
+                format!("{size} recuperables ({count} paquetes antiguos)")
+            }
+        })
+    }
+
+    /// Borra las versiones antiguas de la caché de pacman (conserva la última).
+    pub fn clean_cache() -> Result<String, String> {
+        let (code, out, err) =
+            churros_services::run(&["pkexec", "/usr/bin/paccache", "-rk1"], 0)
+                .ok_or("No se pudo ejecutar paccache")?;
+        match code {
+            0 => Ok(match parse_paccache(&format!("{out}\n{err}")) {
+                Some(PaccacheSummary { count: 0, .. }) | None => {
+                    "No había versiones antiguas que borrar".to_string()
+                }
+                Some(PaccacheSummary { count, size }) => {
+                    format!("{size} liberados ({count} paquetes eliminados)")
+                }
+            }),
+            126 | 127 => Err("Autenticación cancelada".to_string()),
+            _ => Err(first_error_line(&err, &out)
+                .unwrap_or_else(|| format!("paccache terminó con código {code}"))),
+        }
+    }
+
+    /// Quita runtimes y extensiones de Flatpak que ya no usa ninguna app.
+    pub fn clean_unused_flatpaks() -> Result<(), String> {
+        if !churros_services::which("flatpak") {
+            return Err("Flatpak no está instalado".to_string());
+        }
+        let (code, out, err) =
+            churros_services::run(&["flatpak", "uninstall", "--unused", "-y"], 0)
+                .ok_or("No se pudo ejecutar flatpak")?;
+        if code == 0 {
+            Ok(())
+        } else {
+            Err(first_error_line(&err, &out)
+                .unwrap_or_else(|| format!("flatpak terminó con código {code}")))
+        }
+    }
+
     /// Aplica el estado actual (enabled + intervalo) al timer de systemd.
     /// Escribe el drop-in con el OnCalendar y habilita/deshabilita el timer.
     pub fn apply_timer() {
@@ -461,6 +559,23 @@ impl UpdateService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paccache_summaries() {
+        assert_eq!(
+            parse_paccache("\n==> finished dry run: 354 candidates (disk space saved: 1.69 GiB)\n"),
+            Some(PaccacheSummary { count: 354, size: "1.69 GiB".into() })
+        );
+        assert_eq!(
+            parse_paccache("==> finished: 12 packages removed (disk space saved: 80.5 MiB)"),
+            Some(PaccacheSummary { count: 12, size: "80.5 MiB".into() })
+        );
+        assert_eq!(
+            parse_paccache("==> no candidate packages found for pruning"),
+            Some(PaccacheSummary { count: 0, size: "0 B".into() })
+        );
+        assert_eq!(parse_paccache("algo raro"), None);
+    }
 
     #[test]
     fn parse_updates_json_valid() {

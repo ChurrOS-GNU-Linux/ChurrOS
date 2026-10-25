@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Herramientas de Arch para tests/static/test_build_dryrun.py. La prueba
+# copia este fichero con varios nombres y actúa según el nombre:
+#
+#   bsdtar -xOf <paquete> .PKGINFO   imprime el paquete falso (es su .PKGINFO)
+#   repo-add [-q] <db> <paquetes>    escribe churros.db/files como el real
+#   mksquashfs, xorriso, grub-mkstandalone, mkfs.fat, mcopy, mmd
+#                                    no hacen nada (solo las usa mkarchiso)
+#   cualquier otro nombre            prohibido: git, pacman, makepkg, curl...
+#                                    En el ensayo no se descarga ni instala
+#                                    nada. Sale con 97 y queda registrado.
+set -euo pipefail
+
+: "${DRYRUN_LOG:?}"
+name="$(basename "$0")"
+
+forbidden() {
+    printf '%s %s: %s\n' "$name" "${*:2}" "$1" >> "$DRYRUN_LOG/forbidden.log"
+    printf '%s (prueba): %s\n' "$name" "$1" >&2
+    exit 97
+}
+
+case "$name" in
+    bsdtar)
+        if [ "$#" -ne 3 ] || [ "$1" != -xOf ] || [ "$3" != .PKGINFO ]; then
+            forbidden "solo se simula bsdtar -xOf <paquete> .PKGINFO" "$@"
+        fi
+        cat "$2"
+        ;;
+    repo-add)
+        [ "${1:-}" != -q ] || shift
+        db="${1:?repo-add: falta la base de datos}"
+        shift
+        dir="$(dirname "$db")"
+        base="$(basename "$db" .db.tar.gz)"
+        entries="$(cat "$db" 2>/dev/null || true)"
+        for pkg in "$@"; do
+            if [ ! -f "$pkg" ]; then
+                echo "==> ERROR: File '$pkg' not found." >&2
+                exit 1
+            fi
+            entries="$(printf '%s\n%s\n' "$entries" "$(basename "$pkg")")"
+        done
+        printf '%s\n' "$entries" | sed '/^$/d' | LC_ALL=C sort -u > "$db"
+        cp "$db" "$dir/$base.files.tar.gz"
+        ln -sfn "$base.db.tar.gz" "$dir/$base.db"
+        ln -sfn "$base.files.tar.gz" "$dir/$base.files"
+        ;;
+    mksquashfs | xorriso | grub-mkstandalone | mkfs.fat | mcopy | mmd)
+        printf '%s %s\n' "$name" "$*" >> "$DRYRUN_LOG/tools.log"
+        ;;
+    *)
+        forbidden "herramienta no permitida en el ensayo" "$@"
+        ;;
+esac

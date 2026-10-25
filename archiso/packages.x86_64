@@ -1,11 +1,15 @@
 alsa-utils
 amd-ucode
+ananicy-cpp
 arch-install-scripts
 archinstall
 base
 base-devel
 bcachefs-tools
 btrfs-progs
+cachyos-ananicy-rules
+cachyos-keyring
+cachyos-mirrorlist
 cryptsetup
 dhcpcd
 diffutils
@@ -31,7 +35,8 @@ kitty-terminfo
 less
 libfido2
 libusb-compat
-linux
+linux-cachyos
+linux-cachyos-headers
 linux-atm
 linux-firmware
 linux-firmware-marvell
@@ -45,6 +50,7 @@ memtest86+
 memtest86+-efi
 mkinitcpio
 mkinitcpio-archiso
+mkinitcpio-nfs-utils
 mmc-utils
 mtools
 nano
@@ -259,3 +265,12 @@ os-prober
 udisks2
 zenity
 qt6-translations
+
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
+zram-generator
+
+# Lector de pantalla de la entrada Accessibility (livecd-talk.service)
+espeakup
+
+# Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
+modemmanager

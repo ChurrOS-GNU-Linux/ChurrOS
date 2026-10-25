@@ -5,14 +5,20 @@
 *.tmp
 .cache/
 work/
+work-kernel/
 out/
 build/
+windows/output/
 __pycache__/
 *.pyc
 *.pyo
 
+# Cluster local configuration
+cluster.conf
+
 # Editor / IDE
 .vscode/
+.agents/
 
 # QEMU EFI vars (local VM state)
 vm/OVMF_VARS.fd

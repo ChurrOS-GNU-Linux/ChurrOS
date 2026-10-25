@@ -150,6 +150,53 @@ if [ -f /boot/Image ]; then
     /usr/share/churros/scripts/publish-aarch64-kernel --require
 fi
 
+if [ -f /boot/vmlinuz-linux-churrosvyper ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-churrosvyper-fallback.img
+    if [ -f /etc/mkinitcpio.d/linux-churrosvyper.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-churrosvyper.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-churrosvyper.preset
+# mkinitcpio preset file for the 'linux-churrosvyper' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-churrosvyper'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-churrosvyper.img"
+EOF
+            mkinitcpio -p linux-churrosvyper
+        fi
+    fi
+    # Relative links: mkarchiso copies /boot out of the chroot with cp -a and
+    # then install resolves them on the build host, where an absolute target
+    # is the host's own /boot (missing in CI; the host's kernel elsewhere).
+    ln -sfn vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
+    if [ -f /boot/initramfs-linux-churrosvyper.img ]; then
+        ln -sfn initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
+    fi
+elif [ -f /boot/vmlinuz-linux-cachyos ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-cachyos-fallback.img
+    if [ -f /etc/mkinitcpio.d/linux-cachyos.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-cachyos.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-cachyos.preset
+# mkinitcpio preset file for the 'linux-cachyos' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-cachyos'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-cachyos.img"
+EOF
+            mkinitcpio -p linux-cachyos
+        fi
+    fi
+    # Relative links: mkarchiso copies /boot out of the chroot with cp -a and
+    # then install resolves them on the build host, where an absolute target
+    # is the host's own /boot (missing in CI; the host's kernel elsewhere).
+    ln -sfn vmlinuz-linux-cachyos /boot/vmlinuz-linux
+    if [ -f /boot/initramfs-linux-cachyos.img ]; then
+        ln -sfn initramfs-linux-cachyos.img /boot/initramfs-linux.img
+    fi
+fi
+
+
 echo "Cleaning..."
 bash /root/scripts/cleanup.sh
 

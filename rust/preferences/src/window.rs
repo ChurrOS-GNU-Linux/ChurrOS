@@ -240,6 +240,7 @@ impl PreferencesWindow {
         self.register_subpage("sleep", "power", |n| pages::sleep::build(n));
         self.register_subpage("display-timeout", "display", |n| pages::display_timeout::build(n));
         self.register_subpage("backup", "system", |n| pages::backup::build(n));
+        self.register_subpage("uninstall-apps", "applications", pages::uninstall_apps::build);
         if is_niri {
             self.register_subpage("logs", "system", |n| pages::logs::build(n));
         }
@@ -293,6 +294,8 @@ impl PreferencesWindow {
                 "display-timeout", "display", "Apagado de pantalla", "Tiempo antes de apagar la pantalla", None);
             s.register_subpage(
                 "sleep", "power", "Suspension", "Tiempo antes de suspender el sistema", None);
+            s.register_subpage(
+                "uninstall-apps", "applications", "Desinstalar aplicaciones", "Buscar y eliminar programas instalados", Some("applications.svg"));
             s.register_subpage(
                 "backup", "system", "Copia de seguridad", "Exportar, importar o restablecer la configuracion", Some("backup.svg"));
             if is_niri {

@@ -1,231 +1,156 @@
-# VM (Virtual Machine)
+# VM (máquina virtual)
 
-Este documento describe la máquina virtual de desarrollo usada para probar ChurrOS sin instalarlo en hardware real.
+`./churros run` (`scripts/cli/run.sh`) arranca la ISO en QEMU para probar ChurrOS sin instalarlo en hardware real. Usa KVM si `/dev/kvm` está disponible (si no, emulación por software) y firmware UEFI (OVMF en x86, AAVMF/QEMU_EFI en aarch64); la ISO i686 arranca por BIOS si no hay OVMF de 32 bits.
 
-ChurrOS utiliza **QEMU** con KVM para ejecutar la ISO en una VM con UEFI. El objetivo es ofrecer un entorno de pruebas reproducible y rápido.
-
----
-
-# Overview
-
-El comando principal es:
+## Uso
 
 ```bash
 ./churros run
 ```
 
-Sin `--arch`, `run` usa la arquitectura del equipo, igual que `./churros build`.
-Para validar la ISO ARM64 en un host x86_64:
-
-```bash
-./churros doctor --arch arm64          # qemu-user-static + binfmt
-./churros build --container --arch arm64
-./churros run --arch arm64 --fresh
-```
-
-El build corre entero dentro de un contenedor Arch Linux ARM (`Containerfile.aarch64`, `--platform linux/arm64`). En x86_64 eso necesita qemu-user-static con binfmt registrado y la bandera `C` (credentials). Sin `C`, el kernel calcula las credenciales del intérprete y no las del binario emulado: `sudo` dentro de makepkg se queda con el euid del usuario `builder` y falla con `effective uid is not 0`. La entrada que instala Debian (`flags: POF` en `/proc/sys/fs/binfmt_misc/qemu-aarch64`) no vale. `./churros doctor --arch arm64` lo comprueba. Para registrarla de nuevo, como root:
-
-```bash
-echo -1 | sudo tee /proc/sys/fs/binfmt_misc/qemu-aarch64
-echo ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:FPOC' | sudo tee /proc/sys/fs/binfmt_misc/register
-```
-
-`echo` deja las secuencias `\x` como texto: es el kernel quien las decodifica. `printf '%b'` las convierte antes y mete NUL en el magic; el registro queda truncado y pasa a casar con cualquier ELF de 64 bits.
-
-Si existe `/usr/share/binfmts/qemu-aarch64`, lo mismo se hace con `update-binfmts --unimport qemu-aarch64` y `--import` después de añadir `C` a las flags de la plantilla. Con systemd-binfmt, se copia `/usr/lib/binfmt.d/qemu-aarch64.conf` a `/etc/binfmt.d/qemu-aarch64.conf`, las flags pasan a `FPOC` (tienen que incluir `F` y `C`) y se reinicia `systemd-binfmt`. `./install-deps.sh --arch arm64` instala el paquete, pero no cambia unas flags que la distro haya dejado sin `C`. En un host aarch64 el mismo contenedor es nativo y no hace falta emulación.
-
-La imagen aarch64 escribe `PKGEXT='.pkg.tar.zst'` en `/etc/makepkg.conf.d/churros.conf`. ALARM trae `.pkg.tar.xz`; con esa extensión el build no encontraba el paquete de Calamares y lo recompilaba cada vez. Los scripts buscan `*.pkg.tar.*`, así que un paquete `.xz` que ya esté en `archiso/packages/aarch64/` también se reutiliza.
-
-QEMU del guest ARM usa TCG en un host x86_64 (no hay KVM para aarch64). La máquina es `virt`: no tiene IDE ni teclado PS/2, así que el CD va por virtio-scsi, el disco por virtio-blk y el teclado por USB. La consola serie es PL011 (`ttyAMA0` en el kernel; el log sigue en `vm_serial.log`). CODE y VARS del firmware pflash tienen que medir lo mismo. `run` usa el primer par en el que ambos ficheros existen y miden igual (`AAVMF_CODE.fd` con `AAVMF_VARS.fd`, `QEMU_CODE.fd` con `QEMU_VARS.fd`, y en x86 `OVMF_CODE.4m.fd` con `OVMF_VARS.4m.fd`). Si solo está el `QEMU_EFI.fd` crudo, rellena copias a 64 MiB. `run` elige la ISO cuyo nombre lleva la arquitectura, para no arrancar una ISO x86_64 que haya quedado en `out/`.
-
-Este script vive en `scripts/cli/run.sh` y se encarga de:
-
-1. Buscar la última ISO en `out/`.
-2. Si no existe, ejecutar `./churros build` automáticamente.
-3. Crear un disco persistente si es la primera vez.
-4. Lanzar QEMU con la configuración adecuada.
-
-Flags opcionales:
+1. Toma de `out/` la ISO de la arquitectura pedida (`--arch`; por defecto la del equipo, igual que `./churros build`). Si hay varias, la de fecha más reciente.
+2. Si no hay ninguna, pregunta si construirla (`./churros build --arch <arch>`, con `--container` para arm64 en un host que no es aarch64). Si respondes que no, termina.
+3. Crea el disco persistente la primera vez.
+4. Lanza QEMU.
 
 | Flag | Descripción |
 |------|-------------|
-| `--nokvm` | Desactiva KVM y emula por software (CPU de 2 hilos, q35 sin `accel`). |
-| `--fresh` | Borra `vm/OVMF_VARS.fd` antes de arrancar para que OVMF parta limpio y arranque desde el CD-ROM en vez del disco. Útil tras instalar ChurrOS en la VM y necesitar probar de nuevo la ISO live. |
-| `--clean` | Borra `vm/ChurrOS.qcow2` y `vm/OVMF_VARS.fd` antes de arrancar (disco + variables EFI). |
-| `--arch arm64` | Ejecuta la ISO `*aarch64*.iso` con `qemu-system-aarch64`, máquina `virt`, CPU `cortex-a72` (o KVM si el host ya es aarch64), CD virtio-scsi y teclado USB. Usa `vm/ChurrOS-arm64.qcow2` y `vm/OVMF_VARS_arm64.fd`. |
-| `--arch i686` | Ejecuta la ISO de 32 bits con `qemu-system-i386`, máquina `q35` y CPU `qemu32`/`host`. Usa `vm/ChurrOS-i686.qcow2`; arranca por BIOS (SeaBIOS) y usa UEFI IA32 solo si hay OVMF de 32 bits instalado. |
+| `--nokvm` | Emulación por software aunque haya KVM. x86_64: q35 y 2 vCPU con el modelo de CPU por defecto de QEMU; i686: `qemu32` y 2 vCPU; aarch64: `cortex-a72` y 4 vCPU. |
+| `--fresh` | Borra las variables UEFI de esa arquitectura antes de arrancar, para que el firmware arranque desde el CD en vez del disco. Útil después de instalar ChurrOS en la VM. |
+| `--clean` | Borra el disco y las variables UEFI de esa arquitectura antes de arrancar. Conserva la ISO. |
+| `--arch arm64` | ISO `*aarch64*.iso` con `qemu-system-aarch64`, máquina `virt`, CPU `cortex-a72` (o `host` con KVM si el equipo es aarch64), CD virtio-scsi y teclado USB. |
+| `--arch i686` | ISO de 32 bits con `qemu-system-i386`, máquina `q35` y CPU `qemu32` (o `host` con KVM). Arranca por UEFI IA32 si hay OVMF de 32 bits y, si no, por BIOS (SeaBIOS). La ISO i686 no tiene sesión gráfica ni instalador (ver [Sistema de compilación](build-system.md#ediciones-y-arquitecturas)). |
 
-> **Consejo:** Si acabas de instalar ChurrOS en la VM, OVMF guarda la entrada `Boot0009 "ChurrOS"` en `OVMF_VARS.fd`, así que el siguiente arranque dirá `BdsDxe: starting Boot0009 "ChurrOS"` y entrará al sistema instalado. Ejecuta `./churros run --fresh` para arrancar limpio del CD-ROM, o simplemente `rm vm/OVMF_VARS.fd`.
+Cada `./churros build` vacía `out/`. Para tener a la vez ISO de varias arquitecturas, cópialas de nuevo a `out/` después de construirlas.
 
-Los archivos de la VM se guardan en `vm/`:
+> **Después de instalar en la VM:** el firmware guarda la entrada de arranque de ChurrOS en las variables UEFI, así que el siguiente arranque entra al sistema instalado. Ejecuta `./churros run --fresh` para volver a arrancar desde el CD.
 
-```text
-vm/
-├── ChurrOS.qcow2    # Disco persistente (64 GB)
-└── OVMF_VARS.fd     # Variables UEFI (no se commitea)
-```
+## Ficheros de `vm/`
 
-Estos archivos están listados en `.gitignore` (junto con `*.qcow2`) para evitar que se suban al repositorio. Cada desarrollador genera los suyos localmente.
+| Arquitectura | Disco (qcow2, 64 GiB) | Variables UEFI |
+|--------------|-----------------------|----------------|
+| x86_64 | `vm/ChurrOS.qcow2` | `vm/OVMF_VARS.fd` |
+| aarch64 | `vm/ChurrOS-arm64.qcow2` | `vm/OVMF_VARS_arm64.fd` |
+| i686 | `vm/ChurrOS-i686.qcow2` | `vm/OVMF_VARS_ia32.fd` |
 
----
+En aarch64, si solo está instalado el `QEMU_EFI.fd` crudo, `run` crea además `vm/pflash-code.fd` y `vm/pflash-vars.fd` (copias rellenadas a 64 MiB).
 
-# QEMU Configuration
+`.gitignore` cubre `*.qcow2` y `vm/OVMF_VARS.fd`, pero no las variables de aarch64 e i686 ni los `pflash-*.fd`: no los añadas a un commit.
 
-El script `scripts/cli/run.sh` lanza QEMU con los siguientes parámetros:
+La salida serie de la VM va a `vm_serial.log`, en la raíz del repo.
 
-| Parámetro | Valor | Significado |
-|-----------|-------|-------------|
-| `-machine` | `q35,accel=kvm` | Chipset moderno con virtualización |
-| `-cpu` | `host` | Pasa todas las instrucciones del CPU al guest |
-| `-smp` | `4` | 4 cores con KVM (2 cores sin KVM) |
-| `-m` | `4096` | 4 GB de RAM |
-| `-device virtio-vga-gl` | `-display gtk,gl=on,show-cursor=on` | Gráficos 3D acelerados por hardware con cursor visible |
-| `-device usb-tablet` | — | Puntero absoluto para ratón sin captura rígida |
-| `-device intel-hda -device hda-duplex` | — | Audio PipeWire en el guest conectado al host |
-| `-device virtio-serial-pci ...` | `qemu-vdagent,clipboard=on` | Canal de portapapeles y ratón bidireccional vía spice-vdagent |
-| `-drive if=pflash,...readonly=on,file=...` | `/usr/share/edk2/x64/OVMF_CODE.4m.fd` | Firmware UEFI (código) |
-| `-drive if=pflash,file=...` | `vm/OVMF_VARS.fd` | Variables UEFI (modificable) |
-| `-drive file=...format=qcow2,if=virtio` | `vm/ChurrOS.qcow2` | Disco persistente (64 GB) |
-| `-cdrom` | la última ISO en `out/` | CD Live |
-| `-boot` | `order=c` | Arranca desde disco (o CD si fresh) |
+## Parámetros de QEMU
 
-## UEFI
+En x86_64:
 
-Se usa OVMF (Open Virtual Machine Firmware) para que la VM arranque en modo UEFI, igual que la mayoría de PCs modernos. En UEFI la ISO usa GRUB (`uefi.grub`); en BIOS legacy usa Syslinux.
+| Parámetro | Valor | Notas |
+|-----------|-------|-------|
+| `-machine` | `q35,accel=kvm` | Sin KVM: `q35`. |
+| `-cpu` | `host` | Solo con KVM; sin KVM no se pasa `-cpu`. |
+| `-smp` | `4` | 2 sin KVM. |
+| `-m` | `4096` | 4 GiB de RAM. |
+| `-device virtio-vga-gl` | `-display gtk,gl=on,show-cursor=on` | Niri necesita 3D (virgl). Sin `/dev/dri` en el host, `run` usa `-device virtio-gpu` con `gl=off`. Niri 26.04 no cae a llvmpipe: sin virgl arranca sin pantalla (negra). |
+| `-device qemu-xhci -device usb-tablet` | — | Controlador USB y puntero absoluto. |
+| `-device intel-hda -device hda-duplex` | — | Audio (x86_64 e i686). |
+| `-device virtio-serial-pci` + `qemu-vdagent` | `clipboard=on` | Portapapeles compartido vía spice-vdagent. |
+| `-drive if=pflash,readonly=on` | p. ej. `/usr/share/edk2/x64/OVMF_CODE.4m.fd` | Código del firmware UEFI. |
+| `-drive if=pflash` | `vm/OVMF_VARS.fd` | Variables UEFI. |
+| `-drive ...,format=qcow2,if=virtio` | `vm/ChurrOS.qcow2` | Disco persistente. |
+| `-cdrom` | la ISO elegida en `out/` | CD Live. |
+| `-boot` | `order=c` | Fijo. Con OVMF manda el orden guardado en las variables UEFI; por eso existe `--fresh`. |
+| `-serial` | `file:vm_serial.log` | Consola serie. |
 
-Los dos archivos de firmware:
+En aarch64, QEMU usa TCG en un host x86_64 (no hay KVM para aarch64). La máquina `virt` no tiene IDE ni teclado PS/2: el CD va por virtio-scsi, el disco por virtio-blk, el teclado por USB y la GPU es `virtio-gpu-gl-pci`. No hay audio. La consola serie es PL011 (`ttyAMA0` en el kernel) y sigue yendo a `vm_serial.log`.
 
-- `OVMF_CODE.4m.fd` (de `/usr/share/edk2/x64/`) — código del firmware, solo lectura.
-- `vm/OVMF_VARS.fd` — variables UEFI (boot order, secure boot, etc). Se copia del CODE en el primer arranque y se modifica por el firmware en runtime.
+## Firmware UEFI
 
-## Disk
+`scripts/lib/ovmf.sh` busca un par de ficheros CODE + plantilla VARS en las rutas habituales de cada distro (`/usr/share/edk2/`, `/usr/share/OVMF/`, `/usr/share/AAVMF/`…):
 
-El disco persistente es un `qcow2` de 64 GB. Se crea con `qemu-img create -f qcow2` la primera vez que se ejecuta `./churros run`. Permite:
+- x86_64: el primer par que exista, por ejemplo `OVMF_CODE.4m.fd` + `OVMF_VARS.4m.fd`. CODE y VARS miden distinto, y es normal.
+- aarch64: QEMU exige que las dos imágenes pflash midan lo mismo. `run` elige el primer par AAVMF/QEMU de igual tamaño o, si solo está el `QEMU_EFI.fd` crudo, rellena copias a 64 MiB.
+- i686: OVMF de 32 bits si existe; si no, SeaBIOS.
 
-- Instalar paquetes en la VM sin perderlos al apagar.
-- Probar el instalador de ChurrOS.
-- Guardar configuraciones de prueba.
+En el primer arranque, las variables de `vm/` se copian de la plantilla VARS del firmware (no del CODE), y el firmware las modifica en cada arranque. Si su tamaño ya no coincide con la plantilla (por ejemplo, tras cambiar de firmware), `run` las regenera.
 
-Para resetear la VM, basta con borrar `vm/ChurrOS.qcow2` y `vm/OVMF_VARS.fd`. La próxima ejecución los regenerará.
+## Requisitos
 
-## ISO Detection
+`./install-deps.sh` instala lo necesario. `./churros doctor` comprueba QEMU y `/dev/kvm`, pero no el firmware UEFI:
 
-```bash
-ISO=$(find out \( -name "*-${TARGET_ARCH}.iso" -o -name "*-${TARGET_ARCH}-*.iso" \) -print 2>/dev/null | sort | tail -n1)
-```
+| | Arch | Debian/Ubuntu | Fedora |
+|---|------|---------------|--------|
+| QEMU | `qemu-full` | `qemu-system-x86`, `qemu-system-arm`, `qemu-utils` | `qemu-system-x86`, `qemu-system-aarch64`, `qemu-img` |
+| Firmware UEFI | `edk2-ovmf`, `edk2-aarch64` | `ovmf`, `qemu-efi-aarch64` | `edk2-ovmf`, `edk2-aarch64` |
 
-El script toma la ISO de la arquitectura pedida (`--arch`) que haya en `out/`; si hay varias (p. ej. con fechas distintas), la más reciente. Así `./churros run --arch i686` arranca la ISO i686 aunque `out/` contenga también la x86_64 o la aarch64.
+KVM es opcional pero muy recomendable: sin él todo funciona, mucho más lento. Para usarlo, la virtualización tiene que estar activada en la BIOS/UEFI del equipo y tu usuario necesita leer y escribir `/dev/kvm` (grupo `kvm`).
 
----
+## Problemas frecuentes
 
-# Requirements
+### `/dev/kvm` no existe o no tiene permisos
 
-Para que `./churros run` funcione, el host necesita:
-
-| Paquete | Obligatorio | Notas |
-|---------|-------------|-------|
-| `qemu-full` | ✅ | QEMU con todos los backends |
-| `edk2-ovmf` | ✅ | Firmware UEFI (`/usr/share/edk2/x64/OVMF_CODE.4m.fd`) |
-| KVM habilitado en el kernel | ✅ | `lsmod \| grep kvm` debe mostrar `kvm_intel` o `kvm_amd` |
-| `/dev/kvm` accesible | ✅ | El usuario debe pertenecer al grupo `kvm` |
-
-Ver `docs/getting-started.md` para las instrucciones de instalación.
-
----
-
-# Troubleshooting
-
-## "Could not access KVM kernel module"
-
-KVM no está disponible. Soluciones:
+`./churros run` avisa `KVM acceleration: not available (using software emulation)` y sigue sin KVM. Para activarlo:
 
 ```bash
-# Cargar el módulo
-sudo modprobe kvm_intel   # o kvm_amd para AMD
-
-# Comprobar que el dispositivo existe
+sudo modprobe kvm_intel   # o kvm_amd
 ls -la /dev/kvm
-
-# Añadir tu usuario al grupo kvm si no tienes permisos de lectura/escritura
-sudo usermod -aG kvm $USER
-# Cierra sesión y vuelve a entrar
+sudo usermod -aG kvm $USER   # después, cierra sesión y vuelve a entrar
 ```
 
 ### "Virtualization (VT-x/AMD-V) is DISABLED in BIOS/UEFI"
 
-Si `./churros doctor` o `./churros run` indican que la virtualización está desactivada:
-1. Reinicia tu equipo y entra en la configuración de la BIOS/UEFI (normalmente pulsando `F2`, `F12`, `Del` o `Esc` al encender).
-2. Busca la sección de configuración de CPU o Seguridad (`Advanced`, `CPU Configuration` o `System Configuration`).
-3. Activa la opción de virtualización:
-   - Para procesadores Intel: **Intel Virtualization Technology** (VT-x) o **Intel VMX**.
-   - Para procesadores AMD: **SVM Mode** (Secure Virtual Machine) o **AMD-V**.
-4. Guarda los cambios (`F10`) y reinicia. Al volver a entrar, `/dev/kvm` estará disponible.
+Lo muestra `./churros doctor` cuando el procesador tiene la virtualización desactivada:
 
+1. Reinicia y entra en la configuración de la BIOS/UEFI (normalmente con `F2`, `F12`, `Supr` o `Esc` al encender).
+2. Busca la sección de CPU (`Advanced`, `CPU Configuration` o `System Configuration`).
+3. Activa **Intel Virtualization Technology** (VT-x) en Intel o **SVM Mode** (AMD-V) en AMD.
+4. Guarda (`F10`) y reinicia.
 
-## "OVMF_CODE.4m.fd not found"
+### "OVMF firmware not found"
 
-El paquete `edk2-ovmf` no está instalado:
+Falta el firmware UEFI:
 
-```bash
-sudo pacman -S edk2-ovmf
-```
+- Arch: `sudo pacman -S edk2-ovmf` (arm64: `edk2-aarch64`)
+- Debian/Ubuntu: `sudo apt install ovmf` (arm64: `qemu-efi-aarch64`)
+- Fedora: `sudo dnf install edk2-ovmf` (arm64: `edk2-aarch64`)
 
-## "No ISO found"
+### "No ISO found"
 
-No hay ISOs en `out/`. Ejecuta primero:
+No hay ISO de esa arquitectura en `out/`. Responde `y` para construirla, o ejecuta antes `./churros build` (con `--arch` si hace falta).
 
-```bash
-./churros build
-```
+### La VM arranca pero la pantalla queda en negro
 
-## La VM arranca pero no muestra nada
+Niri 26.04 descarta el renderizado por software (`software EGL renderers are skipped`): sin virgl arranca sin salida y la pantalla se queda negra. `./churros run` elige `virtio-vga-gl` si el host tiene `/dev/dri` y, si no, `virtio-gpu` sin 3D, que no basta. `--nokvm` solo quita KVM (`-cpu host`); no enciende virgl. Revisa `vm_serial.log`. La capa `./churros test --boot` le da virgl al invitado aunque el host no tenga GPU (Mesa en un Xvfb privado). En VirtualBox o VMware hay que activar la aceleración 3D.
 
-Si la pantalla queda en negro, prueba a quitar `-cpu host` y usar `-cpu kvm64` o un modelo genérico. Algunos CPUs exponen instrucciones que el firmware de OVMF no soporta bien.
+### Empezar de cero
 
-También puedes añadir `-vga qxl` para forzar una VGA compatible.
-
-## Quiero reiniciar la VM desde cero
+`./churros run --clean` borra el disco y las variables UEFI y arranca con la ISO actual. Para empezar de cero también con la ISO:
 
 ```bash
-./churros clean
-rm -rf vm
-./churros run
+./churros clean && rm -rf vm && ./churros build && ./churros run
 ```
 
-Esto borra la ISO, el workdir de ArchISO y el disco persistente. La próxima ejecución regenera todo.
+## Alternativas
 
----
+Para usar **virt-manager** con la misma ISO: crea una VM con 4 GiB de RAM y 4 núcleos, elige firmware UEFI (OVMF) y activa la aceleración 3D (vídeo Virtio con 3D y pantalla Spice con OpenGL), porque Niri la necesita.
 
-# Alternatives
+## Mejoras posibles
 
-Si no puedes usar KVM, la VM funcionará pero mucho más lenta. En ese caso:
-
-- Reduce `-smp` a 2 cores.
-- Reduce `-m` a 2048 MB.
-- Usa `-cpu kvm64` en vez de `-cpu host`.
-- No actives `-enable-kvm`.
-
-Para una alternativa con interfaz gráfica, puedes usar **virt-manager** con la misma ISO. Solo tienes que crear una VM nueva, asignar 4GB RAM, 4 cores, y montar la ISO como CD-ROM.
-
----
-
-# Future Work
-
-- Script `./churros vm create` para generar la VM desde cero con parámetros personalizados.
-- Snapshot automático antes de cada cambio importante.
-- Red NAT para que la VM tenga acceso a internet en configuraciones aisladas.
+- `./churros vm create` para crear la VM con parámetros propios.
+- `./churros vm reset` para borrar solo la VM sin tocar `out/`.
+- Snapshot automático del disco antes de cada cambio importante.
+- Reenvío de puertos (por ejemplo SSH con `-nic user,hostfwd=tcp::2222-:22`) para probar la edición server. La red ya funciona: sin opciones de red, QEMU crea una NIC con backend `user` (NAT).
 - Carpetas compartidas vía virtio-9p o virtiofs.
 
-# ARM64 QEMU Checklist
+## Checklist ARM64 en QEMU
 
-Ejecuta la validación en este orden después de construir la ISO aarch64:
+Después de construir la ISO aarch64, valida en este orden:
 
 - [ ] El menú GRUB aparece con el tema y la entrada Live.
 - [ ] El sistema Live termina el arranque sin errores críticos en `vm_serial.log`.
-- [ ] `niri` inicia; `llvmpipe` es aceptable si virgl no está disponible.
-- [ ] `waybar`, `fuzzel`, `foot`, Welcome y los popups abren correctamente.
+- [ ] `niri` inicia con salida. Necesita virgl: niri 26.04 descarta el renderizado por software (llvmpipe) y sin 3D arranca sin pantalla (negra).
+- [ ] Noctalia (barra), el lanzador (`Mod+Space`), `foot`, Welcome y los popups abren. Waybar, Fuzzel y Mako siguen instalados como alternativa.
 - [ ] `lscpu | grep Architecture` muestra `aarch64`.
 - [ ] Calamares completa una instalación GPT/btrfs.
 - [ ] El log de instalación contiene `grub-install --target=arm64-efi` y `grub-mkconfig`.
-- [ ] `./churros run --arch arm64 --fresh` arranca el sistema instalado desde el disco.
-- Script `./churros vm reset` para borrar solo la VM sin tocar `out/`.
+- [ ] El sistema instalado arranca desde el disco de la VM (`vm/ChurrOS-arm64.qcow2`).
+
+El build de la ISO aarch64 (contenedor, qemu-user y binfmt) está en [Sistema de compilación](build-system.md#iso-aarch64).

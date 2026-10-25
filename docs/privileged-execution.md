@@ -1,4 +1,4 @@
-# Privileged Execution
+# Ejecución privilegiada
 
 Este documento describe cómo obtienen privilegios los procesos de ChurrOS y
 qué reglas se aplican para que esa escalada sea explícita y auditable.
@@ -8,7 +8,7 @@ argv exacto, nunca por nombre de comando ni por comodín.**
 
 ---
 
-# Por qué importa
+## Por qué importa
 
 `pkexec` resuelve rutas relativas (`./x`, `../x`) y busca en `$PATH` antes de
 elevar. Una regla polkit que autorice por *basename* concede root sin contraseña
@@ -26,21 +26,21 @@ inocua en otra cosa.
 
 ---
 
-# Piezas
+## Piezas
 
 | Pieza | Ruta | Función |
 |-------|------|---------|
 | Regla polkit | `/etc/polkit-1/rules.d/50-churros-store.rules` | Decide, para `wheel`, qué argv exactos van sin contraseña y cuáles con contraseña recordada |
-| Regla de Calamares | `/etc/polkit-1/rules.d/49-calamares.rules` | Solo durante la instalación: permite al usuario Live lanzar Calamares |
+| Regla de Calamares | `/etc/polkit-1/rules.d/49-calamares.rules` | Solo en el Live (la borra `post-install`): autoriza la acción pkexec de Calamares a `churros`. El lanzador real (`/usr/local/bin/calamares`) eleva con `sudo -n` gracias al NOPASSWD del Live |
 | Wrapper | `/usr/bin/churros-pkexec` | Hace `exec pkexec` (o ejecuta directamente si ya es root) |
-| Helper de config | `/usr/local/bin/churros-write-root-config` | Aplica operaciones acotadas sobre greetd, ReGreet y LightDM |
+| Helper de config | `/usr/local/bin/churros-write-root-config` | Aplica operaciones acotadas sobre greetd, ReGreet y LightDM (LightDM no lo instala ninguna edición: es un camino de reserva cuando no existe `/etc/greetd`) |
 | Tabla de sesiones | `/usr/share/churros/scripts/edition-session.sh` | Edición → comando de sesión; la comparten la instalación y el helper |
 | Snapshots | `/usr/local/bin/churros-snapshot` | Snapshots btrfs de `@` y `@home` |
 | Utilidades | `/usr/bin/churros-update-utils` | Descarga e instala el bundle de utilidades de ChurrOS |
 
 ---
 
-# Qué recibe la regla
+## Qué recibe la regla
 
 pkexec usa la acción `org.freedesktop.policykit.exec` y publica estos detalles
 (comprobado con polkitd 124 y en el código de pkexec):
@@ -51,11 +51,9 @@ pkexec usa la acción `org.freedesktop.policykit.exec` y publica estos detalles
 | `command_line` | argv unido con espacios, sin comillas, empezando por la ruta con la que se llamó |
 | `user` | Usuario destino: `root`, salvo con `pkexec --user` |
 
-**No existe un detalle `command` ni `action.getDetails()`.** La regla anterior
-leía `action.lookup("command")`, que siempre devolvía `undefined`, así que no
-autorizaba nunca nada: todo pedía contraseña y lo que se lanzaba sin agente de
-polkit fallaba (#152). Corregir solo la clave habría activado de golpe una
-allowlist demasiado amplia, por eso el arreglo y la restricción van juntos.
+**No existe un detalle `command` ni `action.getDetails()`.** Leer
+`action.lookup("command")` devuelve siempre `undefined` y no autoriza nada
+(#152).
 
 La regla exige que `command_line` empiece exactamente por `program`. Si no
 coinciden (un enlace simbólico que polkit 127 resuelve, una ruta con espacios),
@@ -64,7 +62,7 @@ los llamadores pasan siempre la ruta absoluta canónica.
 
 ---
 
-# Tabla de decisiones
+## Tabla de decisiones
 
 | Programa | Argumentos exactos | Resultado |
 |----------|--------------------|-----------|
@@ -77,6 +75,7 @@ los llamadores pasan siempre la ruta absoluta canónica.
 | `/usr/bin/flatpak` | `update -y` | `AUTH_ADMIN_KEEP` |
 | `/usr/bin/churros-update-utils` | (sin argumentos) | `AUTH_ADMIN_KEEP` |
 | `/usr/local/bin/churros-write-root-config` | `greetd-autologin on\|off` · `lightdm-autologin on\|off` · `regreet-wallpaper <ruta>` · `regreet-greeting <texto>` | `AUTH_ADMIN_KEEP` |
+| Acción `io.calamares.calamares.pkexec.run` (no es `pkexec` genérico) | sujeto `churros` | `YES` (2) |
 | Cualquier otra cosa | | `NOT_HANDLED` |
 
 - **`YES`**: sin contraseña. Solo para lo inocuo.
@@ -84,24 +83,23 @@ los llamadores pasan siempre la ruta absoluta canónica.
   minutos para el mismo proceso (ver más abajo).
 - **`NOT_HANDLED`**: la regla no decide y se aplica la política por defecto de
   pkexec, `auth_admin`: contraseña cada vez.
-- La regla solo actúa para sujetos locales del grupo `wheel` y con `root` como
-  usuario destino.
+- La regla solo actúa para sujetos locales del grupo `wheel`; para pkexec,
+  además, solo con `root` como usuario destino.
 - (1) `create` rota los snapshots: conserva los 5 más recientes y borra el
   resto. Si no se quiere que un proceso del usuario pueda descartar puntos de
   restauración sin contraseña, hay que pasarlo a `AUTH_ADMIN_KEEP`.
-
-Ya no están en la lista `yay`, `paru`, `churros-theme` (escribe en
-`$HOME/.cache`, no necesita root), las demás operaciones de pacman (`-S`, `-R`,
-`-Sy`, `-Sc`...) ni ningún argumento libre de flatpak. Nadie los usaba por
-pkexec.
+- (2) Es para Calamares en el Live. Esta entrada de `50-churros-store.rules`
+  sigue en el sistema instalado, pero no tiene efecto: `post-install` borra Calamares y su acción polkit y el
+  usuario `churros`, y Calamares no deja crear otro usuario con ese nombre
+  (`forbidden_names` en `users.conf`).
 
 **`churros-pkexec` no está autorizado.** Reenvía argumentos libres a `pkexec`, así
 que permitirlo anularía la allowlist por completo.
 
-## Llamadores
+### Llamadores
 
-Son lo único que la regla permite. `scripts/test-polkit-rules.js` comprueba que
-cada uno sigue escrito así en el código.
+Son los únicos argv de pkexec que la regla permite. `scripts/test-polkit-rules.js`
+comprueba que cada uno sigue escrito así en el código.
 
 | Llamador | Comandos |
 |----------|----------|
@@ -112,17 +110,25 @@ cada uno sigue escrito así en el código.
 
 Fuera de la tabla:
 
-- Comprobar actualizaciones ya no necesita root: Ajustes usa `checkupdates`
-  (pacman-contrib), que sincroniza una copia temporal de las bases, en vez de
-  `pkexec pacman -Sy`, que dejaba el sistema expuesto a una actualización
+- Comprobar actualizaciones no necesita root: Ajustes usa `checkupdates`
+  (pacman-contrib), que sincroniza una copia temporal de las bases. Un
+  `pacman -Sy` con root dejaría el sistema expuesto a una actualización
   parcial (#137).
 - `rust/preferences/src/services/privacy.rs` usa `pkexec systemctl …` y
   `pkexec ufw …` directamente: caen en la política por defecto.
-- `churros-update-auto` corre desde un timer de usuario, sin agente de polkit:
-  sus pasos piden contraseña y fallan. Que pase a comprobar y avisar en vez de
-  instalar es #142.
+- `rust/preferences/src/pages/system.rs` abre `foot -e sudo pacman -Syu`: es
+  `sudo` interactivo en una terminal, sin polkit.
+- En el Live, el instalador se lanza con `/usr/local/bin/calamares`, que eleva
+  con `sudo -n` gracias al NOPASSWD del Live (ver [Entorno Live](#entorno-live)).
+- En las ediciones de escritorio, `churros-update-auto` corre desde un timer de
+  usuario, sin agente de polkit: sus pasos piden contraseña y fallan. Que pase
+  a comprobar y avisar en vez de instalar es #142. En la edición server,
+  `configure-server` habilita además el timer de sistema `churros-update.timer`
+  (cada día hacia las 04:00), que corre como root: ahí `churros-pkexec` ejecuta los
+  comandos directamente y la actualización desatendida con `--noconfirm` sí se
+  aplica.
 
-## Contraseña recordada y `churros-pkexec`
+### Contraseña recordada y `churros-pkexec`
 
 polkit guarda las autorizaciones `*_KEEP` por **sujeto**, y para pkexec el
 sujeto es su proceso padre. `churros-pkexec` hace `exec pkexec`, así que el
@@ -131,13 +137,13 @@ vez para pacman, flatpak y las utilidades. Si pkexec fuera hijo del script,
 cada llamada sería un sujeto nuevo y pediría la contraseña cada vez.
 
 El código de salida es el de pkexec: el del comando si se ejecutó, 126 si se
-cerró el diálogo y 127 si no se autorizó o no hay agente. `churros-pkexec` ya no
-reintenta con `sudo -n`: en el sistema instalado sudo pide contraseña y no
-servía; solo se usa sudo si pkexec no está instalado.
+cerró el diálogo y 127 si no se autorizó o no hay agente. `churros-pkexec` no
+reintenta con `sudo -n` cuando pkexec falla (en el sistema instalado sudo pide
+contraseña); solo usa `sudo -n` si pkexec no está instalado.
 
 ---
 
-# Escritura de configuración del sistema
+## Escritura de configuración del sistema
 
 Los ajustes que viven en `/etc` (autologin de greetd, fondo y saludo de ReGreet,
 autologin de LightDM) se aplican con `churros-write-root-config`, que **no
@@ -150,17 +156,19 @@ churros-pkexec /usr/local/bin/churros-write-root-config regreet-wallpaper /usr/s
 churros-pkexec /usr/local/bin/churros-write-root-config regreet-greeting "Bienvenido a ChurrOS"
 ```
 
-Antes recibía el fichero entero por stdin. `/etc/greetd/config.toml` decide qué
-usuario y qué comando arranca greetd al encender (`[initial_session]`), así que
-quien pudiera escribirlo controlaba el arranque. Ahora:
+`/etc/greetd/config.toml` decide qué usuario y qué comando arranca greetd al
+encender (`[initial_session]`), así que quien pudiera escribirlo libremente
+controlaría el arranque. Por eso:
 
 - el usuario del inicio automático es siempre quien invocó pkexec
-  (`PKEXEC_UID`, resuelto con `getent`), nunca un argumento; root no;
+  (`PKEXEC_UID`, o `SUDO_UID` si se usó sudo, resuelto con `getent`), nunca un
+  argumento; root no;
 - el comando de sesión sale de `/etc/churros-edition` con la tabla de
   `edition-session.sh`, la misma que usa la instalación
   (`configure-greetd-session`): Niri → `/usr/bin/churros-niri-session`,
-  XFCE → `/usr/bin/churros-xfce-session`, server →
-  sin sesión;
+  XFCE → `/usr/bin/churros-xfce-session`, Pi → `/usr/bin/churros-pi-session`,
+  server → sin sesión; una edición desconocida, o sin `/etc/churros-edition`,
+  cuenta como Niri;
 - el fondo tiene que ser un fichero regular de `/usr/share/churros/wallpapers`,
   `/usr/share/backgrounds` o `/usr/share/wallpapers` (tras resolver enlaces) y
   legible por cualquier usuario, el greeter incluido. Un fondo del home no lo
@@ -173,7 +181,7 @@ quien pudiera escribirlo controlaba el arranque. Ahora:
 
 ---
 
-# Actualización de las utilidades
+## Actualización de las utilidades
 
 `churros-update-utils` se ejecuta como root y escribe en el sistema, así que:
 
@@ -181,8 +189,8 @@ quien pudiera escribirlo controlaba el arranque. Ahora:
   binario y el comando **no acepta argumentos**;
 - el manifiesto se descarga primero y, si existe
   `/usr/share/churros/churros-release.pubkey`, se verifica su firma minisign
-  antes de leerlo. Antes se verificaba un fichero vacío, antes de la descarga
-  (#139). Con la clave publicada, la falta de `minisign` aborta;
+  antes de leerlo (#139). Con la clave publicada, la falta de `minisign`
+  aborta;
 - versión, nombre de fichero y sha256 del manifiesto se validan con expresiones
   regulares, y el sha256 del bundle tiene que coincidir;
 - el tarball solo puede traer ficheros regulares y directorios (ni enlaces, ni
@@ -195,17 +203,18 @@ quien pudiera escribirlo controlaba el arranque. Ahora:
 - se extrae en un stage y se instala **fichero a fichero**: modo 0755 si viene
   ejecutable y 0644 si no, temporal en el directorio de destino y `rename`
   atómico. Los directorios que faltan se crean con 0755 y los existentes no se
-  tocan. Antes se hacía `cp -a "$STAGE"/. /`, que copiaba sobre `/` el modo 0700
-  del stage de `mktemp -d` y dejaba el sistema inutilizable (#130).
+  tocan, para no copiar sobre `/` el modo 0700 del stage de `mktemp -d` (#130).
 
 Pendiente: que la firma sea obligatoria (no hay clave publicada ni firma en
 `build-churros-release.sh`; #139, #141).
 
-Detalle en [live-services.md](live-services.md#churros-update-utils).
+Detalle en [live-services.md](live-services.md#churros-update-utils). El
+historial de estos cambios (#130, #137, #139, #152) está en
+[devlog.md](devlog.md), entrada del 2026-10-06.
 
 ---
 
-# Pruebas
+## Pruebas
 
 | Prueba | Qué cubre | Dónde corre |
 |--------|-----------|-------------|
@@ -217,13 +226,13 @@ Detalle en [live-services.md](live-services.md#churros-update-utils).
 
 ---
 
-# Entorno Live
+## Entorno Live
 
 En el Live, el usuario `churros` tiene `NOPASSWD: ALL` en
-`/etc/sudoers.d/churros`, una contraseña vacía y el arranque de tty1 es un
-autologin de root (herencia de archiso). Es intencional para un Live, y ese
-fichero se elimina en `shellprocess@post-install` junto con los artefactos del
-usuario Live.
+`/etc/sudoers.d/churros` y contraseña vacía, root tampoco tiene contraseña y
+greetd inicia sesión automáticamente como `churros` (`getty@tty1` está
+enmascarado). Es intencional para un Live, y ese fichero se elimina en
+`shellprocess@post-install` junto con los artefactos del usuario Live.
 
 En consecuencia, en el Live la frontera real no es el privilegio sino el acceso
 físico a la máquina: quien la tiene ya tiene root. Lo que sí se protege es el
@@ -232,7 +241,7 @@ contraseña.
 
 ---
 
-# Checklist al añadir un helper privilegiado
+## Checklist al añadir un helper privilegiado
 
 1. ¿El llamador pasa la ruta absoluta y un argv fijo?
 2. ¿Ese argv exacto está en `50-churros-store.rules`, con el resultado mínimo

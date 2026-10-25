@@ -1,72 +1,47 @@
-# Rust Workspace — Aplicaciones Oficiales de ChurrOS
+# Workspace Rust
 
-Este directorio contiene el workspace de **Cargo** con todas las aplicaciones oficiales de ChurrOS desarrolladas en **Rust** utilizando **`gtk4-rs`** y **`libadwaita-rs`**.
+Workspace de Cargo con las aplicaciones propias de ChurrOS, escritas en Rust con `gtk4-rs` (`churros-settings` usa además `libadwaita-rs`, solo para la barra de título).
 
----
+## Crates
 
-## 📦 Estructura del Workspace
-
-```text
-rust/
-├── Cargo.toml                 # Configuración del workspace y perfil release (LTO, strip)
-├── Cargo.lock
-├── churros-welcome/           # App de bienvenida (binario: churros-welcome)
-├── preferences/               # Centro de configuración (binario: churros-settings)
-├── popups/                    # Popups nativos del panel (binario: churros-popup)
-├── control-center/            # Centro de control rápido (binario: churros-control-center)
-└── services/                  # Librería compartida (churros_services)
-```
-
----
-
-## 🚀 Crates del Workspace
-
-| Crate | Binario resultante | `deploy` | Descripción |
+| Crate | Binario | `deploy` | Qué es |
 | :--- | :--- | :--- | :--- |
-| **[`churros-welcome`](churros-welcome/)** | `/usr/bin/churros-welcome` | `true` | Pantalla de bienvenida al inicio del sistema Live con accesos rápidos. |
-| **[`preferences`](preferences/)** | `/usr/bin/churros-settings` | `true` | Panel de configuración del sistema (33 páginas GTK4 dedicadas). |
-| **[`popups`](popups/)** | `/usr/bin/churros-popup` | `true` | Popups nativos (audio, red, bluetooth, brillo, batería, power) con toggle por PID. |
-| **[`control-center`](control-center/)** | `/usr/bin/churros-control-center`| `true` | Menú desplegable de ajustes rápidos con sliders y conmutadores. |
-| **[`services`](services/)** | `libchurros_services.rlib` | `false` | Capa backend de integración con `wpctl`, `nmcli`, `bluetoothctl`, etc. |
+| [`churros-welcome`](churros-welcome/) | `/usr/bin/churros-welcome` | `true` | Pantalla de bienvenida del Live con accesos rápidos. |
+| [`churros-tour`](churros-tour/) | `/usr/bin/churros-tour` | `true` | Recorrido del primer inicio: atajos e instalación de apps con `yay`. |
+| [`preferences`](preferences/) | `/usr/bin/churros-settings` | `true` | Panel de configuración (14 páginas principales y subpáginas según la edición). |
+| [`control-center`](control-center/) | `/usr/bin/churros-control-center` | `true` | Ventana de ajustes rápidos (red, bluetooth, brillo, batería, audio) que abre los popups. |
+| [`popups`](popups/) | `/usr/bin/churros-popup` | `true` | Popups de audio, red, bluetooth, brillo, batería y energía, con toggle por PID. |
+| [`services`](services/) | librería `churros_services` | `false` | Capa común sobre `wpctl`, `nmcli`, `bluetoothctl`, `brightnessctl`, etc. |
 
----
+`Cargo.toml` define el workspace y el perfil release (sin LTO, `codegen-units = 16`, `panic = "abort"`, `strip`).
 
-## 🛠️ Compilación y Despliegue
-
-Los binarios se compilan automáticamente durante la construcción de la ISO mediante [`scripts/build-rust.sh`](../scripts/build-rust.sh):
+## Compilar y probar
 
 ```bash
-# Compilar todo el workspace en modo release:
-cargo build --release --manifest-path rust/Cargo.toml
-
-# O mediante la CLI general:
-./churros build
+./churros rust            # cargo build, test y clippy como el CI (en contenedor; --host en este equipo)
+./churros rust -p churros-services
 ```
 
-El script copia los ejecutables de los crates que tengan `deploy = true` en su `Cargo.toml` directamente a `archiso/airootfs/usr/bin/`.
+`./churros build` llama a [`scripts/build-rust.sh`](../scripts/build-rust.sh), que compila en release y copia a `archiso/airootfs/usr/bin/` el binario de cada crate con `deploy = true` en su `Cargo.toml`, y sus `assets/` a `archiso/airootfs/usr/share/churros/<binario>/assets/`. Los binarios no se versionan; los assets copiados tampoco, salvo los de `churros-tour`, que sí están en el repositorio.
 
----
-
-## 🧪 Desarrollo Local y Vista Previa
-
-Para probar cualquier aplicación en la máquina del desarrollador sin construir la ISO ni alterar la configuración del sistema anfitrión, utiliza la herramienta de vista previa:
+## Abrir las apps en el host
 
 ```bash
-# Abrir apps individuales en modo preview aislado:
+./churros apps doctor
 ./churros apps welcome
 ./churros apps settings
 ./churros apps control-center
+./churros apps tour
 ./churros apps popup audio
-./churros apps popup network
 ```
 
-En este modo, la variable de entorno `CHURROS_DEV=1` intercepta y cancela cualquier comando del sistema que intente modificar volumen, conexiones de red o energía, registrándolo en stderr de forma segura.
+Este modo usa un HOME temporal, stubs en `PATH` y `CHURROS_DEV=1`, que bloquea y registra en stderr (`[churros-dev] blocked:`) los comandos que cambiarían el sistema. `--live-host` desactiva ese aislamiento. Detalle en [docs/cli.md](../docs/cli.md).
 
----
+## Documentación
 
-## 📖 Documentación Relacionada
-
-- [Guía de Aplicaciones Oficiales](../docs/apps.md)
-- [Documentación del Panel de Preferencias](../docs/preferences.md)
-- [Documentación de Popups](../docs/popups.md)
-- [Documentación de la Capa de Servicios](../docs/services.md)
+- [Apps](../docs/apps.md): índice de las apps, cómo se abren y dónde dejan logs.
+- [Preferences](../docs/preferences.md): `churros-settings`.
+- [Popups](../docs/popups.md): `churros-popup`.
+- [Services](../docs/services.md): crate `churros_services`.
+- [ChurrOS Tour](../docs/churros-tour.md): `churros-tour`.
+- [Project Structure](../docs/project-structure.md): dónde encaja `rust/` en el repositorio.

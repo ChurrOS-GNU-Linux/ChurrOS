@@ -2,7 +2,7 @@
 // UpdatePage — actualizaciones de pacman + flatpak
 // ==========================================
 
-use gtk::prelude::*;
+use adw::prelude::*;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -162,8 +162,16 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     let restore_info = Row::new(
         "Cómo restaurar",
-        Some("Si el sistema no arranca, inicia desde la ISO live y ejecuta: \
-              sudo churros-snapshot restore -d /dev/sdX <stamp>"),
+        Some("Si el sistema no arranca, inicia desde la ISO live y ejecuta:\n\
+              sudo churros-snapshot restore -d /dev/sdXN <stamp>\n\
+              /dev/sdXN es la partición btrfs del sistema, no el disco entero: \
+              la que lsblk -f muestra como btrfs (p. ej. /dev/sda2 o \
+              /dev/nvme0n1p2). Si cifraste el disco, ábrela antes con \
+              cryptsetup open y usa /dev/mapper/<nombre>.\n\
+              <stamp> es el nombre del snapshot en la lista de abajo (p. ej. \
+              20260824-163000). Desde la ISO, churros-snapshot list no \
+              funciona: monta la partición con mount -o subvolid=5 y cada \
+              carpeta de @snapshots es un stamp."),
         Some("system.svg"),
         None,
         None,
@@ -176,6 +184,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     let snap_box_rc = Rc::clone(&snap_box);
     glib::idle_add_local_once(move || refresh_snapshots(snap_box_rc));
+
+    // ---------- Limpieza y almacenamiento ----------
+    page.add(build_cleanup_group().widget());
 
     // ---------- Log ----------
     let mut log_group = Group::new("Registro de actualización");
@@ -201,6 +212,169 @@ pub fn build(navigator: gtk::Stack) -> Page {
     });
 
     page
+}
+
+/// Ejecuta `work` en un hilo y entrega el resultado a `done` en el hilo de GTK.
+fn run_in_background<T, W, D>(work: W, done: D)
+where
+    T: Send + 'static,
+    W: FnOnce() -> T + Send + 'static,
+    D: FnOnce(T) + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    let mut done = Some(done);
+    glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+        match rx.try_recv() {
+            Ok(value) => {
+                if let Some(done) = done.take() {
+                    done(value);
+                }
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        }
+    });
+}
+
+/// Fila informativa (sin botón) con título, subtítulo actualizable y acción.
+fn cleanup_row(title: &str, subtitle: &str, action: &gtk::Button) -> (gtk::Box, gtk::Label) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+    row.set_margin_top(12);
+    row.set_margin_bottom(12);
+    row.set_margin_start(14);
+    row.set_margin_end(14);
+
+    let icon = gtk::Image::from_file(crate::assets::icon_path("system.svg"));
+    icon.set_pixel_size(22);
+    row.append(&icon);
+
+    let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    labels.set_hexpand(true);
+    labels.set_valign(gtk::Align::Center);
+    let title_label = gtk::Label::builder().label(title).xalign(0.0).build();
+    title_label.add_css_class("row-title");
+    labels.append(&title_label);
+    let subtitle_label = gtk::Label::builder()
+        .label(subtitle)
+        .xalign(0.0)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::WordChar)
+        .build();
+    subtitle_label.add_css_class("row-subtitle");
+    labels.append(&subtitle_label);
+    row.append(&labels);
+
+    action.set_valign(gtk::Align::Center);
+    row.append(action);
+
+    (row, subtitle_label)
+}
+
+fn build_cleanup_group() -> Group {
+    let mut group = Group::new("Limpieza y Almacenamiento");
+
+    // Caché de pacman
+    let cache_btn = gtk::Button::with_label("Limpiar caché");
+    cache_btn.add_css_class("destructive-action");
+    cache_btn.set_sensitive(false);
+    let (cache_row, cache_label) =
+        cleanup_row("Caché de paquetes Pacman", "Calculando…", &cache_btn);
+    group.add(cache_row.upcast_ref::<gtk::Widget>());
+    refresh_cache(&cache_label, &cache_btn, None);
+
+    {
+        let cache_label = cache_label.clone();
+        cache_btn.connect_clicked(move |btn| confirm_clean_cache(btn, &cache_label));
+    }
+
+    // Residuos de Flatpak
+    let flatpak_btn = gtk::Button::with_label("Limpiar residuos");
+    let (flatpak_row, flatpak_label) = cleanup_row(
+        "Residuos Flatpak",
+        "Runtimes y extensiones que ya no usa ninguna aplicación",
+        &flatpak_btn,
+    );
+    if !churros_services::which("flatpak") {
+        flatpak_btn.set_sensitive(false);
+        flatpak_label.set_label("Flatpak no está instalado");
+    }
+    flatpak_btn.connect_clicked(move |btn| {
+        btn.set_sensitive(false);
+        flatpak_label.set_label("Limpiando residuos de Flatpak…");
+        let btn = btn.clone();
+        let label = flatpak_label.clone();
+        run_in_background(UpdateService::clean_unused_flatpaks, move |result| {
+            btn.set_sensitive(true);
+            label.set_label(&match result {
+                Ok(()) => "Residuos de Flatpak eliminados".to_string(),
+                Err(e) => format!("No se pudo limpiar: {e}"),
+            });
+        });
+    });
+    group.add(flatpak_row.upcast_ref::<gtk::Widget>());
+
+    group
+}
+
+/// Recalcula el espacio recuperable. `prefix` (resultado de una limpieza)
+/// se muestra delante del nuevo cálculo.
+fn refresh_cache(label: &gtk::Label, button: &gtk::Button, prefix: Option<String>) {
+    button.set_sensitive(false);
+    if prefix.is_none() {
+        label.set_label("Calculando…");
+    }
+    let label = label.clone();
+    let button = button.clone();
+    run_in_background(UpdateService::check_cache_cleanup, move |summary| {
+        let has_candidates = summary.as_deref().is_some_and(|s| !s.starts_with("Caché al día"));
+        let text = summary.unwrap_or_else(|| "No se pudo comprobar (¿falta paccache?)".to_string());
+        label.set_label(&match prefix {
+            Some(p) => format!("{p}. {text}"),
+            None => text,
+        });
+        button.set_sensitive(has_candidates);
+    });
+}
+
+fn confirm_clean_cache(button: &gtk::Button, label: &gtk::Label) {
+    let dialog = adw::AlertDialog::new(
+        Some("¿Limpiar la caché de paquetes?"),
+        Some(
+            "Solo se borrarán las versiones obsoletas de los paquetes descargados; \
+             se conserva la más reciente de cada uno. Las aplicaciones instaladas \
+             no se ven afectadas, pero no podrás volver a una versión anterior \
+             desde la caché. Se pedirá la contraseña de administrador.",
+        ),
+    );
+    dialog.add_responses(&[("cancel", "Cancelar"), ("clean", "Limpiar caché")]);
+    dialog.set_response_appearance("clean", adw::ResponseAppearance::Destructive);
+    dialog.set_default_response(Some("cancel"));
+    dialog.set_close_response("cancel");
+
+    let button_c = button.clone();
+    let label = label.clone();
+    dialog.connect_response(None, move |_, response| {
+        if response != "clean" {
+            return;
+        }
+        button_c.set_sensitive(false);
+        label.set_label("Limpiando caché…");
+        let button = button_c.clone();
+        let label = label.clone();
+        run_in_background(UpdateService::clean_cache, move |result| {
+            let prefix = match result {
+                Ok(msg) => msg,
+                Err(e) => format!("No se pudo limpiar: {e}"),
+            };
+            refresh_cache(&label, &button, Some(prefix));
+        });
+    });
+
+    dialog.present(Some(button));
 }
 
 /// Recuento de una comprobación, o el aviso de que no se pudo hacer: un error
