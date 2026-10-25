@@ -99,10 +99,6 @@ note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no ex
 
 
 [[issue]]
-id = "calamares-sim:fix-boot:x86_64:kver-missing:linux-cachyos.preset"
-note = "niri x86_64: customize_airootfs.sh deja /etc/mkinitcpio.d/linux-cachyos.preset en forma archiso y fix-boot lo pasa a default con ALL_kver='/boot/vmlinuz-linux-cachyos'. Ese fichero no existe en el destino (mkarchiso vacía /boot del squashfs y unpackfs.conf solo copia vmlinuz-linux e initramfs-linux.img), así que 'mkinitcpio -P' (paso initcpio, kernel: all) sale con 'specified kernel image does not exist' y Calamares aborta la instalación de la edición por defecto."
-
-[[issue]]
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
 note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/initramfs-linux-cachyos.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
 
