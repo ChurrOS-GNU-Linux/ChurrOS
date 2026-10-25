@@ -851,7 +851,7 @@ file = "branding/grub-theme/theme.txt"
 find = "    color = \"#64748B\"\n}\n"
 replace = "    color = \"#64748B\"\n"
 caught_by = "tests.static.test_config_syntax"
-expect = "no es un contenedor"
+expect = "dentro de '+ label'"
 why = "Falta la llave que cierra '+ label': boot_menu queda dentro de label y GRUB descarta el tema"
 
 
@@ -1446,20 +1446,20 @@ why = "workflow sin permissions"
 [[mutation]]
 name = "test_repo_wiring: job de ISO sin timeout"
 file = ".github/workflows/iso-arm64.yml"
-find = "    timeout-minutes: 360\n"
+find = "    timeout-minutes: 90\n"
 replace = ""
 caught_by = "tests.static.test_repo_wiring"
 expect = "[workflow:timeout:iso-arm64.yml:iso]"
 why = "job de ISO sin timeout"
 
 [[mutation]]
-name = "test_repo_wiring: el build+arranque de ISO pierde concurrency en PR"
+name = "test_repo_wiring: el build+arranque de ISO pierde concurrency"
 file = ".github/workflows/iso.yml"
 find_re = "^concurrency:\n(?:.*\n)*?  cancel-in-progress: true\n"
 replace = ""
 caught_by = "tests.static.test_repo_wiring"
 expect = "[workflow:concurrency:iso.yml:iso]"
-why = "el build+arranque de ISO pierde concurrency en PR"
+why = "el build+arranque de ISO pierde concurrency: un schedule o un dispatch se apila sobre el que ya corre"
 
 [[mutation]]
 name = "test_repo_wiring: CHURROS_STRICT=0 en el CI"
@@ -1469,6 +1469,15 @@ replace = "        run: CHURROS_STRICT=0 bash scripts/test-polkit-pkexec.sh"
 caught_by = "tests.static.test_repo_wiring"
 expect = "el modo estricto se desactiva"
 why = "CHURROS_STRICT=0 en el CI"
+
+[[mutation]]
+name = "test_repo_wiring: check.sh deja de ejecutar actionlint"
+file = "scripts/cli/check.sh"
+find = "if command -v actionlint >/dev/null 2>&1; then\n"
+replace = "if false; then\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "no ejecuta actionlint"
+why = "sin actionlint en check.sh, un workflow roto pasa el chequeo estático"
 
 [[mutation]]
 name = "test_repo_wiring: el job de checks desactiva el modo estricto"
@@ -2298,5 +2307,5 @@ file = "tests/static/test_calamares_config.py"
 find = '        if name.removesuffix(".preset") in listed:'
 replace = '        if False:'
 caught_by = "tests.static.test_calamares_config"
-expect = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
-why = "Sin ese preset la simulación solo ve linux.preset y la instalación de niri x86_64 parece pasar: mkinitcpio -P falla en el destino con el kernel ChurrOSvyper."
+expect = "kver-missing:linux-cachyos.preset"
+why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh y las entradas de known_issues de fix-boot quedan huérfanas."

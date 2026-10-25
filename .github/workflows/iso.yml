@@ -11,36 +11,15 @@ name: ISO x86_64
 # que mkarchiso no aplica o un escritorio que se cae al arrancar solo
 # aparecen aquí.
 #
-# Cuándo corre:
-#   - en los pull requests que tocan lo que acaba dentro de la ISO: niri
-#     siempre (la que más cambia) y además cada edición cuyos ficheros toca
-#     el PR (tests/iso/pick_editions.py: lista de XFCE/server, sesión X,
-#     build.sh...). El arranque por BIOS solo si cambia syslinux,
-#     profiledef.sh o tests/vm;
-#   - cada noche, las tres ediciones x86_64: Arch es rolling y la ISO se
-#     puede romper sin ningún commit nuestro;
-#   - a mano (workflow_dispatch), eligiendo edición.
+# Cuándo corre (nunca en un pull request: no bloquea merges):
+#   - cada noche en main, las tres ediciones x86_64: Arch es rolling y la
+#     ISO se puede romper sin ningún commit nuestro. schedule solo corre
+#     en la rama por defecto;
+#   - a mano (workflow_dispatch), en cualquier rama, eligiendo edición.
+# El paso `pick` sigue sabiendo elegir ediciones a partir de un diff de PR
+# (tests/static lo ejecuta), pero este workflow ya no se dispara ahí.
 
 on:
-  pull_request:
-    paths:
-      - archiso/**
-      - installer/**
-      - branding/**
-      - rust/**
-      - Containerfile
-      - scripts/cli/build.sh
-      - scripts/build-*.sh
-      - scripts/lib/**
-      - scripts/container-entrypoint.sh
-      - tests/iso/**
-      - tests/vm/**
-      - tests/testlib.py
-      - tests/known_issues.toml
-      - VERSION
-      - .github/workflows/iso.yml
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       edition:
@@ -48,6 +27,8 @@ on:
         type: choice
         options: [niri, xfce, server]
         default: niri
+  schedule:
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -67,11 +48,12 @@ jobs:
       editions: ${{ steps.pick.outputs.editions }}
       bios: ${{ steps.pick.outputs.bios }}
     steps:
-      # En un PR, HEAD es el merge con la base y HEAD^1 la base: el diff es
-      # exactamente lo que cambia el PR.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+      # El workflow ya no se dispara en pull_request. La rama del case se
+      # conserva: tests/static ejecuta este paso con EVENT=pull_request
+      # (HEAD^1..HEAD sería el diff del PR).
       - id: pick
         env:
           EVENT: ${{ github.event_name }}
@@ -91,7 +73,7 @@ jobs:
     name: Build, audit and boot (${{ matrix.edition }})
     needs: matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +81,7 @@ jobs:
     env:
       CHURROS_CONTAINER_ENGINE: docker
       CHURROS_STRICT: 1
+      EDITION: ${{ matrix.edition }}
 
     steps:
       - uses: actions/checkout@v7
@@ -114,10 +97,13 @@ jobs:
       # niri 26.04 descarta el renderizado EGL por software: sin 3D en la VM
       # arranca sin ninguna salida. tests/vm da virgl al invitado con la
       # ventana SDL de QEMU en un Xvfb y el GL de Mesa (el runner no tiene GPU).
+      # Un espejo colgado no debe comerse el timeout del job.
       - name: Install QEMU and ISO tools
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-system-gui qemu-utils ovmf \
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y -o Acquire::Retries=3 \
+            qemu-system-x86 qemu-system-gui qemu-utils ovmf \
             xorriso squashfs-tools xvfb x11-apps libgl1-mesa-dri libegl1
 
       # Los runners Linux de GitHub tienen /dev/kvm, pero solo root puede
@@ -131,39 +117,48 @@ jobs:
 
       - name: Build ISO
         id: build
-        run: ./churros build --container --edition ${{ matrix.edition }}
+        run: ./churros build --container --edition "$EDITION"
 
       - name: Audit ISO content
         run: |
           mkdir -p out/reports
-          python3 tests/iso/check_iso.py out/*.iso --edition ${{ matrix.edition }} --report out/reports/iso-content.json
+          python3 tests/iso/check_iso.py out/*.iso --edition "$EDITION" --report out/reports/iso-content.json
 
       - name: Boot ISO in QEMU (UEFI)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --artifacts out/reports/boot-uefi
+        run: python3 tests/vm/boot_smoke.py out/*.iso --edition "$EDITION" --artifacts out/reports/boot-uefi
 
       - name: Boot ISO in QEMU (BIOS)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && needs.matrix.outputs.bios == 'true' }}
-        run: python3 tests/vm/boot_smoke.py out/*.iso --edition ${{ matrix.edition }} --firmware bios --artifacts out/reports/boot-bios
+        run: python3 tests/vm/boot_smoke.py out/*.iso --edition "$EDITION" --firmware bios --artifacts out/reports/boot-bios
 
       # Consola serie, diario, captura de pantalla e informe JSON: con esto se
       # diagnostica un fallo de arranque sin reproducirlo en local.
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: churros-${{ matrix.edition }}-reports
           path: out/reports/
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: SHA256SUMS
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        working-directory: out
+        run: sha256sum -- *.iso > SHA256SUMS
+
       # Aunque la auditoría o el arranque fallen: la ISO sirve para investigarlo.
+      # Este workflow ya no corre en pull_request, así que no hace falta filtrar
+      # el evento: schedule y workflow_dispatch suben la ISO y su SHA256SUMS.
       - name: Upload ISO
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name != 'pull_request' }}
-        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
         with:
           name: churros-${{ matrix.edition }}-x86_64-iso
-          path: out/*.iso
+          path: |
+            out/*.iso
+            out/SHA256SUMS
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

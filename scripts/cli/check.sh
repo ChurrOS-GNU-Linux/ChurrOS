@@ -69,6 +69,24 @@ else
     missing_tool "shellcheck not installed"
 fi
 
+# -------------------------------------------------------- Workflows (actionlint)
+
+section "Workflows (actionlint)"
+
+# actionlint revisa .github/workflows (expresiones, acciones, shellcheck de
+# los run:). No está en el PATH de todas las distros: en modo estricto la
+# ausencia es un fallo, igual que shellcheck.
+if command -v actionlint >/dev/null 2>&1; then
+    if actionlint_out=$(actionlint 2>&1); then
+        pass "workflows pass actionlint"
+    else
+        printf '%s\n' "$actionlint_out"
+        fail "actionlint reported errors"
+    fi
+else
+    missing_tool "actionlint not installed"
+fi
+
 # ----------------------------------------------------------- Python syntax
 
 section "Python syntax"

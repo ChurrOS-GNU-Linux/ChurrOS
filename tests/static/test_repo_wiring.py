@@ -54,7 +54,8 @@ ACTION_REF_EXCEPTIONS = {
 }
 
 # Pasos que construyen una ISO o una imagen de contenedor, o arrancan QEMU:
-# minutos u horas de runner. En un PR, sin concurrency cada push los apila.
+# minutos de runner. Sin concurrency, cada disparo (PR, schedule, dispatch)
+# apila otra ejecución.
 HEAVY_RE = re.compile(
     r"\./churros\s+(?:build|run|rust)\b|--container\b|container_ensure_image|mkarchiso"
     r"|qemu-system|\b(?:docker|podman)\s+build\b|docker/build-push-action"
@@ -1126,18 +1127,21 @@ class WorkflowHygieneTest(unittest.TestCase):
                         f"{name}: el job '{job_id}' no tiene timeout-minutes (GitHub corta a las 6 h)")
         testlib.assert_findings(self, "workflow:timeout", findings)
 
-    def test_heavy_pr_jobs_have_concurrency(self):
+    def test_heavy_jobs_have_concurrency(self):
+        """ISO, imagen de contenedor y QEMU: con o sin pull_request.
+
+        iso.yml e iso-arm64.yml ya no se disparan en PR. Siguen siendo jobs
+        largos (schedule y workflow_dispatch) y sin `concurrency` se apilan.
+        """
         findings = {}
         for name, data in workflows():
-            if not {"pull_request", "pull_request_target"} & set(triggers(data)):
-                continue
             for job_id, job in jobs(data).items():
                 texts = [s.get("run", "") or "" for s in job.get("steps") or [] if isinstance(s, dict)]
                 texts += [s.get("uses", "") or "" for s in job.get("steps") or [] if isinstance(s, dict)]
                 heavy = any(HEAVY_RE.search("\n".join(code_lines(t))) for t in texts)
                 if heavy and "concurrency" not in data and "concurrency" not in job:
                     findings[f"workflow:concurrency:{name}:{job_id}"] = (
-                        f"{name}: el job pesado '{job_id}' corre en PR sin `concurrency`: cada push apila otra ejecución")
+                        f"{name}: el job pesado '{job_id}' no tiene `concurrency`: cada disparo apila otra ejecución")
         testlib.assert_findings(self, "workflow:concurrency", findings)
 
     def test_action_refs(self):
@@ -1151,6 +1155,13 @@ class WorkflowHygieneTest(unittest.TestCase):
                 if problem:
                     findings[f"workflow:action-ref:{name}:{ref}"] = f"{name}: `uses: {ref}`: {problem}"
         testlib.assert_findings(self, "workflow:action-ref", findings)
+
+    def test_check_runs_actionlint(self):
+        text = read(CHECK_SH)
+        self.assertIn("command -v actionlint", text,
+                      "check.sh no ejecuta actionlint: un workflow roto pasa ./churros check")
+        self.assertIn('missing_tool "actionlint not installed"', text,
+                      "en modo estricto, actionlint ausente tiene que ser un fallo")
 
 
 def action_ref_problem(uses: str) -> str | None:
