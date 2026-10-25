@@ -1694,14 +1694,14 @@ requires = "container"
 why = "An invalid boolean in a .desktop entry. GLib cannot parse the key."
 
 [[mutation]]
-name = "test-tour: la fase de error de terminal deja terminales falsas en el PATH"
+name = "test-tour: la fase de error de yay no retira yay del PATH"
 file = "rust/churros-tour/src/tests.rs"
-find = "    for name in [\"foot\", \"konsole\", \"xfce4-terminal\", \"xterm\"] {\n        std::fs::remove_file(bin.join(name)).unwrap();\n    }\n"
-replace = "    std::fs::remove_file(bin.join(\"xterm\")).unwrap();\n"
+find = "    std::fs::remove_file(&yay).unwrap();\n"
+replace = "    // std::fs::remove_file(&yay).unwrap();\n"
 caught_by = "python3 scripts/test-tour.py"
 expect = "panicked"
 requires = "container"
-why = "Regresión de la prueba GTK del tour: churros_services::which() busca PATH/<bin>, así que con una terminal falsa en el PATH start() la lanza en asíncrono y el assert síncrono ve None (fallaba en main antes de que el CI la ejecutara)."
+why = "Regresión de la prueba GTK del tour: churros_services::which() busca PATH/yay, así que con yay en el PATH start() la lanza en asíncrono y el assert síncrono ve None."
 
 # --- arnés (tests/static/test_harness.py) ---
 

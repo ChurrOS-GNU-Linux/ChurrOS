@@ -216,7 +216,7 @@ pub fn activate(app: &gtk::Application) {
     let install_for_close = install.clone();
     window.connect_close_request(move |_| {
         if install_for_close.is_running() {
-            install_for_close.show_error("La instalación sigue en curso. Termina o cancela la operación en la terminal antes de cerrar el Tour.");
+            install_for_close.show_error("La instalación sigue en curso en segundo plano. Espera a que termine antes de cerrar el Tour.");
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed

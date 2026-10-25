@@ -49,31 +49,32 @@ de paquetes existentes se describen antes de la operación.
 
 ## Instalación, cierre y errores
 
-La operación ejecuta `yay -Syu --needed -- <paquetes>` en una terminal interactiva.
-Actualiza el sistema antes de instalar y deja al usuario revisar/confirmar las
-operaciones, incluyendo AUR. No usa `--noconfirm`. La selección vacía termina el
-recorrido sin abrir una terminal ni actualizar el sistema.
+La instalación se realiza en segundo plano, sin abrir ventanas de terminal ni
+requerir confirmación interactiva. La regla `/etc/sudoers.d/10-churros-pacman`
+permite a los administradores del grupo `wheel` ejecutar `/usr/bin/pacman` sin
+contraseña, lo que permite a `yay` operar de manera desatendida tanto para
+paquetes de los repositorios oficiales como para compilaciones de AUR.
 
-Se evita `-Sy` porque Arch no soporta actualizaciones parciales:
-[System maintenance](https://wiki.archlinux.org/title/System_maintenance#Partial_upgrades_are_unsupported).
-La terminal depende de la edición: XFCE usa
-`xfce4-terminal --disable-server --hide-menubar -x` y el resto
-`foot -a churros-installer -W 80x24 -e`, para que el proceso lanzado
-permanezca vinculado a la operación aunque ya haya otra terminal abierta
-([XFCE](https://docs.xfce.org/apps/xfce4-terminal/command-line)). Si esa terminal
-no está instalada, prueba Konsole, después xfce4-terminal (fuera de XFCE) y por
-último xterm.
+Las aplicaciones se instalan secuencialmente para ofrecer un seguimiento claro
+y preciso: la interfaz de ChurrOS Tour actualiza en tiempo real el nombre de la
+aplicación en curso (p. ej., «Instalando Google Chrome (1/3) en segundo plano...»)
+y el avance en la barra de progreso.
+
+Para evitar fallos con paquetes de AUR como `google-chrome` cuyas claves PGP
+no están en el anillo oficial de Arch, se precargan las claves públicas conocidas
+y se añaden los parámetros `--noconfirm --needed --mflags "--skippgpcheck" --answerclean None --answerdiff None` a `yay`.
+La selección vacía termina el recorrido sin realizar operaciones en segundo plano.
 
 El shell conserva el código de salida de yay y escribe un informe en un
 directorio temporal privado (0700). Solo se anuncia éxito si tanto el proceso
-como el informe indican éxito. Un informe ausente, una terminal que no inicia,
+como el informe indican éxito. Un informe ausente, un ejecutable que no inicia,
 un código de error o una interrupción deja la página en error y conserva el
 inicio automático. El informe temporal se elimina al terminar.
 
 Mientras la instalación está en curso se bloquean Atrás, Finalizar y el cierre
-de la ventana. Para cancelar, se interrumpe la operación en la terminal. Al
-fallar, Atrás permite corregir la selección y reintentar; Cerrar conserva el
-Tour para el siguiente inicio. No se borra el autostart tras un fracaso.
+de la ventana. Al fallar, se indica exactamente qué aplicación tuvo problemas,
+Atrás permite corregir la selección y reintentar, y Cerrar conserva el Tour para
+el siguiente inicio. No se borra el autostart tras un fracaso.
 
 Tras el éxito, Finalizar guarda la opción «Abrir al iniciar» (desmarcada por
 defecto) y cierra. Si no se marca, elimina únicamente el `.desktop` del usuario;
@@ -99,8 +100,8 @@ con sockets Unix privados, HOME/config/cache temporales, y terminal/yay
 simulados. No instala software ni se conecta a la sesión del escritorio.
 Verifica todas las casillas, los cuatro perfiles, el paso a Personalizado, la
 selección vacía inicial de otro recorrido, la seguridad de la vista previa,
-los códigos 0/1/42/130, una terminal que sale con 0 sin ejecutar yay, un error de
-arranque de terminal y la conservación del autostart tras el fracaso.
+los códigos 0/1/42/130, un error de arranque de yay y la conservación del
+autostart tras el fracaso.
 `scripts/test-tour.py` necesita `gtk4-broadwayd` y no lo ejecutan ni
 `./churros check` ni el CI: hay que lanzarlo a mano antes de tocar el Tour.
 
