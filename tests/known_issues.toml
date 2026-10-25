@@ -66,10 +66,6 @@ note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el
 
 # --- test_calamares_config ---
 [[issue]]
-id = "calamares-yaml:modules/shellprocess-cleanup.conf:duplicate:script[].timeout"
-note = "El último comando de installer/calamares/modules/shellprocess-cleanup.conf (el sed de password_pbkdf2 en grub.cfg) lleva 'timeout: 5' dos veces, resto de un comando borrado. yaml-cpp se queda con uno y hoy no cambia nada, pero muestra que nadie valida estos YAML. Arreglo: borrar la línea repetida."
-
-[[issue]]
 id = "calamares-sequence:ignored-conf:modules/hwclock.conf"
 note = "hwclock es noconfig en Calamares 3.4.2 (src/modules/hwclock/module.desc): installer/calamares/modules/hwclock.conf no se lee nunca y el módulo siempre corre hwclock --systohc --utc. Fichero muerto que hace creer que se configura algo. Arreglo: borrarlo."
 
@@ -101,13 +97,14 @@ note = "fix-boot en aarch64 termina con '/usr/share/churros/scripts/publish-aarc
 id = "calamares-sim:fix-boot:aarch64:kver-missing:linux-aarch64.preset"
 note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no existe en el destino. Aunque fix-boot pasara, 'mkinitcpio -P' (paso initcpio) saldría con 'specified kernel image does not exist'. Arreglo: el de calamares-sim:fix-boot:aarch64:command-fails, o ALL_kver='/boot/vmlinuz-linux-aarch64' en el sistema instalado."
 
-[[issue]]
-id = "calamares-sim:fix-boot:x86_64:kver-missing:linux-churrosvyper.preset"
-note = "niri x86_64: customize_airootfs.sh deja /etc/mkinitcpio.d/linux-churrosvyper.preset en forma archiso y fix-boot lo pasa a default con ALL_kver='/boot/vmlinuz-linux-churrosvyper'. Ese fichero no existe en el destino (mkarchiso vacía /boot del squashfs y unpackfs.conf solo copia vmlinuz-linux e initramfs-linux.img), así que 'mkinitcpio -P' (paso initcpio, kernel: all) sale con 'specified kernel image does not exist' y Calamares aborta la instalación de la edición por defecto. Necesita una decisión: con qué nombre arranca el sistema instalado el kernel ChurrOSvyper (copiarlo también como vmlinuz-linux-churrosvyper, o un preset que nombre vmlinuz-linux sin romper las actualizaciones del kernel con pacman)."
 
 [[issue]]
-id = "calamares-sim:fix-boot:x86_64:image:linux-churrosvyper.preset"
-note = "Mismo origen: tras fix-boot el preset de linux-churrosvyper genera /boot/initramfs-linux-churrosvyper.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
+id = "calamares-sim:fix-boot:x86_64:kver-missing:linux-cachyos.preset"
+note = "niri x86_64: customize_airootfs.sh deja /etc/mkinitcpio.d/linux-cachyos.preset en forma archiso y fix-boot lo pasa a default con ALL_kver='/boot/vmlinuz-linux-cachyos'. Ese fichero no existe en el destino (mkarchiso vacía /boot del squashfs y unpackfs.conf solo copia vmlinuz-linux e initramfs-linux.img), así que 'mkinitcpio -P' (paso initcpio, kernel: all) sale con 'specified kernel image does not exist' y Calamares aborta la instalación de la edición por defecto."
+
+[[issue]]
+id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
+note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/initramfs-linux-cachyos.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
 
 [[issue]]
 id = "calamares-xref:initcpio-hook:plymouth:pi/aarch64"

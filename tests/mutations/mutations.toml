@@ -812,8 +812,8 @@ why = "Se borra la llave que cierra binds: niri rechaza la configuración y arra
 [[mutation]]
 name = "test_config_syntax: Fuente renombrada en theme"
 file = "branding/grub-theme/theme.txt"
-find = "title-font: \"DejaVu Sans Bold 22\""
-replace = "title-font: \"DejaVu Sans Bold 24\""
+find = 'terminal-font: "DejaVu Sans Regular 16"'
+replace = 'terminal-font: "DejaVu Sans Regular 24"'
 caught_by = "tests.static.test_config_syntax"
 expect = "ninguna .pf2 del tema se llama así"
 why = "Fuente renombrada en theme.txt sin generar su .pf2: GRUB usa otra fuente en silencio"
@@ -821,7 +821,7 @@ why = "Fuente renombrada en theme.txt sin generar su .pf2: GRUB usa otra fuente 
 [[mutation]]
 name = "test_config_syntax: Propiedad global que gfxmenu no conoce (title-align)"
 file = "branding/grub-theme/theme.txt"
-find = "desktop-color: \"#111827\""
+find = 'desktop-color: "#111827"'
 replace = "desktop-color: \"#111827\"\ntitle-align: \"center\""
 caught_by = "tests.static.test_config_syntax"
 expect = "propiedad global desconocida"
@@ -830,8 +830,8 @@ why = "Propiedad global que gfxmenu no conoce (title-align): GRUB descarta el te
 [[mutation]]
 name = "test_config_syntax: Valor global sin comillas"
 file = "branding/grub-theme/theme.txt"
-find = "title-color: \"#F97316\""
-replace = "title-color: #F97316"
+find = 'desktop-color: "#111827"'
+replace = "desktop-color: #111827"
 caught_by = "tests.static.test_config_syntax"
 expect = "va sin comillas"
 why = "Valor global sin comillas: theme_loader.c lo rechaza y el tema no carga"
@@ -848,11 +848,12 @@ why = "Fondo del tema apuntando a una imagen que no existe: el tema de GRUB no c
 [[mutation]]
 name = "test_config_syntax: Falta la llave que cierra '+ label'"
 file = "branding/grub-theme/theme.txt"
-find = "    align = \"center\"\n}\n"
-replace = "    align = \"center\"\n"
+find = "    color = \"#64748B\"\n}\n"
+replace = "    color = \"#64748B\"\n"
 caught_by = "tests.static.test_config_syntax"
 expect = "no es un contenedor"
 why = "Falta la llave que cierra '+ label': boot_menu queda dentro de label y GRUB descarta el tema"
+
 
 [[mutation]]
 name = "test_config_syntax: Comilla sin cerrar en regreet"
@@ -1555,12 +1556,13 @@ why = "An AI guesses the Debian/upstream name instead of the Arch package name. 
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
 file = "archiso/packages.x86_64"
-find_re = "^linux-churrosvyper$"
+find_re = "^linux-cachyos$"
 replace = "linux-zen"
 caught_by = "tests.container.test_arch_repos"
 expect = "kernel:packages.x86_64:linux]"
 requires = "container"
 why = "Kernel swap. grub/syslinux/unpackfs/linux.preset hardcode vmlinuz-linux, so the ISO does not boot and Calamares copies files that do not exist."
+
 
 [[mutation]]
 name = "test_arch_repos: Adding pulseaudio next to pipewire-pulse makes pacstrap abort ('unresolvable package confl"
@@ -2265,11 +2267,12 @@ why = "Calamares expande todo `$` de un comando de shellprocess: `$p` es 'Missin
 [[mutation]]
 name = "test_editions: el kernel propio sale de la lista y vmlinuz-linux deja de tener de dónde salir"
 file = "archiso/packages.x86_64"
-find_re = '^linux-churrosvyper\n'
+find_re = '^linux-cachyos\n'
 replace = ""
 caught_by = "tests.static.test_editions"
 expect = "edition-pkg:niri/x86_64:linux]"
 why = "GRUB, syslinux y unpackfs arrancan vmlinuz-linux, que customize_airootfs.sh enlaza al kernel propio solo si está instalado: sin él, la ISO no tiene kernel."
+
 
 [[mutation]]
 name = "test_editions: un paquete local instala un fichero que ya trae el airootfs"

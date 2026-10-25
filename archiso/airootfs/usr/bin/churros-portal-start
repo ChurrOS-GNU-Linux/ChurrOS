@@ -54,12 +54,12 @@ EOF
 
 chown -R "${USER:-churros}:${USER:-churros}" "$PORTAL_CONF_DIR" 2>/dev/null || true
 
-# Intentar reiniciar via systemd user units
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user restart xdg-desktop-portal-gtk.service xdg-desktop-portal.service 2>/dev/null || true
+# Iniciar servicios de portal via systemd
+if command -v systemctl >/dev/null 2>&1 && systemctl --user start xdg-desktop-portal-gtk.service xdg-desktop-portal.service 2>/dev/null; then
+    exit 0
 fi
 
-# Iniciar backend GTK si no esta corriendo (fallback manual)
+# Fallback manual solo si systemd no esta disponible
 if ! pgrep -x xdg-desktop-portal-gtk >/dev/null 2>&1; then
     for bin in /usr/lib/xdg-desktop-portal-gtk /usr/libexec/xdg-desktop-portal-gtk; do
         if [ -x "$bin" ]; then
@@ -71,7 +71,6 @@ if ! pgrep -x xdg-desktop-portal-gtk >/dev/null 2>&1; then
     done
 fi
 
-# Iniciar portal general si no esta corriendo (fallback manual)
 if ! pgrep -x xdg-desktop-portal >/dev/null 2>&1; then
     for bin in /usr/lib/xdg-desktop-portal /usr/libexec/xdg-desktop-portal; do
         if [ -x "$bin" ]; then

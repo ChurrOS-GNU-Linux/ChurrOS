@@ -4,10 +4,13 @@ set -e
 
 # shellcheck source=scripts/lib/ovmf.sh
 source "$(cd "$(dirname "$0")/.." && pwd)/lib/ovmf.sh"
+# shellcheck source=scripts/lib/host.sh
+source "$(cd "$(dirname "$0")/.." && pwd)/lib/host.sh"
 
 VM_DIR="vm"
 # Sin --arch se usa la arquitectura del equipo, igual que ./churros build.
 TARGET_ARCH=""
+USE_CONTAINER=0
 QEMU_BIN="qemu-system-aarch64"
 DISK="$VM_DIR/ChurrOS-arm64.qcow2"
 VARS="$VM_DIR/OVMF_VARS_arm64.fd"
@@ -15,6 +18,7 @@ VARS="$VM_DIR/OVMF_VARS_arm64.fd"
 for ((arg_index = 1; arg_index <= $#; arg_index++)); do
     arg="${!arg_index}"
     case "$arg" in
+        --container) USE_CONTAINER=1 ;;
         --arch=*) TARGET_ARCH="${arg#*=}" ;;
         --arch)
             arg_index=$((arg_index + 1))
@@ -44,6 +48,65 @@ case "$TARGET_ARCH" in
         exit 1
         ;;
 esac
+
+# Si QEMU o el firmware OVMF no están en el host (o si se pasa --container),
+# ejecutar QEMU en el contenedor Arch con aceleración gráfica y KVM.
+if ! churros_in_container && { [ "$USE_CONTAINER" -eq 1 ] || ! command -v "$QEMU_BIN" >/dev/null 2>&1 || { [ "$TARGET_ARCH" != "i686" ] && ! churros_resolve_pflash "$TARGET_ARCH" "$VM_DIR" >/dev/null 2>&1; }; }; then
+    ENGINE=""
+    if command -v podman >/dev/null 2>&1; then
+        ENGINE=podman
+    elif command -v docker >/dev/null 2>&1; then
+        ENGINE=docker
+    fi
+
+    if [ -n "$ENGINE" ]; then
+        if [ "$USE_CONTAINER" -ne 1 ]; then
+            echo "[qemu] $QEMU_BIN o firmware OVMF no disponible en el host."
+            echo "[qemu] Ejecutando ChurrOS dentro del contenedor con aceleración gráfica y KVM..."
+        fi
+
+        if [ -n "${DISPLAY:-}" ] && command -v xhost >/dev/null 2>&1; then
+            xhost +local: >/dev/null 2>&1 || true
+        fi
+
+        IMAGE="localhost/churros-builder"
+        if [ "$TARGET_ARCH" = "aarch64" ]; then
+            IMAGE="localhost/churros-builder-aarch64"
+        fi
+        if ! "$ENGINE" image exists "$IMAGE" 2>/dev/null && "$ENGINE" image exists localhost/churros-arch-shell 2>/dev/null; then
+            IMAGE="localhost/churros-arch-shell"
+        fi
+
+        DEV_ARGS=()
+        [ -e /dev/kvm ] && DEV_ARGS+=(--device /dev/kvm)
+        [ -e /dev/dri ] && DEV_ARGS+=(--device /dev/dri)
+
+        MOUNT_ARGS=(
+            -v "$(cd "$(dirname "$0")/../.." && pwd):/churros"
+            -w /churros
+        )
+        if [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
+            MOUNT_ARGS+=(-v /tmp/.X11-unix:/tmp/.X11-unix:rw -e DISPLAY)
+        fi
+        if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -e "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+            MOUNT_ARGS+=(
+                -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+                -e WAYLAND_DISPLAY
+                -e XDG_RUNTIME_DIR
+            )
+        fi
+
+        filtered_args=()
+        for a in "$@"; do
+            [ "$a" != "--container" ] && filtered_args+=("$a")
+        done
+
+        exec "$ENGINE" run --rm "${DEV_ARGS[@]}" "${MOUNT_ARGS[@]}" \
+            -e CHURROS_IN_CONTAINER=1 \
+            "$IMAGE" \
+            bash ./scripts/cli/run.sh "${filtered_args[@]}"
+    fi
+fi
 
 # CODE y VARS se eligen juntos para evitar mezclar firmwares incompatibles.
 # i686 puede arrancar por BIOS si no hay firmware OVMF IA32.
@@ -196,7 +259,7 @@ if [ "$TARGET_ARCH" = "aarch64" ]; then
         CPU_ARGS=(-smp 4)
         MACHINE_ARGS=(-machine virt)
     fi
-    GPU_ARGS=(-device virtio-gpu-gl-pci -display "gtk,gl=on,show-cursor=on")
+    GPU_ARGS=(-device virtio-gpu-gl-pci,xres=1920,yres=1080 -display "gtk,gl=on,show-cursor=on")
 elif [ "$TARGET_ARCH" = "i686" ]; then
     if [ "$FORCE_NOKVM" = false ] && [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         echo "  KVM acceleration: enabled (i686)"
@@ -228,12 +291,12 @@ if [ -e /dev/dri ]; then
     if [ "$TARGET_ARCH" = "aarch64" ]; then
         echo "  GPU: virtio-gpu-gl-pci + virgl (3D)"
     else
-        GPU_ARGS=(-device virtio-vga-gl -display "gtk,gl=on,show-cursor=on")
+        GPU_ARGS=(-device virtio-vga-gl,xres=1920,yres=1080 -display "gtk,gl=on,show-cursor=on")
         echo "  GPU: virtio-vga-gl + virgl (3D)"
     fi
 else
     if [ "$TARGET_ARCH" != "aarch64" ]; then
-        GPU_ARGS=(-device virtio-gpu -display "gtk,gl=off,show-cursor=on")
+        GPU_ARGS=(-device virtio-gpu,xres=1920,yres=1080 -display "gtk,gl=off,show-cursor=on")
     fi
     echo "  GPU: virtio-gpu (no 3D — niri will start without any output: black screen)"
 fi

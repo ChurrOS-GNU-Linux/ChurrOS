@@ -1,41 +1,40 @@
-# ChurrOS GRUB theme
-# Fondo oscuro + menu centrado con seleccion naranja.
+# ChurrOS GRUB theme — Rediseñado desde Figma
+# Fondo oscuro medianoche + malla geométrica + tarjeta glassmorphism + acento naranja
 # Global properties are only those in gfxmenu theme_set_string (no title-align).
 # Font properties use PFF2NAME (not the .pf2 filename). Filenames must not
 # contain spaces: GRUB file open treats space as a separator.
-# Position math is 50%-260 (no spaces) or grub_strtoull fails.
-# Selected entry is highlighted with bold orange text (no selected_item_pixmap_style:
-# the styled-box pixmap can render on the wrong menu item in gfxmenu).
+# Position math is 50%-290 (no spaces) or grub_strtoull fails.
+# Selected entry is highlighted with bold orange text.
 
 title-text: ""
-title-font: "DejaVu Sans Bold 22"
-title-color: "#F97316"
-
 desktop-image: "background.png"
 desktop-color: "#111827"
 
+terminal-box: "terminal_box_*.png"
+terminal-border: "0"
 terminal-font: "DejaVu Sans Regular 16"
 
-+ label {
-    left = "0"
-    width = "100%"
-    top = "8%"
-    height = "40"
-    text = "ChurrOS"
-    font = "DejaVu Sans Bold 22"
-    color = "#F97316"
-    align = "center"
-}
-
 + boot_menu {
-    left = 50%-260
-    top = 50%-65
-    width = "520"
-    height = "130"
-    item_color = "#F8FAFC"
+    left = 35%
+    top = 39%
+    width = 30%
+    height = 24%
+    icon_width = "0"
+    item_color = "#94A3B8"
     selected_item_color = "#F97316"
     item_font = "DejaVu Sans Regular 16"
     selected_item_font = "DejaVu Sans Bold 16"
-    item_height = "36"
-    item_spacing = "10"
+    item_height = "38"
+    item_spacing = "8"
+}
+
++ label {
+    id = "__timeout__"
+    left = "0"
+    top = 100%-210
+    width = "100%"
+    align = "center"
+    text = "Booting automatically in %d s..."
+    font = "DejaVu Sans Regular 16"
+    color = "#64748B"
 }

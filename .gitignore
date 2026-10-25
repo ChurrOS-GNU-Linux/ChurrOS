@@ -18,6 +18,7 @@ cluster.conf
 
 # Editor / IDE
 .vscode/
+.agents/
 
 # QEMU EFI vars (local VM state)
 vm/OVMF_VARS.fd
