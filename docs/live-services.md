@@ -254,7 +254,7 @@ Pasos:
 3. Vuelve a tty1.
 4. Inicia `espeakup.service`.
 
-El paquete `espeakup` solo está en `archiso/packages.aarch64`. En las demás listas (x86_64, xfce, server, i686) el último paso falla y el modo accesible no lee nada.
+El paquete `espeakup` está en todas las listas (`archiso/packages.x86_64`, `archiso/packages.i686`, `archiso/packages.aarch64`, `archiso/packages.xfce.x86_64`, `archiso/packages.server.x86_64` y `archiso/packages.pi.aarch64`), así que el último paso arranca el lector de pantalla.
 
 ### churros-update.service y churros-update.timer
 
@@ -486,7 +486,7 @@ Resumen de cómo arranca la sesión. Lo que hace `customize_airootfs.sh` ya qued
 3. `choose-mirror.service` (si `mirror=` está en la línea del kernel) regenera el mirrorlist.
 4. NetworkManager, `systemd-resolved` y `ufw` arrancan.
 5. `livecd-alsa-unmuter.service` (si `accessibility=on`) quita el silencio del audio.
-6. `livecd-talk.service` (si `accessibility=on`) intenta activar espeakup.
+6. `livecd-talk.service` (si `accessibility=on`) activa espeakup.
 7. greetd arranca en VT7 y hace el autologin de `churros` con `[initial_session]`, que lanza la sesión de la edición: `niri`, `churros-xfce-session` (xfce y server) o `churros-pi-session` (pi). Ver [login-greeter.md](login-greeter.md).
 8. En niri, Niri ejecuta su autostart (portales, agente polkit, Noctalia, `churros-welcome` y, si existe su `.desktop`, `churros-tour`). El fondo lo pinta Noctalia, no swaybg. El autostart de cada edición está en [desktop-config.md](desktop-config.md).
 
