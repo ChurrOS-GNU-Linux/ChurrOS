@@ -2307,5 +2307,15 @@ file = "tests/static/test_calamares_config.py"
 find = '        if name.removesuffix(".preset") in listed:'
 replace = '        if False:'
 caught_by = "tests.static.test_calamares_config"
-expect = "kver-missing:linux-cachyos.preset"
-why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh y las entradas de known_issues de fix-boot quedan huérfanas."
+expect = "Ya no fallan; borra su entrada de tests/known_issues.toml"
+why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh; la prueba detecta que su hallazgo conocido queda huérfano."
+
+[[mutation]]
+name = "test_build_dryrun: ARM package filter must not scan the shared x86 repository"
+file = "scripts/cli/build.sh"
+find = 'for pkg in "$LOCAL_REPO"/*.pkg.tar.zst; do'
+replace = 'for pkg in archiso/packages/*.pkg.tar.zst; do'
+caught_by = "tests.static.test_build_dryrun"
+expect = "build:aarch64-build-deletes-x86_64-local-packages"
+why = "The ARM build must inspect and reindex only its architecture-specific local package repository; scanning archiso/packages deletes reusable x86_64 packages."
+

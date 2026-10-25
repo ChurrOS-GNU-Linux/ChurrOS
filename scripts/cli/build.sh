@@ -375,13 +375,13 @@ for obsolete_pkg in noctalia-qs noctalia-qs-debug noctalia-shell; do
     fi
 done
 
-# El repo local es compartido entre arquitecturas: un calamares/yay/wlogout de
-# un build x86_64 quedaría aquí y pacstrap lo rechazaría al construir i686
-# (o aarch64). Se descartan los paquetes cuyo arch (.PKGINFO) no coincide.
+# x86_64 e i686 comparten archiso/packages; aarch64 usa su propio
+# subdirectorio. Se filtra únicamente el repo de la arquitectura objetivo,
+# para no borrar paquetes válidos de otro build.
 # bsdtar lo expone; si no está disponible (no debería en un host de build Arch),
 # se deja como está y el warning de arriba avisa.
 if command -v bsdtar >/dev/null 2>&1; then
-    for pkg in archiso/packages/*.pkg.tar.zst; do
+    for pkg in "$LOCAL_REPO"/*.pkg.tar.zst; do
         [ -f "$pkg" ] || continue
         pkg_arch=$(bsdtar -xOf "$pkg" .PKGINFO 2>/dev/null | sed -n 's/^arch = //p' | head -n1)
         if [ -n "$pkg_arch" ] && [ "$pkg_arch" != "any" ] && [ "$pkg_arch" != "$TARGET_ARCH" ]; then
@@ -389,8 +389,8 @@ if command -v bsdtar >/dev/null 2>&1; then
             rm -f "$pkg"
         fi
     done
-    if ls archiso/packages/*.pkg.tar.zst >/dev/null 2>&1; then
-        repo-add -q archiso/packages/churros.db.tar.gz archiso/packages/*.pkg.tar.zst 2>/dev/null || true
+    if ls "$LOCAL_REPO"/*.pkg.tar.zst >/dev/null 2>&1; then
+        repo-add -q "$LOCAL_REPO/churros.db.tar.gz" "$LOCAL_REPO"/*.pkg.tar.zst 2>/dev/null || true
     fi
 fi
 

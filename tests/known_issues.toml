@@ -244,10 +244,6 @@ id = "build:edition-list-not-restored-for-niri"
 note = "Tras un build --edition xfce|server interrumpido, el build por defecto (niri) no recupera archiso/packages.x86_64 del .orig que quedó: el paso 0 de scripts/cli/build.sh solo corre para ediciones distintas de niri y el trap solo restaura con PACKAGES_BACKED_UP=1. mkarchiso construye la ISO niri con la lista de XFCE (sin niri, foot ni base-devel) y greetd hace autologin a `niri`, que no está instalado. El árbol queda con packages.x86_64 modificado y el .orig."
 
 [[issue]]
-id = "build:aarch64-build-deletes-x86_64-local-packages"
-note = "El bucle de bsdtar del paso 2 de scripts/cli/build.sh recorre siempre archiso/packages/*.pkg.tar.zst, aunque el repo local de aarch64 es archiso/packages/aarch64/. Un build aarch64 (./churros build --container --arch arm64) borra calamares, yay, wlogout y bazaar x86_64 de archiso/packages/ por ser de otra arquitectura, y el siguiente build x86_64 tiene que recompilarlos (Calamares desde el código fuente, con red)."
-
-[[issue]]
 id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
 note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."
 
