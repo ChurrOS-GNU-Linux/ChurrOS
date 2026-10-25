@@ -1565,12 +1565,12 @@ why = "An AI guesses the Debian/upstream name instead of the Arch package name. 
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
 file = "archiso/packages.x86_64"
-find_re = "^linux-cachyos$"
-replace = "linux-zen"
+find_re = '^linux-cachyos\nlinux-cachyos-headers$'
+replace = "linux-zen\nlinux-zen-headers"
 caught_by = "tests.container.test_arch_repos"
 expect = "kernel:packages.x86_64:linux]"
 requires = "container"
-why = "Kernel swap. grub/syslinux/unpackfs/linux.preset hardcode vmlinuz-linux, so the ISO does not boot and Calamares copies files that do not exist."
+why = "Kernel swap. GRUB, syslinux, unpackfs and linux.preset hardcode vmlinuz-linux, and customize_airootfs.sh only links that name to vmlinuz-linux-cachyos when that package is installed. linux-cachyos-headers depends on linux-cachyos, so replacing the kernel line alone leaves it installed and the alias still valid. linux-zen ships vmlinuz-linux-zen and does not provide the linux package."
 
 
 [[mutation]]
