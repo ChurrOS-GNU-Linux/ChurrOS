@@ -90,6 +90,9 @@ fn gtk_selection_preview_and_installation_failures() {
     )
     .unwrap();
     std::fs::set_permissions(&yay, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let sh = bin.join("sh");
+    std::fs::write(&sh, "#!/bin/sh\nexec /bin/sh \"$@\"\n").unwrap();
+    std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o700)).unwrap();
     let args_file = home.join("args");
     unsafe {
         std::env::remove_var("CHURROS_TOUR_PREVIEW");
