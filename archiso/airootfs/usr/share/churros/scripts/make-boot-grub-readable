@@ -11,6 +11,13 @@
 
 set -euo pipefail
 
+# En aarch64 publica vmlinuz-linux-aarch64 antes de salir: en ext4 este
+# script no reescribe inodos, pero GRUB sigue necesitando ese nombre.
+# En x86_64 no hay /boot/Image y el script sale 0.
+if [ -x /usr/share/churros/scripts/publish-aarch64-kernel ]; then
+    /usr/share/churros/scripts/publish-aarch64-kernel
+fi
+
 root_fstype="$(findmnt -n -o FSTYPE / 2>/dev/null || true)"
 boot_fstype="$(findmnt -n -o FSTYPE /boot 2>/dev/null || true)"
 if [ "$root_fstype" != btrfs ] && [ "$boot_fstype" != btrfs ]; then

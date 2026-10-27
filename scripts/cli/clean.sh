@@ -31,6 +31,7 @@ else
 fi
 sudo rm -rf --one-file-system out
 mkdir -p out
+rm -rf work-kernel
 
 echo "Cleaning temporary airootfs artifacts..."
 rm -f archiso/airootfs/etc/churros-edition 2>/dev/null || true
@@ -43,6 +44,7 @@ rm -f archiso/airootfs/usr/bin/churros-welcome 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-settings 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-popup 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-control-center 2>/dev/null || true
+rm -f archiso/airootfs/usr/bin/churros-tour 2>/dev/null || true
 rm -rf --one-file-system archiso/airootfs/usr/share/churros/grub-theme 2>/dev/null || true
 
 echo "Done."

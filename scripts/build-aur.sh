@@ -3,7 +3,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PACKAGE_DIR="$PROJECT_DIR/archiso/packages"
+# shellcheck source=scripts/lib/local-repo.sh
+source "$SCRIPT_DIR/lib/local-repo.sh"
+PACKAGE_DIR="$(churros_local_repo_dir)"
 
 choose_work_dir() {
     local parent="$PROJECT_DIR/work"
@@ -27,7 +29,7 @@ build_aur() {
     local name="$1"
     local package_dir="$WORK_DIR/$name"
 
-    if ls "$PACKAGE_DIR"/"$name"-*.pkg.tar.zst 1>/dev/null 2>&1; then
+    if [ -n "$(churros_first_pkg "$PACKAGE_DIR" "$name-*" || true)" ]; then
         echo "[skip] $name already built"
         return
     fi
@@ -37,24 +39,33 @@ build_aur() {
     git clone "https://aur.archlinux.org/${name}.git" "$package_dir"
     (
         cd "$package_dir"
-        makepkg -sf --noconfirm --skippgpcheck
+        churros_pkgbuild_allow_arch PKGBUILD
+        success=0
+        for attempt in 1 2 3 4; do
+            if makepkg -sf --noconfirm --skippgpcheck; then
+                success=1
+                break
+            fi
+            echo "[warn] makepkg failed for $name (attempt $attempt/4). Retrying in 5s..."
+            rm -f ./*.part
+            sleep 5
+        done
+        [ "$success" -eq 1 ]
     )
-    cp "$package_dir"/*.pkg.tar.zst "$PACKAGE_DIR/"
-    rm -f "$PACKAGE_DIR"/"$name"-debug-*.pkg.tar.zst 2>/dev/null || true
+    churros_copy_pkgs "$package_dir" "$PACKAGE_DIR" "$name-*"
+    churros_remove_pkgs "$PACKAGE_DIR" "$name-debug-*"
     echo "[done] $name built"
 }
 
 build_aur python-pywal
 build_aur yay
 build_aur wlogout
-build_aur noctalia-qs
-build_aur noctalia-shell
 
 echo
 echo "Updating churros local repo..."
 (
     cd "$PACKAGE_DIR"
-    repo-add churros.db.tar.gz *.pkg.tar.zst
+    churros_repo_add "$PACKAGE_DIR"
 )
 
 rm -rf "$WORK_DIR"
@@ -63,10 +74,17 @@ echo
 echo "======================================"
 echo "  AUR extras built."
 echo "======================================"
-ls -la "$PACKAGE_DIR"/python-pywal-*.pkg.tar.zst 2>/dev/null || echo "(pywal not built)"
-ls -la "$PACKAGE_DIR"/yay-*.pkg.tar.zst 2>/dev/null || echo "(yay not built)"
-ls -la "$PACKAGE_DIR"/wlogout-*.pkg.tar.zst 2>/dev/null || echo "(wlogout not built)"
-ls -la "$PACKAGE_DIR"/noctalia-qs-*.pkg.tar.zst 2>/dev/null || echo "(noctalia-qs not built)"
-ls -la "$PACKAGE_DIR"/noctalia-shell-*.pkg.tar.zst 2>/dev/null || echo "(noctalia-shell not built)"
+show_pkg() {
+    local label="$1"
+    local glob="$2"
+    if churros_first_pkg "$PACKAGE_DIR" "$glob" >/dev/null; then
+        churros_pkg_archives "$PACKAGE_DIR" "$glob"
+    else
+        echo "($label not built)"
+    fi
+}
+show_pkg pywal 'python-pywal-*'
+show_pkg yay 'yay-*'
+show_pkg wlogout 'wlogout-*'
 echo
 echo "  Run: ./churros build"

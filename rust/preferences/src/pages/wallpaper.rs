@@ -20,13 +20,57 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("appearance".to_string()),
     );
 
-    // Contenido reutilizable para reconstruir la página tras importar (self.content)
+    // Contenido reutilizable para reconstruir la página al mostrarla o tras importar.
     let content: gtk::Box = page.content.clone();
+    populate(&content, &navigator);
 
-    // ===== Botón "Importar..." =====
-    build_actions(&page, &navigator, &content);
+    // La página se construye una vez. Sin esto, "Fondo actual" se queda en
+    // el wallpaper de la primera visita y el thumb antiguo sigue marcado
+    // cuando Noctalia ya tiene otro.
+    let content_for_show = content.clone();
+    navigator.connect_visible_child_name_notify(move |stack| {
+        if stack.visible_child_name().as_deref() == Some("wallpaper") {
+            populate(&content_for_show, stack);
+        }
+    });
 
-    // ===== Fondo actual + grid =====
+    page
+}
+
+/// Aviso mientras `WallpaperService::set` corre. `populate` lo quita.
+fn show_applying(content: &gtk::Box) {
+    let mut child = content.first_child();
+    while let Some(widget) = child {
+        let next = widget.next_sibling();
+        if widget.has_css_class("wallpaper-applying") {
+            content.remove(&widget);
+        }
+        child = next;
+    }
+    let label = gtk::Label::new(Some("Aplicando…"));
+    label.add_css_class("wallpaper-applying");
+    label.add_css_class("row-subtitle");
+    label.set_xalign(0.0);
+    label.set_margin_top(4);
+    label.set_margin_bottom(8);
+    label.set_margin_start(4);
+    content.prepend(&label);
+}
+
+fn clear_children(content: &gtk::Box) {
+    let mut child = content.first_child();
+    while let Some(c) = child {
+        let nxt = c.next_sibling();
+        content.remove(&c);
+        child = nxt;
+    }
+}
+
+/// Relee el fondo de Noctalia y pinta una sola miniatura como seleccionada.
+fn populate(content: &gtk::Box, navigator: &gtk::Stack) {
+    clear_children(content);
+    build_actions(content, navigator);
+
     let current = WallpaperService::current();
     let wallpapers = WallpaperService::list();
 
@@ -40,23 +84,17 @@ pub fn build(navigator: gtk::Stack) -> Page {
             None,
             None,
         ));
-        page.add(group.widget());
-        return page;
+        content.append(group.widget());
+        return;
     }
 
-    // ===== Miniatura del fondo actual =====
     if !current.is_empty() && Path::new(&current).is_file() {
         let mut current_group = Group::new("Fondo actual");
-
-        // El Python carga Gdk.Texture.new_from_filename + crea un Gtk.Image con la
-        // clase "wallpaper-preview"... pero NUNCA lo añade al grupo: solo añade la Row.
-        // Código muerto del original; se omite la imagen (try/except silencioso).
         let name = Path::new(&current)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
-
         current_group.add(&Row::new(
             &name,
             Some("Seleccionado"),
@@ -65,18 +103,14 @@ pub fn build(navigator: gtk::Stack) -> Page {
             None,
             None,
         ));
-
-        page.add(current_group.widget());
+        content.append(current_group.widget());
     }
 
-    // ===== Grid de fondos =====
-    build_grid(&content, &current, &wallpapers, &navigator);
-
-    page
+    build_grid(content, &current, &wallpapers, navigator);
 }
 
 /// Grupos "Importar fondo" + "Abrir carpeta" (equivalente al inicio de __init__)
-fn build_actions(page: &Page, navigator: &gtk::Stack, content: &gtk::Box) {
+fn build_actions(content: &gtk::Box, navigator: &gtk::Stack) {
     let mut actions_group = Group::new("Importar fondo");
 
     let nav = navigator.clone();
@@ -92,7 +126,7 @@ fn build_actions(page: &Page, navigator: &gtk::Stack, content: &gtk::Box) {
         })),
     ));
 
-    page.add(actions_group.widget());
+    content.append(actions_group.widget());
 
     let mut thunar_group = Group::new("Abrir carpeta");
 
@@ -108,7 +142,7 @@ fn build_actions(page: &Page, navigator: &gtk::Stack, content: &gtk::Box) {
         })),
     ));
 
-    page.add(thunar_group.widget());
+    content.append(thunar_group.widget());
 }
 
 /// Grid de fondos con FlowBox (equivalente a la parte final de __init__
@@ -124,8 +158,15 @@ fn build_grid(content: &gtk::Box, current: &str, wallpapers: &[std::path::PathBu
     flow.set_column_spacing(12);
     flow.set_halign(gtk::Align::Fill);
 
+    // Solo la primera ruta que coincide (también por canonicalize) lleva
+    // la clase. Si no, dos thumbs del mismo archivo quedan marcados.
+    let selected = wallpapers
+        .iter()
+        .find(|path| wallpaper_matches(path, current))
+        .cloned();
     for wallpaper in wallpapers {
-        let thumb = build_thumbnail(wallpaper, current, navigator);
+        let is_current = selected.as_ref().is_some_and(|path| path == wallpaper);
+        let thumb = build_thumbnail(wallpaper, is_current, navigator, content);
         flow.insert(&thumb, -1);
     }
 
@@ -136,7 +177,25 @@ fn build_grid(content: &gtk::Box, current: &str, wallpapers: &[std::path::PathBu
 }
 
 /// Miniatura: botón con imagen + nombre (equivalente a _build_thumbnail)
-fn build_thumbnail(wallpaper: &Path, current: &str, navigator: &gtk::Stack) -> gtk::Box {
+fn wallpaper_matches(path: &Path, current: &str) -> bool {
+    if current.is_empty() {
+        return false;
+    }
+    if path.to_string_lossy() == current {
+        return true;
+    }
+    match (path.canonicalize(), Path::new(current).canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn build_thumbnail(
+    wallpaper: &Path,
+    is_current: bool,
+    navigator: &gtk::Stack,
+    content: &gtk::Box,
+) -> gtk::Box {
     let box_ = gtk::Box::new(gtk::Orientation::Vertical, 6);
 
     let name = wallpaper
@@ -144,8 +203,6 @@ fn build_thumbnail(wallpaper: &Path, current: &str, navigator: &gtk::Stack) -> g
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
-
-    let is_current = wallpaper.to_string_lossy() == current;
 
     let image = match gtk::gdk::Texture::from_filename(wallpaper) {
         Ok(texture) => {
@@ -172,8 +229,9 @@ fn build_thumbnail(wallpaper: &Path, current: &str, navigator: &gtk::Stack) -> g
 
     let target = wallpaper.to_string_lossy().to_string();
     let nav = navigator.clone();
+    let content_for_select = content.clone();
     button.connect_clicked(move |_| {
-        select(&target, &nav);
+        select(&target, &nav, &content_for_select);
     });
 
     let label = gtk::Label::new(Some(&name));
@@ -286,12 +344,27 @@ fn apply_wallpaper(src: &str, navigator: &gtk::Stack, content: &gtk::Box) {
         return;
     };
 
-    rebuild_grid(content, navigator);
-
-    let dest_clone = dest.clone();
-    std::thread::spawn(move || {
-        let success = WallpaperService::set(&dest_clone);
-        println!("[wallpaper] import+set retorno: {success} dest: {dest_clone}");
+    // Solo la ruta viaja al hilo de trabajo: los widgets GTK no son Send.
+    // El futuro local corre en el hilo principal y reconstruye la página.
+    show_applying(content);
+    let content = content.clone();
+    let nav = navigator.clone();
+    glib::spawn_future_local(async move {
+        let dest_for_worker = dest.clone();
+        let outcome =
+            gio::spawn_blocking(move || WallpaperService::set(&dest_for_worker)).await;
+        let Ok(success) = outcome else {
+            return;
+        };
+        println!("[wallpaper] import+set retorno: {success} dest: {dest}");
+        populate(&content, &nav);
+        if !success {
+            show_error(
+                &nav,
+                "No se pudo aplicar el fondo",
+                "La ruta está vacía o el fondo no se pudo aplicar.",
+            );
+        }
     });
 }
 
@@ -310,100 +383,32 @@ fn show_error(navigator: &gtk::Stack, message: &str, detail: &str) {
     }
 }
 
-/// Equivalente a _rebuild_grid: vacía el contenido de la página y reconstruye
-/// los grupos (re-ejecuta la parte gráfica del __init__).
-fn rebuild_grid(content: &gtk::Box, navigator: &gtk::Stack) {
-    // Vaciar el contenido (while child is not None: remove)
-    let mut child = content.first_child();
-    while let Some(c) = child {
-        let nxt = c.next_sibling();
-        content.remove(&c);
-        child = nxt;
-    }
-
-    build_after_import(content, navigator);
-}
-
-/// Equivalente a _build_after_import: reconstruye los grupos tras importar.
-/// NOTA: el Python solo re-añade el grupo "Importar fondo" (el de "Abrir carpeta"
-/// desaparece tras una importación — bug del original, se porta tal cual).
-fn build_after_import(content: &gtk::Box, navigator: &gtk::Stack) {
-    let mut actions_group = Group::new("Importar fondo");
-
-    let nav = navigator.clone();
-    let content_cb = content.clone();
-    actions_group.add(&Row::new(
-        "Importar desde archivos...",
-        Some("Elige una imagen de tu disco duro"),
-        Some("wallpaper.svg"),
-        None,
-        None,
-        Some(Box::new(move |_| {
-            import_from_files(&nav, &content_cb);
-        })),
-    ));
-
-    content.append(actions_group.widget());
-
-    let current = WallpaperService::current();
-    let wallpapers = WallpaperService::list();
-
-    if wallpapers.is_empty() {
-        let mut group = Group::new("Fondos disponibles");
-        group.add(&Row::new(
-            "No se encontraron fondos",
-            Some("Importa una imagen"),
-            Some("wallpaper.svg"),
-            None,
-            None,
-            None,
-        ));
-        content.append(group.widget());
-        return;
-    }
-
-    // Fondo actual
-    if !current.is_empty() && Path::new(&current).is_file() {
-        let mut current_group = Group::new("Fondo actual");
-
-        let name = Path::new(&current)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        current_group.add(&Row::new(
-            &name,
-            Some("Seleccionado"),
-            Some("wallpaper.svg"),
-            None,
-            None,
-            None,
-        ));
-
-        content.append(current_group.widget());
-    }
-
-    // Grid
-    build_grid(content, &current, &wallpapers, navigator);
-}
-
 /// Equivalente a WallpaperPage.select: aplicar fondo + volver a apariencia.
-/// Se ejecuta en un hilo secundario para no bloquear el loop de eventos Wayland de GTK4.
-fn select(wallpaper: &str, navigator: &gtk::Stack) {
+/// El grid y Apariencia se actualizan solo cuando `set` ya escribió el fondo,
+/// para no marcar el thumb anterior y el nuevo a la vez.
+fn select(wallpaper: &str, navigator: &gtk::Stack, content: &gtk::Box) {
     println!("[wallpaper-page] seleccion: {wallpaper}");
 
     let nav = navigator.clone();
+    let content = content.clone();
     let wp = wallpaper.to_string();
+    show_applying(&content);
 
-    // Navegación inmediata a Apariencia para respuesta visual instantánea
-    glib::idle_add_local_once(move || {
-        nav.set_visible_child_name("appearance");
-    });
-
-    // Aplicar wallpaper y colores pywal en segundo plano de forma no bloqueante
-    std::thread::spawn(move || {
-        let success = WallpaperService::set(&wp);
+    glib::spawn_future_local(async move {
+        let outcome = gio::spawn_blocking(move || WallpaperService::set(&wp)).await;
+        let Ok(success) = outcome else {
+            return;
+        };
         println!("[wallpaper-page] set retorno: {success}");
+        populate(&content, &nav);
+        if !success {
+            show_error(
+                &nav,
+                "No se pudo aplicar el fondo",
+                "La ruta está vacía o el fondo no se pudo aplicar.",
+            );
+            return;
+        }
+        nav.set_visible_child_name("appearance");
     });
 }

@@ -1,10 +1,15 @@
 alsa-utils
 amd-ucode
+ananicy-cpp
 arch-install-scripts
 archinstall
 base
+base-devel
 bcachefs-tools
 btrfs-progs
+cachyos-ananicy-rules
+cachyos-keyring
+cachyos-mirrorlist
 cryptsetup
 dhcpcd
 diffutils
@@ -19,6 +24,7 @@ exfatprogs
 f2fs-tools
 foot-terminfo
 fsarchiver
+git
 gptfdisk
 grub
 hdparm
@@ -30,7 +36,8 @@ kitty-terminfo
 less
 libfido2
 libusb-compat
-linux
+linux-cachyos
+linux-cachyos-headers
 linux-atm
 linux-firmware
 linux-firmware-marvell
@@ -44,6 +51,7 @@ memtest86+
 memtest86+-efi
 mkinitcpio
 mkinitcpio-archiso
+mkinitcpio-nfs-utils
 mmc-utils
 mtools
 nano
@@ -109,6 +117,9 @@ zsh
 mesa
 mesa-utils
 vulkan-virtio
+vulkan-icd-loader
+lib32-mesa
+lib32-vulkan-icd-loader
 
 niri
 
@@ -182,6 +193,7 @@ gobject-introspection
 awww
 ddcutil
 ttf-jetbrains-mono
+inter-font
 ttf-nerd-fonts-symbols-mono
 otf-font-awesome
 firefox
@@ -197,13 +209,10 @@ pamixer
 btop
 imv
 
-# Noctalia Shell (Quickshell) — repo local [churros] vía build-aur.sh
-noctalia-shell
-noctalia-qs
-qt6-multimedia
+# Noctalia (shell de la sesión Niri), paquete de [extra]
+noctalia
 wlr-randr
 imagemagick
-cliphist
 power-profiles-daemon
 
 upower
@@ -257,3 +266,12 @@ os-prober
 udisks2
 zenity
 qt6-translations
+
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
+zram-generator
+
+# Lector de pantalla de la entrada Accessibility (livecd-talk.service)
+espeakup
+
+# Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
+modemmanager

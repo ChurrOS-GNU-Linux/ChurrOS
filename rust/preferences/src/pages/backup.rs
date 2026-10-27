@@ -221,26 +221,72 @@ fn confirm_import(btn: &gtk::Button, path: &str) {
 
 /// Confirmacion de restablecimiento (equivalente a _on_reset).
 fn on_reset(btn: &gtk::Button) {
-    let dialog = gtk::AlertDialog::builder()
-        .message(
-            "Se borraran tus ajustes personales (tema, wallpaper, tipografia, dotfiles de niri/foot/fuzzel/mako/waybar) y se restauraran los defaults de ChurrOS. ¿Continuar?",
-        )
+    let Some(parent) = btn.root().and_downcast::<gtk::Window>() else {
+        return;
+    };
+
+    let dialog = gtk::Window::builder()
+        .transient_for(&parent)
         .modal(true)
-        .buttons(["Cancelar", "Restablecer"])
+        .resizable(false)
+        .title("Restablecer")
+        .default_width(520)
         .build();
+    dialog.add_css_class("reset-confirm");
+    if parent.has_css_class("light") {
+        dialog.add_css_class("light");
+    }
 
-    let window = btn.root().and_downcast::<gtk::Window>();
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    root.add_css_class("reset-confirm-surface");
+    if parent.has_css_class("light") {
+        root.add_css_class("light");
+    }
+    root.set_width_request(460);
+    root.set_margin_top(28);
+    root.set_margin_bottom(22);
+    root.set_margin_start(28);
+    root.set_margin_end(28);
 
-    dialog.choose(window.as_ref(), None::<&gio::Cancellable>, move |result| {
-        let Ok(response) = result else {
-            return;
-        };
-        if response != 1 {
-            return;
-        }
+    let heading = gtk::Label::new(Some("Restablecer a valores de fábrica"));
+    heading.add_css_class("reset-heading");
+    heading.set_wrap(true);
+    heading.set_xalign(0.0);
+    heading.set_max_width_chars(36);
 
+    let body = gtk::Label::new(Some(
+        "Se borraran tus ajustes personales (tema, wallpaper, tipografia, dotfiles de niri/foot/fuzzel/mako/waybar) y se restauraran los defaults de ChurrOS. ¿Continuar?",
+    ));
+    body.add_css_class("reset-body");
+    body.set_wrap(true);
+    body.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    body.set_xalign(0.0);
+    body.set_max_width_chars(48);
+
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    actions.set_halign(gtk::Align::End);
+    actions.set_margin_top(12);
+
+    let cancel = gtk::Button::with_label("Cancelar");
+    let confirm = gtk::Button::with_label("Restablecer");
+    confirm.add_css_class("destructive-action");
+    actions.append(&cancel);
+    actions.append(&confirm);
+
+    root.append(&heading);
+    root.append(&body);
+    root.append(&actions);
+    dialog.set_child(Some(&root));
+
+    let dialog_cancel = dialog.clone();
+    cancel.connect_clicked(move |_| {
+        dialog_cancel.close();
+    });
+
+    let dialog_ok = dialog.clone();
+    confirm.connect_clicked(move |_| {
+        dialog_ok.close();
         set_status("Restableciendo...");
-
         match BackupService::reset_to_defaults() {
             Ok(_) => set_status(
                 "Configuraciones restablecidas a defaults. Reinicia las apps para ver todos los cambios.",
@@ -248,4 +294,6 @@ fn on_reset(btn: &gtk::Button) {
             Err(e) => set_status(&format!("Error al restablecer: {e}")),
         }
     });
+
+    dialog.present();
 }

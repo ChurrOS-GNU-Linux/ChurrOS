@@ -18,7 +18,7 @@ const ACTION_TYPES: [(&str, &str); 3] = [
     ("builtin", "Accion de Niri"),
 ];
 
-const BUILTIN_ACTIONS: [&str; 19] = [
+pub(crate) const BUILTIN_ACTIONS: [&str; 19] = [
     "close-window",
     "quit",
     "maximize-column",
@@ -138,11 +138,8 @@ fn type_label(kind: &str) -> String {
 pub fn build(navigator: gtk::Stack) -> Page {
     let edition = churros_services::version::edition();
     let is_xfce = edition.contains("xfce");
-    let is_kde = edition.contains("kde");
 
-    let subtitle = if is_kde {
-        "Gestionado por KDE Plasma"
-    } else if is_xfce {
+    let subtitle = if is_xfce {
         "Gestionado por XFCE"
     } else {
         "Modifica los atajos de teclado de Niri"
@@ -154,25 +151,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some(subtitle),
         None,
     );
-
-    if is_kde {
-        let mut group = Group::new("Herramientas de KDE");
-        let btn = crate::widgets::row::Row::new(
-            "Abrir Atajos de Teclado",
-            Some("Lanza ajustes de atajos y teclado de KDE Plasma"),
-            Some("input-keyboard-symbolic"),
-            None,
-            None,
-            Some(Box::new(|_| {
-                let _ = std::process::Command::new("systemsettings")
-                    .arg("kcm_keys")
-                    .spawn();
-            })),
-        );
-        group.add(&btn);
-        page.add(group.widget());
-        return page;
-    }
 
     if is_xfce {
         let mut group = Group::new("Herramientas externas");
@@ -350,8 +328,7 @@ fn edit_bind_dialog(parent: Option<gtk::Window>, bind: Bind, weak: Weak<Page>) {
             }
 
             let ok = if new_key != bind.key {
-                KeyboardService::remove_keybind(&bind.key)
-                    && KeyboardService::add_keybind(&new_key, &bind_type_new, &new_cmd, &new_args)
+                KeyboardService::rename_keybind(&bind.key, &new_key, &bind_type_new, &new_cmd, &new_args)
             } else {
                 KeyboardService::set_keybind(&bind.key, &bind_type_new, &new_cmd, &new_args)
             };

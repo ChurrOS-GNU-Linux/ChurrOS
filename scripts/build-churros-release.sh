@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
 # build-churros-release.sh — genera el bundle de utilidades de ChurrOS
-# (churros-utils-<version>.tar.zst) y su updates.json para publicar en
-# el servidor de actualizaciones.
+# (churros-utils-<version>-<arch>.tar.zst) y su updates.json para publicar
+# en el servidor de actualizaciones.
 #
 # Uso:
-#   ./scripts/build-churros-release.sh
+#   ./scripts/build-churros-release.sh [x86_64|aarch64|i686]
 #
 # Produce en release/:
-#   churros-utils-<version>.tar.zst
-#   updates.json
+#   <arch>/churros-utils-<version>-<arch>.tar.zst
+#   <arch>/updates.json
 #
 set -euo pipefail
 
@@ -20,7 +20,18 @@ AIROOTFS="$PROJECT_DIR/archiso/airootfs"
 VERSION="$(cat "$PROJECT_DIR/VERSION")"
 OUT="$PROJECT_DIR/release"
 STAGE="$(mktemp -d)"
-BUNDLE="churros-utils-${VERSION}.tar.zst"
+ARCH="${1:-$(uname -m)}"
+
+case "$ARCH" in
+    x86_64|aarch64|i686) ;;
+    *)
+        echo "Error: unsupported architecture '$ARCH' (use x86_64, aarch64 or i686)." >&2
+        exit 1
+        ;;
+esac
+
+ARCH_OUT="$OUT/$ARCH"
+BUNDLE="churros-utils-${VERSION}-${ARCH}.tar.zst"
 
 echo "==> ChurrOS release build — v${VERSION}"
 
@@ -85,37 +96,30 @@ echo "$VERSION" > "$STAGE/etc/churros-version"
 
 # 6. Empaquetar bundles (unificado + por edición)
 echo "  [3/4] empaquetando bundles..."
-mkdir -p "$OUT"
+ARCH_OUT="$OUT/$ARCH"
+mkdir -p "$ARCH_OUT"
 
 # Bundle principal unificado
-tar --zstd -cf "$OUT/$BUNDLE" -C "$STAGE" usr etc
-SHA_MAIN=$(sha256sum "$OUT/$BUNDLE" | awk '{print $1}')
+tar --zstd -cf "$ARCH_OUT/$BUNDLE" -C "$STAGE" usr etc
+SHA_MAIN=$(sha256sum "$ARCH_OUT/$BUNDLE" | awk '{print $1}')
 
 # Bundle Niri
-BUNDLE_NIRI="churros-utils-niri-${VERSION}.tar.zst"
-cp "$OUT/$BUNDLE" "$OUT/$BUNDLE_NIRI"
+BUNDLE_NIRI="churros-utils-niri-${VERSION}-${ARCH}.tar.zst"
+cp "$ARCH_OUT/$BUNDLE" "$ARCH_OUT/$BUNDLE_NIRI"
 SHA_NIRI="$SHA_MAIN"
 
 # Bundle XFCE
-BUNDLE_XFCE="churros-utils-xfce-${VERSION}.tar.zst"
-cp "$OUT/$BUNDLE" "$OUT/$BUNDLE_XFCE"
+BUNDLE_XFCE="churros-utils-xfce-${VERSION}-${ARCH}.tar.zst"
+cp "$ARCH_OUT/$BUNDLE" "$ARCH_OUT/$BUNDLE_XFCE"
 SHA_XFCE="$SHA_MAIN"
 
-# Bundle KDE
-BUNDLE_KDE="churros-utils-kde-${VERSION}.tar.zst"
-cp "$OUT/$BUNDLE" "$OUT/$BUNDLE_KDE"
-SHA_KDE="$SHA_MAIN"
 
-# Bundle Server
-BUNDLE_SERVER="churros-utils-server-${VERSION}.tar.zst"
-cp "$OUT/$BUNDLE" "$OUT/$BUNDLE_SERVER"
-SHA_SERVER="$SHA_MAIN"
-
-# 7. updates.json (manifiesto con versión + mapa de ediciones + sha256)
+# 7. updates.json (manifiesto con versión + arquitectura + ediciones)
 DATE=$(date +%Y-%m-%d)
-cat > "$OUT/updates.json" <<EOF
+cat > "$ARCH_OUT/updates.json" <<EOF
 {
   "version": "$VERSION",
+    "arch": "$ARCH",
   "date": "$DATE",
   "file": "$BUNDLE",
   "sha256": "$SHA_MAIN",
@@ -127,27 +131,22 @@ cat > "$OUT/updates.json" <<EOF
     "xfce": {
       "file": "$BUNDLE_XFCE",
       "sha256": "$SHA_XFCE"
-    },
-    "kde": {
-      "file": "$BUNDLE_KDE",
-      "sha256": "$SHA_KDE"
-    },
-    "server": {
-      "file": "$BUNDLE_SERVER",
-      "sha256": "$SHA_SERVER"
     }
   }
 }
 EOF
 
+# Keep the legacy root manifest as an x86_64 alias for older clients.
+if [ "$ARCH" = x86_64 ]; then
+    cp "$ARCH_OUT/updates.json" "$OUT/updates.json"
+fi
+
 rm -rf "$STAGE"
 
 echo "  [4/4] listo:"
-echo "    $OUT/$BUNDLE"
-echo "    $OUT/$BUNDLE_NIRI"
-echo "    $OUT/$BUNDLE_XFCE"
-echo "    $OUT/$BUNDLE_KDE"
-echo "    $OUT/$BUNDLE_SERVER"
-echo "    $OUT/updates.json"
+echo "    $ARCH_OUT/$BUNDLE"
+echo "    $ARCH_OUT/$BUNDLE_NIRI"
+echo "    $ARCH_OUT/$BUNDLE_XFCE"
+echo "    $ARCH_OUT/updates.json"
 echo
 echo "  Sube los archivos a: https://download.churroslinux.org/churros/"

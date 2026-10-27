@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+target_is_arm64=0
+has_grub_directory=0
+translated_arguments=()
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --target=arm64-efi)
+            target_is_arm64=1
+            translated_arguments+=(-O arm64-efi)
+            shift
+            ;;
+        --target)
+            target_is_arm64=1
+            translated_arguments+=(-O "${2:?missing target value}")
+            shift 2
+            ;;
+        -O)
+            [[ "${2:?missing format value}" == arm64-efi ]] && target_is_arm64=1
+            translated_arguments+=(-O "$2")
+            shift 2
+            ;;
+        -d|--directory)
+            has_grub_directory=1
+            translated_arguments+=("$1" "${2:?missing directory value}")
+            shift 2
+            ;;
+        /opt/grub-aarch64/usr/lib/grub/arm64-efi)
+            has_grub_directory=1
+            translated_arguments+=("$1")
+            shift
+            ;;
+        *)
+            translated_arguments+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ "$target_is_arm64" -eq 1 && "$has_grub_directory" -eq 0 ]]; then
+    translated_arguments=(-d /opt/grub-aarch64/usr/lib/grub/arm64-efi "${translated_arguments[@]}")
+fi
+
+exec /usr/bin/grub-mkstandalone "${translated_arguments[@]}"

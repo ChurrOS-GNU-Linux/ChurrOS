@@ -13,6 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RUST_DIR="$PROJECT_DIR/rust"
 BIN_DIR="$PROJECT_DIR/archiso/airootfs/usr/bin"
+# El contenedor de build compila en otro directorio (CARGO_TARGET_DIR).
+TARGET_DIR="${CARGO_TARGET_DIR:-$RUST_DIR/target}"
 
 if [ ! -f "$RUST_DIR/Cargo.toml" ]; then
     echo "  [rust] no hay workspace en $RUST_DIR — saltando"
@@ -58,7 +60,7 @@ for crate_dir in "$RUST_DIR"/*/; do
     # preferences/ produce churros-settings), no el del directorio.
     crate_name=$(sed -n 's/^name = "\(.*\)"/\1/p' "$crate_dir/Cargo.toml" | head -1)
     [ -n "$crate_name" ] || continue
-    binary="$RUST_DIR/target/release/$crate_name"
+    binary="$TARGET_DIR/release/$crate_name"
     if [ -x "$binary" ]; then
         echo "  [rust] $crate_name -> $BIN_DIR/$crate_name"
         cp "$binary" "$BIN_DIR/$crate_name"

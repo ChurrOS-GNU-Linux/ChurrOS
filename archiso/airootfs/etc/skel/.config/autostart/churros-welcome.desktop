@@ -5,4 +5,4 @@ Exec=churros-welcome --live-only
 Icon=churros-welcome
 Terminal=false
 StartupNotify=false
-OnlyShowIn=XFCE;KDE;
+OnlyShowIn=XFCE;

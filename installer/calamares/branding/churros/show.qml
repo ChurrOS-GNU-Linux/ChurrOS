@@ -82,7 +82,7 @@ Presentation
 
     Slide {
         title: qsTr("Escritorios")
-        centeredText: qsTr("Niri, XFCE y KDE Plasma,\ncon la misma identidad.")
+        centeredText: qsTr("Niri y XFCE,\ncon la misma identidad.")
     }
 
     Slide {

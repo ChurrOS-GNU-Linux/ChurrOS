@@ -79,16 +79,10 @@ fn gtk_selection_preview_and_installation_failures() {
     install.finish(true).unwrap();
     assert!(!autostart.exists()); // Preview never modifies host/autostart.
 
-    // Real execution path, but both terminal and package manager are local fakes.
+    // Real execution path, but package manager is a local fake.
     // Only this single-threaded, explicitly opted-in test changes its environment.
     let bin = home.join("fake-bin");
     std::fs::create_dir(&bin).unwrap();
-    let terminal = "#!/bin/sh\nwhile [ \"$1\" != sh ]; do [ $# -gt 0 ] || exit 125; shift; done\nshift\nexec /bin/sh \"$@\" </dev/null\n";
-    for name in ["foot", "konsole", "xfce4-terminal", "xterm"] {
-        let path = bin.join(name);
-        std::fs::write(&path, terminal).unwrap();
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
-    }
     let yay = bin.join("yay");
     std::fs::write(
         &yay,
@@ -96,6 +90,9 @@ fn gtk_selection_preview_and_installation_failures() {
     )
     .unwrap();
     std::fs::set_permissions(&yay, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let sh = bin.join("sh");
+    std::fs::write(&sh, "#!/bin/sh\nexec /bin/sh \"$@\"\n").unwrap();
+    std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o700)).unwrap();
     let args_file = home.join("args");
     unsafe {
         std::env::remove_var("CHURROS_TOUR_PREVIEW");
@@ -127,38 +124,22 @@ fn gtk_selection_preview_and_installation_failures() {
         assert!(!install.is_running());
         install.finish(false).unwrap();
         assert_eq!(autostart.exists(), code != 0);
+        let expected_args = if code == 0 {
+            "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nobs-studio\n"
+        } else {
+            "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\n"
+        };
         assert_eq!(
             std::fs::read_to_string(&args_file).unwrap(),
-            "-Syu\n--needed\n--\nfirefox\nobs-studio\n"
+            expected_args
         );
     }
-    // A terminal that exits successfully without running the shell must not
-    // turn a missing yay report into a completed installation.
-    for name in ["foot", "konsole", "xfce4-terminal", "xterm"] {
-        std::fs::write(bin.join(name), "#!/bin/sh\nexit 0\n").unwrap();
-    }
-    let completed = Rc::new(Cell::new(None));
-    let copy = completed.clone();
-    install.start(vec!["firefox".into()], move |success| {
-        copy.set(Some(success))
-    });
-    let context = glib::MainContext::default();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while completed.get().is_none() && Instant::now() < deadline {
-        while context.pending() {
-            context.iteration(false);
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    assert_eq!(completed.get(), Some(false));
-    install.finish(false).unwrap();
-    assert!(autostart.exists());
 
-    // Simulate a terminal startup error without falling back to a real terminal.
-    let which = bin.join("which");
-    std::fs::write(&which, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&which, std::fs::Permissions::from_mode(0o700)).unwrap();
-    std::fs::remove_file(bin.join("xterm")).unwrap();
+    // Simulate yay startup error without falling back to a real package manager.
+    // churros_services::which() looks for PATH/<bin> (it never runs `which`),
+    // so fake yay has to go: with it present, start() spawns it
+    // asynchronously and the synchronous assert below sees None.
+    std::fs::remove_file(&yay).unwrap();
     unsafe {
         std::env::set_var("PATH", &bin);
     }

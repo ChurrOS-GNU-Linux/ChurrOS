@@ -4,9 +4,9 @@ ID=churros
 BUILD_ID=rolling
 ANSI_COLOR="38;2;255;170;0"
 
-HOME_URL="https://github.com/Hoyuse/ChurrOS"
-DOCUMENTATION_URL="https://github.com/Hoyuse/ChurrOS/wiki"
-SUPPORT_URL="https://github.com/Hoyuse/ChurrOS/issues"
-BUG_REPORT_URL="https://github.com/Hoyuse/ChurrOS/issues"
+HOME_URL="https://github.com/ChurrOS-GNU-Linux/ChurrOS"
+DOCUMENTATION_URL="https://github.com/ChurrOS-GNU-Linux/ChurrOS/wiki"
+SUPPORT_URL="https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues"
+BUG_REPORT_URL="https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues"
 
 LOGO=churros

@@ -56,7 +56,7 @@ calamares_pkg() {
     if [ ! -d "$REPO_ROOT/archiso/packages" ]; then
         return 0
     fi
-    find "$REPO_ROOT/archiso/packages" -maxdepth 1 -name 'calamares-[0-9]*.pkg.tar.zst' -print -quit
+    find "$REPO_ROOT/archiso/packages" -maxdepth 1 -name 'calamares-[0-9]*.pkg.tar.*' ! -name '*.sig' -print -quit
 }
 
 show_help() {
@@ -173,7 +173,7 @@ STUB_NAMES=(
     calamares wal timedatectl localectl ufw makoctl niri hyprctl swaymsg swaybg
     swaylock swayidle wlsunset waybar install pacman flatpak
     sh bash foot churros-apply-wallpaper waypaper churros-update-utils
-    churros-pick-image setxkbmap loadkeys awww awww-daemon
+    churros-pick-image setxkbmap loadkeys awww awww-daemon noctalia
 )
 
 prepare_dev_sandbox() {
@@ -318,7 +318,7 @@ resolve_calamares_bin() {
         CALAMARES_PREFIX=""
         return 0
     fi
-    die "calamares not in PATH and no archiso/packages/calamares-*.pkg.tar.zst. Run ./scripts/build-calamares.sh"
+    die "calamares not in PATH and no archiso/packages/calamares-*.pkg.tar.*. Run ./scripts/build-calamares.sh"
 }
 
 # -c DIR replaces SHARE/calamares, so DIR/qml must exist or Calamares exits.

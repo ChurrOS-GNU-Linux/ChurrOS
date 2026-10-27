@@ -1,0 +1,81 @@
+name: ISO ARM64
+
+# Construcción de la ISO aarch64. No es un check de pull request: la imagen
+# es grande y el job corre en un runner ARM nativo, así que no bloquea merges.
+# Se dispara a mano (cualquier rama) y cada día en main. schedule solo corre
+# en la rama por defecto.
+#
+# Usa el mismo contenedor que ./churros build --container --arch arm64
+# (Containerfile.aarch64). En ubuntu-24.04-arm ese contenedor es nativo;
+# no interviene qemu-user.
+
+on:
+  workflow_dispatch:
+  # Cada día: Arch Linux ARM y el resto del árbol cambian sin un PR.
+  schedule:
+    - cron: '41 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iso-arm64-${{ github.ref }}-${{ github.event_name }}
+  # Ya no hay pull_request. schedule y workflow_dispatch van en grupos
+  # distintos y no se cancelan entre sí.
+  cancel-in-progress: false
+
+jobs:
+  iso:
+    name: Build aarch64 ISO
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      CHURROS_CONTAINER_ENGINE: docker
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build ISO
+        id: build
+        run: ./churros build --container --arch arm64
+
+      # Un espejo colgado no debe comerse el timeout del job.
+      - name: Install ISO audit tools
+        timeout-minutes: 15
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y -o Acquire::Retries=3 xorriso squashfs-tools
+
+      # La misma auditoría de contenido que la ISO x86_64 (iso.yml): permisos
+      # reales del squashfs, ELF aarch64 con sus bibliotecas, arranque UEFI.
+      - name: Audit ISO content
+        run: |
+          mkdir -p out/reports
+          python3 tests/iso/check_iso.py out/*.iso --report out/reports/iso-content.json
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: churros-aarch64-reports
+          path: out/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: SHA256SUMS
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        working-directory: out
+        run: sha256sum -- *.iso > SHA256SUMS
+
+      # La ISO se sube aunque la auditoría falle: hace falta para investigarlo.
+      - name: Upload ISO
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: churros-aarch64-iso
+          path: |
+            out/*.iso
+            out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

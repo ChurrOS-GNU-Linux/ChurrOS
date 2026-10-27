@@ -6,8 +6,8 @@
 #   'agreety' as the default session and doesn't handle XFCE editions properly.
 # - We extract the autologin user (if any) that Calamares carefully configured.
 # - We rewrite the config.toml to use our graphical regreet GTK theme.
-# - We correctly enforce the session command of the installed edition (niri,
-#   startxfce4 or startplasma-wayland). The edition -> session table lives in
+# - We correctly enforce the session command of the installed edition (niri or
+#   churros-xfce-session). The edition -> session table lives in
 #   edition-session.sh, shared with churros-write-root-config (autologin from
 #   Settings), so both write the same [initial_session].
 
@@ -21,6 +21,15 @@ GREETD_CONF="/etc/greetd/config.toml"
 # En la edición server el sistema instalado no tiene display manager:
 # configure-server lo quita y deja el arranque en multi-user.
 SESSION_CMD="$(churros_session_command "$(churros_edition)")" || exit 0
+
+# XFCE: ReGreet no usa SESSION_CMD, descubre las sesiones en /usr/share/*sessions
+# y lanza xfce.desktop como `startx /usr/bin/env <Exec>`. El paquete trae
+# Exec=startxfce4 (sin wrapper) y una sesión xfce-wayland que exige labwc; el
+# parche de desktop.sh solo existe en el Live, no en el sistema instalado.
+# Sin esto el login sin inicio automático vuelve al greeter en bucle.
+if [ "$(churros_edition)" = "xfce" ] && [ -x /usr/share/churros/scripts/fix-xfce-sessions ]; then
+    /usr/share/churros/scripts/fix-xfce-sessions
+fi
 
 # Extract the autologin user that Calamares displaymanager wrote
 AUTOLOGIN_USER=""

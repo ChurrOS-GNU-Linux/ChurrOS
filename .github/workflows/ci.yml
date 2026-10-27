@@ -8,40 +8,66 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  # En main los push se encolan. Solo un PR nuevo cancela la ejecución anterior.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: Static checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Modo estricto (GitHub ya exporta CI=true): una herramienta que falta
+      # o una prueba saltada es un fallo, no un aviso.
+      CHURROS_STRICT: 1
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install shellcheck, gettext and zstd
+      # shellcheck, msgfmt (gettext), zstd (tarballs de test-privileged-helpers),
+      # zsh (zsh -n de .zlogin/.zshrc), desktop-file-validate y PyYAML (YAML de
+      # Calamares y de los workflows). node ya viene en el runner.
+      # actionlint v1.7.12 (2026-03-30) no está en Ubuntu: binario oficial.
+      - name: Install test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck gettext zstd
+          sudo apt-get install -y shellcheck gettext zstd zsh desktop-file-utils python3-yaml
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz' | sha256sum -c
+          sudo tar -C /usr/local/bin -xzf /tmp/actionlint.tar.gz actionlint
 
-      - name: Run checks
-        run: ./churros check
+      # check.sh incluye las pruebas de tests/static, test-polkit-rules.js,
+      # test-privileged-helpers.py y test-network-services.py.
+      - name: ./churros test
+        run: ./churros test
 
-      # ./churros check ya los lanza, pero sin node solo avisa: aquí tienen que
-      # ejecutarse sí o sí.
-      - name: Polkit rule tests
-        run: node scripts/test-polkit-rules.js
-
-      - name: Privileged helper tests
-        run: |
-          python3 scripts/test-privileged-helpers.py
-          python3 scripts/test-kde-integration.py
-
-  test:
-    name: Tests Rust
+  mutations:
+    name: Test suite self-test (mutations)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CHURROS_STRICT: 1
 
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      # La línea base de --mutations ejecuta check.sh, que en modo estricto
+      # exige actionlint. Misma instalación que en «Static checks».
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck gettext zstd zsh desktop-file-utils python3-yaml
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz' | sha256sum -c
+          sudo tar -C /usr/local/bin -xzf /tmp/actionlint.tar.gz actionlint
 
-      - name: cargo test -p churros-services
-        run: cargo test -p churros-services --manifest-path rust/Cargo.toml
+      # Cada mutación de tests/mutations/mutations.toml es una regresión real
+      # (un paquete quitado, un permiso perdido, un paso de Calamares fuera de
+      # orden...). Si alguna deja la batería en verde, una prueba se ha
+      # debilitado o ha dejado de cubrir lo que dice.
+      - name: ./churros test --mutations
+        run: ./churros test --mutations

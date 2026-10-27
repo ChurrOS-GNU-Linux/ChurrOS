@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# mkarchiso de tests/static/test_build_dryrun.py. No construye nada: guarda en
+# $DRYRUN_LOG/mkarchiso.<n>/ lo que el mkarchiso real leería en ese momento.
+#
+#   argv        argumentos (separados por NUL)
+#   env         cwd, CHURROS_ARCH, si llegó por sudo
+#   profile     arch y pacman_conf de profiledef.sh (cargado como mkarchiso)
+#   packages    la lista packages.<arch> que leería pacstrap
+#   manifest    "<modo> <tipo> <ruta>" de todo archiso/airootfs
+#   airootfs/   copia de etc, root, usr/bin, usr/local/bin y del preset ARM
+#   host-repo   destino del enlace /root/packages del host (falso)
+#   grubmodules si el /usr/bin/mkarchiso (falso) lleva el parche de módulos
+#
+# DRYRUN_MKARCHISO=fail sale con 1 y DRYRUN_MKARCHISO=kill mata con SIGKILL
+# todo el grupo de procesos del build (como un OOM o un `docker kill`); int
+# manda SIGINT (Ctrl-C). Las dos últimas, después de guardar el estado.
+set -euo pipefail
+
+: "${DRYRUN_LOG:?}" "${DRYRUN_FAKE_ROOT:?}"
+
+# El mkarchiso real exige root; aquí via_sudo deja constancia de si llegó
+# por sudo (la prueba lo comprueba).
+n=1
+while [ -e "$DRYRUN_LOG/mkarchiso.$n" ]; do
+    n=$((n + 1))
+done
+snap="$DRYRUN_LOG/mkarchiso.$n"
+mkdir -p "$snap"
+printf '%s\0' "$@" > "$snap/argv"
+{
+    printf 'cwd=%s\n' "$PWD"
+    printf 'CHURROS_ARCH=%s\n' "${CHURROS_ARCH-<unset>}"
+    printf 'via_sudo=%s\n' "${DRYRUN_VIA_SUDO:-0}"
+} > "$snap/env"
+
+# Las mismas opciones que mkarchiso (archiso 8x): una desconocida es un error.
+work_dir=./work
+out_dir=./out
+while getopts 'A:C:D:L:P:c:g:G:hm:o:p:rvw:' opt; do
+    case "$opt" in
+        w) work_dir="$OPTARG" ;;
+        o) out_dir="$OPTARG" ;;
+        \?) echo "mkarchiso (prueba): opción no válida" >&2; exit 1 ;;
+        *) ;;
+    esac
+done
+shift $((OPTIND - 1))
+if [ "$#" -ne 1 ]; then
+    echo "mkarchiso (prueba): se espera un único perfil, no: $*" >&2
+    exit 1
+fi
+profile="$1"
+if [ ! -f "$profile/profiledef.sh" ]; then
+    echo "mkarchiso (prueba): $profile/profiledef.sh no existe" >&2
+    exit 1
+fi
+
+# mkarchiso hace `source profiledef.sh` en su propio shell, con
+# file_permissions ya declarado como array asociativo.
+(
+    set +eu
+    # shellcheck disable=SC2034  # lo rellena profiledef.sh
+    declare -A file_permissions=()
+    # shellcheck disable=SC1091
+    source "$profile/profiledef.sh" >/dev/null
+    printf 'arch=%s\npacman_conf=%s\n' "${arch:-}" "${pacman_conf:-}"
+) > "$snap/profile"
+arch="$(sed -n 's/^arch=//p' "$snap/profile")"
+packages="$profile/packages.$arch"
+if [ ! -f "$packages" ]; then
+    echo "mkarchiso (prueba): Packages file '$packages' does not exist." >&2
+    exit 1
+fi
+cp "$packages" "$snap/packages"
+
+readlink "$DRYRUN_FAKE_ROOT/packages" > "$snap/host-repo" 2>/dev/null || true
+if grep -qF 'churros: keep only GRUB modules' "$DRYRUN_FAKE_ROOT/usr/bin/mkarchiso" 2>/dev/null; then
+    echo patched > "$snap/grubmodules"
+else
+    echo unpatched > "$snap/grubmodules"
+fi
+
+find "$profile/airootfs" \( -type f -o -type l \) -printf '%m %y %P\n' | LC_ALL=C sort > "$snap/manifest"
+for sub in etc root usr/bin usr/local/bin usr/share/churros/mkinitcpio; do
+    if [ -e "$profile/airootfs/$sub" ]; then
+        mkdir -p "$snap/airootfs/$(dirname "$sub")"
+        cp -a "$profile/airootfs/$sub" "$snap/airootfs/$sub"
+    fi
+done
+
+# Lo que deja el mkarchiso real: el directorio de trabajo y la ISO.
+mkdir -p "$work_dir/$arch/airootfs" "$out_dir"
+: > "$work_dir/$arch/airootfs/.dryrun"
+: > "$out_dir/ChurrOS-dryrun-$arch.iso"
+
+case "${DRYRUN_MKARCHISO:-ok}" in
+    ok) ;;
+    fail)
+        echo "mkarchiso (prueba): fallo simulado" >&2
+        exit 1
+        ;;
+    kill) kill -KILL 0 ;;
+    int)
+        kill -INT 0
+        sleep 5
+        ;;
+    *)
+        echo "mkarchiso (prueba): DRYRUN_MKARCHISO desconocido" >&2
+        exit 2
+        ;;
+esac

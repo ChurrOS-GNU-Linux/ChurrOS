@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Keep ChurrOS XFCE on its X11 session (xfwm4 + picom).
+#
+# xfce4-session >= 4.20 ships wayland-sessions/xfce-wayland.desktop
+# ('startxfce4 --wayland'). ReGreet prefers it, and without labwc it dies with
+# "Please either install labwc or specify another compositor as argument",
+# bouncing the user back to the greeter. xfce.desktop must also run the
+# churros-xfce-session wrapper instead of a bare startxfce4.
+#
+# Both files belong to xfce4-session, so every upgrade restores them. Called
+# at live boot (desktop.sh), at install time (configure-greetd-session) and by
+# the 92-churros-xfce-x11-session pacman hook after each upgrade. Idempotent;
+# a no-op on editions without xfce4-session.
+#
+# CHURROS_SESSION_ROOT (optional) points at an alternate root; ./churros check
+# uses it to run this script against a fixture.
+
+set -euo pipefail
+
+ROOT="${CHURROS_SESSION_ROOT:-}"
+WAYLAND_SESSION="$ROOT/usr/share/wayland-sessions/xfce-wayland.desktop"
+X11_SESSION="$ROOT/usr/share/xsessions/xfce.desktop"
+SESSION_CMD=/usr/bin/churros-xfce-session
+
+rm -f "$WAYLAND_SESSION"
+
+if [ -f "$X11_SESSION" ]; then
+    sed -i "s|^Exec=.*|Exec=$SESSION_CMD|" "$X11_SESSION"
+fi

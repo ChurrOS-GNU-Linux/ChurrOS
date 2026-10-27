@@ -297,13 +297,17 @@ impl MakoConfig {
         write_atomic(&lines);
     }
 
-    /// makoctl reload
+    /// makoctl reload. Sin Mako no se lanza: `spawn` sin `wait` deja un
+    /// zombi, y con Noctalia el daemon ni siquiera está.
     pub fn reload() {
+        if !churros_services::noctalia::uses_mako() {
+            return;
+        }
         let _ = Command::new("makoctl")
             .args(["reload"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     pub fn apply_pywal(colors: &serde_json::Map<String, serde_json::Value>, special: &serde_json::Map<String, serde_json::Value>) {

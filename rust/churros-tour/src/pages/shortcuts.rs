@@ -7,21 +7,7 @@ pub fn build() -> gtk::Box {
 
     let ed = churros_services::version::edition();
 
-    let (title, description, shortcuts) = if ed == "kde" {
-        (
-            "Atajos de Teclado (KDE Plasma)",
-            "Conoce los atajos más importantes para moverte rápido por ChurrOS KDE:",
-            vec![
-                ("Super", "Abrir menú de aplicaciones (Kickoff)"),
-                ("Super + T", "Abrir Terminal (Konsole)"),
-                ("Super + E", "Abrir Archivos (Dolphin)"),
-                ("Super + Q / Alt + F4", "Cerrar ventana actual"),
-                ("Super + Flechas", "Ajustar / Posicionar ventana"),
-                ("Alt + Tab", "Cambiar de ventana"),
-                ("Super + L", "Bloquear pantalla"),
-            ],
-        )
-    } else if ed == "xfce" || ed == "server" {
+    let (title, description, shortcuts) = if ed == "xfce" || ed == "server" {
         (
             "Atajos de Teclado (Xfce)",
             "Conoce los atajos más importantes para moverte rápido por ChurrOS:",

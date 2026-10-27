@@ -13,10 +13,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: polkit-${{ github.ref }}
+  # En main los push se encolan. Solo un PR nuevo cancela la ejecución anterior.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   pkexec:
     name: pkexec + polkitd (Arch)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container: archlinux:latest
 
     steps:

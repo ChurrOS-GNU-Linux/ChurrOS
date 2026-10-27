@@ -5,19 +5,28 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Arguments are passed separately: never interpolate packages or paths into shell code.
-// Keep the package manager's exit status even after displaying the error / reading Enter.
+// Keep the package manager's exit status even after displaying the error.
 pub const INSTALL_SCRIPT: &str = r#"
 report=$1
 shift
-yay -Syu --needed -- "$@"
+exec </dev/null
+
+if [ ! -f /var/lib/pacman/sync/core.db ] || [ ! -f /var/lib/pacman/sync/extra.db ]; then
+    sudo -n pacman -Sy --noconfirm >/dev/null 2>&1 || true
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+    sudo -n pacman -S --needed --noconfirm git >/dev/null 2>&1 || true
+fi
+
+for pkg in "$@"; do
+    if [ "$pkg" = "google-chrome" ]; then
+        gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys 4EB27DBFB8E3B61F >/dev/null 2>&1 || true
+    fi
+done
+yay -S --needed --noconfirm --mflags "--skippgpcheck" --answerclean None --answerdiff None -- "$@"
 status=$?
 printf '%s\n' "$status" > "$report" || exit 125
-if [ "$status" -eq 0 ]; then
-    printf '\n[ChurrOS] ¡Instalación completada con éxito!\n'
-else
-    printf '\n[ChurrOS] Ocurrió un error (código %s). Presiona Enter para cerrar.\n' "$status"
-    read -r answer
-fi
 exit "$status"
 "#;
 
@@ -144,7 +153,7 @@ mod tests {
             assert_eq!(report.succeeded(), code == 0);
             assert_eq!(
                 std::fs::read_to_string(&args_file).unwrap(),
-                "-Syu\n--needed\n--\nfirefox\nobs-studio\n"
+                "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\nobs-studio\n"
             );
         }
         std::fs::remove_file(yay).unwrap();

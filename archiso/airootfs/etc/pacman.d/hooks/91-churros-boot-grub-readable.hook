@@ -3,6 +3,7 @@ Operation = Install
 Operation = Upgrade
 Type = Path
 Target = usr/lib/modules/*/vmlinuz
+Target = boot/Image
 Target = boot/vmlinuz-*
 Target = boot/initramfs-*.img
 Target = boot/*-ucode.img

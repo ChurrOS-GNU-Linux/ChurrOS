@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Plasma needs the native application for its KCM pages. Other editions keep
-# the existing shortcut to ChurrOS settings.
-if [ "$(tr -d '[:space:]' < /etc/churros-edition 2>/dev/null)" = "kde" ]; then
-    exec /usr/bin/systemsettings "$@"
-fi
-exec /usr/bin/churros-settings "$@"

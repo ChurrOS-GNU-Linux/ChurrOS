@@ -221,7 +221,8 @@ fn extract_value(content: &str, block_path: &[&str], key: &str) -> Option<String
 }
 
 /// str(float) estilo Python: 2.0 -> "2.0", 1.2 -> "1.2", 0.05 -> "0.05"
-fn py_float_str(v: f64) -> String {
+/// (siempre decimal: niri rechaza un entero donde espera f64).
+pub(crate) fn py_float_str(v: f64) -> String {
     if v.fract() == 0.0 {
         format!("{v:.1}")
     } else {
@@ -265,7 +266,7 @@ impl NiriConfig {
             .args(["msg", "action", "load-config-file"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .status();
     }
 
     // -------------------------------------------------------- Animations

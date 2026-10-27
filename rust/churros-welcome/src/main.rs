@@ -156,6 +156,13 @@ fn activate(app: &gtk::Application) {
     window.set_child(Some(&scroller));
 
     window.present();
+
+    // Liberar memoria inicial no utilizada del heap de GTK4 de vuelta al sistema operativo
+    glib::idle_add_local_once(|| {
+        unsafe {
+            libc::malloc_trim(0);
+        }
+    });
 }
 
 fn main() -> glib::ExitCode {
@@ -166,9 +173,17 @@ fn main() -> glib::ExitCode {
     // Si se pasa --live-only, la app solo debe iniciar en el entorno Live.
     // En un sistema ya instalado no debe autoiniciar al entrar a la sesión.
     let live_only = std::env::args().any(|arg| arg == "--live-only");
+    let force = std::env::args().any(|arg| arg == "--force" || arg == "-f");
     let is_live = std::path::Path::new("/run/archiso").exists();
     let is_dev = std::env::var("CHURROS_DEV").is_ok();
     if live_only && !is_live && !is_dev {
+        return glib::ExitCode::SUCCESS;
+    }
+
+    // En sistema instalado, si el usuario desmarcó 'Mostrar al inicio', no consumir RAM en boot
+    let home = churros_services::home_dir();
+    let no_welcome = std::path::PathBuf::from(home).join(".config/churros/no-welcome");
+    if !is_live && !is_dev && !force && no_welcome.exists() {
         return glib::ExitCode::SUCCESS;
     }
 
@@ -178,5 +193,7 @@ fn main() -> glib::ExitCode {
 
     app.connect_activate(activate);
 
-    app.run()
+    // argv ya se leyó arriba: GApplication no conoce --live-only y saldría con 1.
+    app.run_with_args(&[] as &[&str])
 }
+

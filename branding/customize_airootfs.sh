@@ -18,8 +18,12 @@ cp /root/branding/files/motd /etc/motd
 
 if [ -f /root/branding/VERSION ] && [ -f /root/branding/stamp-os-release.sh ]; then
     ver=$(tr -d '[:space:]' < /root/branding/VERSION)
-    bash /root/branding/stamp-os-release.sh /etc/os-release "$ver"
-    bash /root/branding/stamp-os-release.sh /usr/lib/os-release "$ver"
+    ed="niri"
+    if [ -f /etc/churros-edition ]; then
+        ed=$(tr -d '[:space:]' < /etc/churros-edition | tr '[:upper:]' '[:lower:]')
+    fi
+    bash /root/branding/stamp-os-release.sh /etc/os-release "$ver" "$ed"
+    bash /root/branding/stamp-os-release.sh /usr/lib/os-release "$ver" "$ed"
 fi
 
 chmod 644 /etc/os-release
@@ -70,12 +74,22 @@ echo "Configuring desktop..."
 bash /root/scripts/desktop.sh
 
 echo "Installing Calamares..."
-if ls /root/packages/calamares-[0-9]*.pkg.tar.zst 1>/dev/null 2>&1; then
+calamares_pkg=""
+shopt -s nullglob
+for calamares_candidate in /root/packages/calamares-[0-9]*.pkg.tar.*; do
+    case "$calamares_candidate" in
+        *.sig) continue ;;
+    esac
+    calamares_pkg="$calamares_candidate"
+    break
+done
+shopt -u nullglob
+if [ -n "$calamares_pkg" ]; then
     pacman -Scc --noconfirm 2>/dev/null || true
 
-    bsdtar -xf /root/packages/calamares-*.pkg.tar.zst -C /
+    bsdtar -xf "$calamares_pkg" -C /
 
-    rm -f /root/packages/calamares-*.pkg.tar.zst
+    rm -f /root/packages/calamares-[0-9]*.pkg.tar.* /root/packages/calamares-debug-*.pkg.tar.*
 
     cat > /usr/share/applications/calamares.desktop << 'DESKTOP'
 [Desktop Entry]
@@ -105,12 +119,83 @@ else
 fi
 
 echo "Installing Bazaar..."
-# Bazaar se instala desde packages.x86_64 via pacstrap (repo local [churros],
-# patcheado para fix de libdex). Ya no se usa bsdtar.
+# Bazaar se instala desde la lista de paquetes del perfil (packages.<arch>) vía pacstrap, desde el repo local [churros], patcheado para fix de libdex. Ya no se usa bsdtar.
 
-if ls /root/packages/*.pkg.tar.zst 1>/dev/null 2>&1; then
+if compgen -G '/root/packages/*.pkg.tar.*' >/dev/null; then
     echo "  (paquetes del repo local quedan en /root/packages para Calamares/netinstall)"
 fi
+
+# linux-aarch64 instala /boot/Image. mkarchiso, justo después de este
+# script, copia /boot/vmlinuz-* al arranque de la ISO. Sin esta copia el
+# glob falla y la ISO no arranca. Se mira el fichero y no uname: dentro de
+# qemu-user, uname a veces sigue diciendo la arquitectura del host.
+#
+# linux-aarch64 posee /etc/mkinitcpio.d/linux-aarch64.preset y no es un
+# backup: si el fichero ya está, pacstrap aborta. Se copia después, desde
+# /usr/share/churros, se regenera el initramfs (ALL_kver=/boot/Image,
+# initramfs-linux.img) y se publica como initramfs-linux-aarch64.img.
+if [ -f /boot/Image ]; then
+    echo "Installing aarch64 mkinitcpio preset..."
+    a64_preset=/usr/share/churros/mkinitcpio/aarch64/linux-aarch64.preset
+    a64_hooks=/usr/share/churros/mkinitcpio/aarch64/archiso.conf
+    if [ ! -f "$a64_preset" ] || [ ! -f "$a64_hooks" ]; then
+        printf 'customize_airootfs: missing aarch64 mkinitcpio files\n' >&2
+        exit 1
+    fi
+    install -D -m 644 "$a64_hooks" /etc/mkinitcpio.conf.d/archiso.conf
+    install -D -m 644 "$a64_preset" /etc/mkinitcpio.d/linux-aarch64.preset
+    rm -f /etc/mkinitcpio.d/linux.preset
+    mkinitcpio -p linux-aarch64
+    echo "Publishing aarch64 kernel names..."
+    /usr/share/churros/scripts/publish-aarch64-kernel --require
+fi
+
+if [ -f /boot/vmlinuz-linux-churrosvyper ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-churrosvyper-fallback.img
+    if [ -f /etc/mkinitcpio.d/linux-churrosvyper.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-churrosvyper.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-churrosvyper.preset
+# mkinitcpio preset file for the 'linux-churrosvyper' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-churrosvyper'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-churrosvyper.img"
+EOF
+            mkinitcpio -p linux-churrosvyper
+        fi
+    fi
+    # Relative links: mkarchiso copies /boot out of the chroot with cp -a and
+    # then install resolves them on the build host, where an absolute target
+    # is the host's own /boot (missing in CI; the host's kernel elsewhere).
+    ln -sfn vmlinuz-linux-churrosvyper /boot/vmlinuz-linux
+    if [ -f /boot/initramfs-linux-churrosvyper.img ]; then
+        ln -sfn initramfs-linux-churrosvyper.img /boot/initramfs-linux.img
+    fi
+elif [ -f /boot/vmlinuz-linux-cachyos ]; then
+    rm -f /etc/mkinitcpio.d/linux.preset
+    rm -f /boot/initramfs-linux-cachyos-fallback.img
+    if [ -f /etc/mkinitcpio.d/linux-cachyos.preset ]; then
+        if ! grep -q "PRESETS=('archiso')" /etc/mkinitcpio.d/linux-cachyos.preset 2>/dev/null; then
+            cat <<'EOF' > /etc/mkinitcpio.d/linux-cachyos.preset
+# mkinitcpio preset file for the 'linux-cachyos' package on archiso
+PRESETS=('archiso')
+ALL_kver='/boot/vmlinuz-linux-cachyos'
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux-cachyos.img"
+EOF
+            mkinitcpio -p linux-cachyos
+        fi
+    fi
+    # Relative links: mkarchiso copies /boot out of the chroot with cp -a and
+    # then install resolves them on the build host, where an absolute target
+    # is the host's own /boot (missing in CI; the host's kernel elsewhere).
+    ln -sfn vmlinuz-linux-cachyos /boot/vmlinuz-linux
+    if [ -f /boot/initramfs-linux-cachyos.img ]; then
+        ln -sfn initramfs-linux-cachyos.img /boot/initramfs-linux.img
+    fi
+fi
+
 
 echo "Cleaning..."
 bash /root/scripts/cleanup.sh

@@ -1,7 +1,8 @@
 [package]
 name = "churros-settings"
-version = "1.2.0"
+version = "1.4.0"
 edition = "2024"
+license.workspace = true
 description = "ChurrOS Preferences (centro de configuración) — port Rust de preferences/"
 
 [package.metadata.churros]
@@ -9,7 +10,7 @@ description = "ChurrOS Preferences (centro de configuración) — port Rust de p
 deploy = true
 
 [dependencies]
-adw = { version = "0.9.2", package = "libadwaita" }
+adw = { version = "0.9.2", package = "libadwaita", features = ["v1_5"] }
 churros-services = { path = "../services" }
 gio = "0.22.8"
 glib = "0.22.8"

@@ -10,7 +10,7 @@ ChurrOS está en etapa temprana de desarrollo. Solo se consideran reportes de se
 
 Usar uno de estos canales **privados**, en este orden de preferencia:
 
-1. **[Advisory de seguridad privado en GitHub](https://github.com/Hoyuse/ChurrOS/security/advisories/new)** — opción recomendada cuando esté habilitada en el repositorio.
+1. **[Advisory de seguridad privado en GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/security/advisories/new)** — opción recomendada cuando esté habilitada en el repositorio.
 2. **Mensaje privado a un administrador** en el [servidor de Discord de ChurrOS](https://discord.gg/4nAJbbzvd): entrar al servidor y contactar por DM a un admin/moderador indicando que se trata de un asunto de seguridad. No pegar detalles sensibles en canales públicos; el admin pedirá lo necesario por privado.
 3. **Mensaje privado a [@Hoyuse](https://github.com/Hoyuse)** en GitHub.
 

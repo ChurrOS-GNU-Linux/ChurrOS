@@ -27,6 +27,13 @@ mkdir -p "$CALAMARES_DST/modules"
 cp "$CALAMARES_SRC/modules/"*.conf "$CALAMARES_DST/modules/"
 cp "$CALAMARES_SRC/modules/"*.yaml "$CALAMARES_DST/modules/"
 
+# Variantes por arquitectura (unpackfs, fix-boot, pacman-init) encima de las
+# comunes. build.sh pasa CHURROS_ARCH; sin ella, la del equipo.
+CALAMARES_ARCH="${CHURROS_ARCH:-$(uname -m)}"
+if [ -d "$CALAMARES_SRC/modules/$CALAMARES_ARCH" ]; then
+    cp "$CALAMARES_SRC/modules/$CALAMARES_ARCH/"*.conf "$CALAMARES_DST/modules/"
+fi
+
 echo "  Calamares config applied."
 echo
 echo "======================================"

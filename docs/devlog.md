@@ -1,5 +1,77 @@
 # Devlog
 
+Registro del desarrollo, de lo más reciente a lo más antiguo. Cada entrada describe el estado en su fecha; algunas indican entre paréntesis lo que cambió después. Lo que hace hoy cada pieza está en el resto de la [documentación](README.md).
+
+## 2026-10-25 — ChurrOS 1.4
+
+Release pública **v1.4** (tag `v1.4`; ISOs Niri y XFCE en download.churroslinux.org). Instalación en segundo plano de paquetes en ChurrOS Tour y alineación integral de versión:
+
+- **Instalación desatendida en ChurrOS Tour**: descarga e instalación en segundo plano de paquetes y aplicaciones (incluyendo soporte AUR/yay y paquetes de pacman), visualizando barras de progreso en tiempo real por paquete sin necesidad de abrir terminales interactivas ni requerir contraseñas repetidas.
+- **Alineación de versión 1.4**: Sincronización de `VERSION`, todos los crates de Rust a `1.4.0` con `Cargo.lock` actualizado, `/etc/churros-version`, Fastfetch branding, Calamares installer (`branding.desc`) y manifiestos de actualización.
+- **Comprobaciones y estabilidad**: Suite de tests estáticos, validación de mutaciones y comprobaciones de empaquetado 100% en verde.
+
+---
+
+## 2026-10-16 — El repositorio pasa a la organización ChurrOS-GNU-Linux
+
+Las URL del repositorio en el código, la documentación y el branding apuntan a `github.com/ChurrOS-GNU-Linux/ChurrOS` (20bf066, PR #176).
+
+---
+
+## 2026-10-14 — Se retira la edición KDE Plasma
+
+a5d8edb quita la edición KDE Plasma que había entrado el 2026-10-01 (PR #102): `archiso/packages.kde.x86_64`, sus scripts de integración y de prueba, `docs/auditoria-kde-2026-10-04.md` y las referencias a KDE en las apps Rust, el instalador, los scripts de build y del Live y la documentación (55 ficheros, unas mil líneas). Ese commit entró directamente en `main`, sin PR.
+
+---
+
+## 2026-10-12 — ChurrOS 1.3
+
+Release pública **v1.3** (tag `v1.3`; ISOs Niri y XFCE en download.churroslinux.org, sin GitHub Release). Estabilidad del sistema, resolución de dependencias para gaming/AUR y actualización integral de la suite oficial:
+
+- **Dependencias para el tour**: la lista de la edición Niri x86_64 (`packages.x86_64`) añade `base-devel` para compilación de paquetes AUR (`google-chrome`, `brave-bin`, etc.) y soporte gráfico multilib (`lib32-mesa`, `vulkan-icd-loader`, `lib32-vulkan-icd-loader`) para compatibilidad completa con Steam.
+- **Alineación de versión 1.3**: Sincronización de `VERSION`, crates de Rust a `1.3.0`, `/etc/churros-version`, Fastfetch branding, Calamares installer (`branding.desc`) y manifiestos de actualización OTA.
+- **Kernel**: se mantiene el kernel `linux` de Arch.
+
+---
+
+## 2026-10-10 — Bucle de login en XFCE instalado (vuelve al greeter)
+
+- **El problema:** En el sistema instalado de la edición XFCE, al iniciar sesión (sobre todo sin inicio automático, desde ReGreet) el escritorio parecía arrancar y volvía al greeter en bucle.
+- **La causa:** El parche de `xfce.desktop` (`Exec=churros-xfce-session`) vivía solo en `desktop.sh`, que se ejecuta en el Live; el sistema instalado se copia del squashfs y conservaba el `Exec=startxfce4` del paquete, más `xfce-wayland.desktop` (que exige `labwc`). ReGreet lanza `xsessions/*.desktop` como `startx /usr/bin/env <Exec>`, sin el wrapper ni `vt`/`-keeptty`. Además el inicio automático escribía `/usr/bin/startxfce4` en `[initial_session]`, otra vez sin wrapper. Para greetd, un Xorg que se desconecta del TTY es una sesión terminada.
+- **La solución:** `edition-session.sh` y `build.sh` usan `/usr/bin/churros-xfce-session` como sesión XFCE. `configure-greetd-session` ejecuta `fix-xfce-sessions` al instalar (quita la sesión Wayland y reescribe `Exec`), y el hook `92-churros-xfce-x11-session` lo reaplica tras cada `pacman -Syu`. El wrapper resuelve su ruta absoluta (startx descarta rutas relativas y cae a `xterm`), detecta si ya hay un X en marcha (caso ReGreet) y, si no, lanza `startx` con `vt$XDG_VTNR -keeptty`. Commit 3ae0651, fusionado con el PR #175.
+- **Sin verificar en arranque real:** solo `./churros check`; falta probarlo instalando la ISO en QEMU.
+
+---
+
+## 2026-10-09 a 2026-10-11 — aarch64 en contenedor, Raspberry Pi Lite e i686
+
+- La ISO aarch64 se construye dentro de un contenedor Arch Linux ARM (`Containerfile.aarch64`, `./churros build --container --arch arm64`): 2ee113e, PR #171.
+- Nueva edición experimental Raspberry Pi Lite (`--edition pi`, aarch64, sesión labwc): 656c73e, PR #174.
+- Port experimental i686 sobre Arch Linux 32, sin Niri, Noctalia ni Calamares: 7a9933f, PR #173 (fusionado el 2026-10-11).
+
+---
+
+## 2026-10-08 — Noctalia v5 desde [extra]
+
+`noctalia-qs` 0.0.12 (AUR) ya no compila con Qt 6.12 y rompía `./churros build`. La edición Niri pasa al paquete `noctalia` 5.2.1 de `[extra]`, también disponible en Arch Linux ARM: Noctalia v5, escrita en C++ sin Qt ni Quickshell. La v5 no lee el `settings.json` de la v4.
+
+**Shell**
+
+- Niri arranca `noctalia` en lugar de `qs -c noctalia-shell` y abre flotante la ventana de ajustes de Noctalia (`dev.noctalia.Noctalia`). Este cambio no toca los atajos; el mismo día, ecdf0df (PR #170, fusionado el 2026-10-09) llevó `Mod+Space` al lanzador de Noctalia y `Mod+C` a su centro de control, pasó Fuzzel a `Mod+Shift+Space` y quitó los atajos `Mod+Shift+N/A/B/L/T` de `churros-popup`.
+- `~/.config/noctalia/config.toml` (skel y `usr/share/churros/defaults/noctalia/`) sustituye a `settings.json` con los mismos ajustes donde hay equivalente: barra, dock, menú de sesión sin hibernar, idle 600/660/28800 s, notificaciones y OSD arriba a la derecha, colores desde el wallpaper, sin clima, geolocalización, telemetría ni sonidos. `polkit-gnome` sigue siendo el agente de polkit.
+- En el Live, `desktop.sh` permite desbloquear con la contraseña vacía (`live.toml`), porque el usuario `churros` no tiene contraseña y la v5 ignora ese Enter.
+- `churros-apply-wallpaper` y el cambio de tema de `churros-settings` avisan a Noctalia (`noctalia msg wallpaper-set` / `theme-mode-set`), que pinta su fondo encima de swaybg y reescribe el `color-scheme` de GNOME al arrancar.
+- "Restaurar valores por defecto" vacía `~/.local/state/noctalia/settings.toml` y repone `config.toml` en su sitio (conserva `live.toml`): la v5 no ve borrados ni carpetas recreadas.
+- Instalaciones de desarrollo con la v4: `sudo pacman -S noctalia && sudo pacman -Rns noctalia-shell noctalia-qs`, y restaurar los valores por defecto o cambiar el autostart de Niri a mano.
+
+**Construcción**
+
+- `build-aur.sh` deja de compilar `noctalia-qs` y `noctalia-shell`; `build.sh` ya no los exige y retira los que hayan quedado en `archiso/packages/` y en `churros.db`.
+- `packages.x86_64` cambia `noctalia-shell`, `noctalia-qs`, `qt6-multimedia` y `cliphist` por `noctalia`; `packages.aarch64` gana `noctalia`.
+- `./churros check` ya no da por bueno el binario `qs`.
+
+---
+
 ## 2026-10-06 — Polkit con las claves reales de pkexec; actualizador endurecido
 
 **Seguridad**
@@ -8,11 +80,11 @@
 - La allowlist pasa a ser de argv exacto por programa y se limita a los llamadores reales: sin contraseña solo `churros-snapshot list --json` / `create manual` y `timedatectl set-timezone` / `set-ntp`; con contraseña recordada (`auth_admin_keep`) las actualizaciones, `churros-snapshot delete` y `churros-write-root-config`. Salen `yay`, `paru`, `churros-theme` y el resto de operaciones de pacman y flatpak. Tabla en [`docs/privileged-execution.md`](privileged-execution.md#tabla-de-decisiones).
 - `churros-pkexec` hace `exec pkexec` para que la contraseña recordada sirva entre pasos, y los llamadores pasan rutas absolutas.
 - `churros-write-root-config` recibe operaciones acotadas (`greetd-autologin on|off`, `lightdm-autologin on|off`, `regreet-wallpaper`, `regreet-greeting`) en vez del fichero entero. El usuario sale de `PKEXEC_UID` y la sesión de la edición, con la tabla que comparte con la instalación (`edition-session.sh`); el autologin de Niri vuelve a pasar por `churros-niri-session`.
-- `churros-update-utils` instala fichero a fichero y ya no deja `/` en 0700 (#130), verifica la firma después de descargar el manifiesto (#139) y solo acepta `churros-*` en `usr/bin` y `usr/local/bin`, `usr/share/churros/` y tres ficheros de `etc`.
+- `churros-update-utils` instala fichero a fichero y ya no deja `/` en 0700 (#130), verifica la firma minisign del manifiesto si hay clave pública (#139; hoy no se publica ninguna clave, así que solo avisa) y solo acepta `churros-*` en `usr/bin` y `usr/local/bin`, `usr/share/churros/` y tres ficheros de `etc`.
 
 **Ajustes**
 
-- Buscar actualizaciones usa `checkupdates` (nuevo `pacman-contrib` + `fakeroot` en las cuatro ediciones) en vez de `pkexec pacman -Sy`, y la página distingue "no se pudo comprobar" de "0 actualizaciones" o "al día" (#137).
+- Buscar actualizaciones usa `checkupdates` (nuevo `pacman-contrib` + `fakeroot` en las cuatro ediciones x86_64 de entonces: Niri, XFCE, KDE y servidor) en vez de `pkexec pacman -Sy`, y la página distingue "no se pudo comprobar" de "0 actualizaciones" o "al día" (#137).
 
 **CI**
 
@@ -27,6 +99,8 @@
 - Idle/lock propio de Noctalia activado (`lockOnSuspend` ya estaba; `~/.config/noctalia/settings.json` ahora define timeouts 600/660/1800 s). swayidle no se autoarranca en Niri, así que no hay conflicto.
 - Tarjeta de brillo habilitada en el control center y `launcherUseDistroLogo: true` en el dock.
 - Copia idéntica en `etc/skel` y `usr/share/churros/defaults/noctalia/`.
+
+---
 
 ## 2026-10-05 — Noctalia Shell como shell del escritorio Niri
 
@@ -53,13 +127,13 @@ Trabajo integrado en `main`, todavía sin número de versión.
 
 **Ediciones**
 
-- **KDE Plasma**: tercera edición de escritorio, con su propia lista de paquetes (`archiso/packages.kde.x86_64`) y sesión Wayland nativa. Detalle en [`docs/desktop-config.md`](desktop-config.md).
+- **KDE Plasma**: tercera edición de escritorio, con su propia lista de paquetes (`archiso/packages.kde.x86_64`) y sesión Wayland nativa. Se retiró el 2026-10-14 (ver esa entrada).
 
 **Seguridad**
 
 - La regla de polkit pasa a ser una allowlist estricta: se autoriza por ruta absoluta exacta, nunca por basename ni comodín, y se rechazan las opciones que convierten una utilidad en vector de escalada (`--hookdir`, `--config`, `--dbpath`, `--root`).
 - `churros-pkexec` deja de estar autorizado: reenvía argumentos libres a `pkexec` y anularía la allowlist entera.
-- El actualizador fija la URL de descarga a `https://download.churroslinux.org/churros/` y solo admite otro espejo con `CHURROS_UPDATE_ALLOW_MIRROR=1` y base `https`. El JSON de actualizaciones se parsea sin `unwrap`.
+- El actualizador fija la URL de descarga a `https://download.churroslinux.org/churros/` y solo admite otro espejo con `CHURROS_UPDATE_ALLOW_MIRROR=1` y una base `https` en `CHURROS_UPDATE_BASE_URL` (el helper root `churros-update-utils` tiene el origen fijado desde el 2026-09-30, 97a9494, y no admite espejos: esas variables solo cambian la URL que consulta `churros-settings` para comprobar versiones). El JSON de actualizaciones se parsea sin `unwrap`.
 - El instalador deja de arrastrar la configuración SSH del Live: `shellprocess@post-install` borra `/etc/ssh/sshd_config.d/10-archiso.conf` y las claves de host.
 - `churros-welcome` lanza las acciones sin shell: pasa el `Exec` del `.desktop` como `argv` a `execvp` y solo si el binario está en su lista de permitidos.
 - Nuevo documento [`docs/privileged-execution.md`](privileged-execution.md): modelo, allowlist y checklist para añadir helpers.
@@ -67,11 +141,11 @@ Trabajo integrado en `main`, todavía sin número de versión.
 **Apps**
 
 - `churros-welcome`: `AdwToolbarView` con `AdwClamp`, tarjeta de información del sistema y 17 tests sobre los parsers que leen `/proc` y `/etc/os-release`.
-- `MAINTAINERS`: cada área del repositorio tiene una persona responsable.
+- `MAINTAINERS`: primera asignación de responsables por área, deducida del historial de commits y no acordada con los interesados (lo dice el propio fichero).
 
 **Construcción**
 
-- `rust` y `cargo` salen de la ISO de niri y de XFCE: solo hacen falta en el host, durante la construcción.
+- `rust` y `cargo` salen de las ISO x86_64 de niri y de XFCE: solo hacen falta en el host, durante la construcción (la lista aarch64 todavía incluye `rust`).
 - La fuente Nerd Font se sustituye por `JetBrains Mono` + `Symbols Nerd Font Mono`, que es lo que usan los iconos.
 
 **Correcciones**
@@ -81,9 +155,36 @@ Trabajo integrado en `main`, todavía sin número de versión.
 
 ---
 
+## 2026-09-28 a 2026-09-30 — XFCE: sesión X11 desde greetd, ratón y autostart del tour
+
+Trabajo añadido después a la entrada del 2026-09-22; se separa con sus fechas.
+
+### Solución a Crash de Sesión X11 (XFCE) en Greetd
+- **`churros-xfce-session`**: Se ha creado un script contenedor en `/usr/bin/churros-xfce-session` que se encarga de lanzar de manera correcta el entorno XFCE desde el Display Manager (Regreet/Greetd). Este contenedor ejecuta `startx /usr/bin/startxfce4` de forma condicional si no se detecta el entorno de visualización, logrando que el servidor Xorg asigne apropiadamente el TTY mediante `systemd-logind` y se resuelva el crasheo que devolvía al usuario a la pantalla de login.
+- Integración en `desktop.sh`: Se ha automatizado la inyección en `/usr/share/xsessions/xfce.desktop` para usar este wrapper en entornos X11. (Desde el 2026-10-10 lo hace `fix-xfce-sessions`, que llaman `desktop.sh` en el Live, `configure-greetd-session` al instalar y el hook `92-churros-xfce-x11-session` tras cada actualización.)
+
+### Autostart Condicional de ChurrOS Tour
+- Para el entorno **Niri**, se ha incluido un `spawn-sh-at-startup` en `config.kdl` que invoca `churros-tour` condicionalmente solo si existe el archivo `~/.config/autostart/churros-tour.desktop`.
+- Para el entorno **XFCE**, este mecanismo ya funciona de forma nativa a través de los directorios de autostart del estándar XDG.
+- Se ha expuesto `churros-tour` en `/usr/share/applications/churros-tour.desktop` para que sea visible en cualquier lanzador o menú, y se ha limpiado su binario de desarrollo compilado que había entrado en caché del repositorio.
+
+### Corrección de Cursor de Ratón en Entorno XFCE (Hardware Real)
+- **El problema:** Al acceder a XFCE desde una instalación física, el ratón no aparecía ni respondía. Xorg necesita un driver de entrada (`xf86-input-libinput`) para leer el ratón y el teclado, con cualquier gestor de pantalla; las sesiones Wayland no lo necesitan porque el compositor usa libinput directamente.
+- **La solución:** Se ha añadido el paquete `xf86-input-libinput` a la lista de paquetes requeridos (`packages.xfce.x86_64`), permitiendo que Xorg detecte correctamente los periféricos en hardware físico. (Hoy el paquete `xorg-server` de Arch ya depende de `xf86-input-libinput`, así que se instala aunque no figure en la lista.)
+
+### Falsa detección de Wayland en XFCE (Error de labwc)
+- **El problema:** En las últimas versiones, el script `startxfce4` comprueba la existencia de la variable `WAYLAND_DISPLAY`. Greetd/Regreet dejaban un residuo de esta variable en la sesión tras cerrar `cage` (su propio entorno Wayland). Como resultado, XFCE creía que debía arrancar una sesión nativa en Wayland e intentaba lanzar el compositor `labwc`, abortando el arranque de Xorg.
+- **La solución:** Se ha inyectado un `unset WAYLAND_DISPLAY` en `churros-xfce-session` para limpiar el entorno residual heredado del greeter y forzar siempre un entorno X11 robusto para XFCE. (Nota: los errores de `libseat` mostrados en log son inofensivos; simplemente indican el *fallback* seguro a `systemd-logind`).
+
+### Solución a Crash de Xorg (Recursive xinit)
+- **El problema:** Tras corregir el error del DRM con `sleep 1`, persistía una pantalla negra que devolvía a Greetd. Al ejecutar `unset DISPLAY` globalmente al inicio del wrapper, se borraba la variable `$DISPLAY` inyectada por Xorg en la sesión cliente. Como resultado, `startxfce4` creía que no había un servidor gráfico activo y lanzaba `xinit` por segunda vez dentro del propio `xinit`, colapsando inmediatamente.
+- **La solución:** Se ha reubicado el `unset DISPLAY` y `unset WAYLAND_DISPLAY` para que solo afecten al proceso padre (Greetd) y no al proceso hijo (la sesión X11 iniciada con `--xinit`). De esta forma, `startxfce4` reconoce `$DISPLAY=:0` correctamente.
+
+---
+
 ## 2026-09-23 — ChurrOS 1.2
 
-Release pública **v1.2**. Optimizaciones de rendimiento, rediseño de UI y mejoras de conectividad y audio:
+Release pública **v1.2** (sin tag git; ISOs Niri y XFCE del 2026-09-24 en download.churroslinux.org). Optimizaciones de rendimiento, rediseño de UI y mejoras de conectividad y audio:
 
 - **Control Center ultrarrápido**: Carga instantánea de estado de red, bluetooth y audio mediante lecturas paralelas en hilos en segundo plano (<20ms).
 - **Wi-Fi en tiempo real**: Monitoreo dinámico de tasa de transferencia (tasa de enlace actual y velocidad de tráfico en Mbps / KB/s en vivo vía `/proc/net/dev`).
@@ -94,9 +195,94 @@ Release pública **v1.2**. Optimizaciones de rendimiento, rediseño de UI y mejo
 
 ---
 
+## 2026-09-22 — Pre-flight Checks de Build, Saneamiento de Rust Workspace y Diagnósticos KVM en CLI
+
+### Pre-flight Checks Tempranos en Build y Doctor
+- **`scripts/cli/build.sh`**:
+  - Implementada comprobación pre-flight antes del paso 0 que valida la presencia de dependencias críticas en el host (`mkarchiso`, `mksquashfs`, `xorriso`, `grub-mkstandalone`, `mkfs.fat`, `mcopy`, `mmd`). Si falta alguna herramienta requerida para generar la imagen UEFI, el script aborta en menos de 1 segundo indicando el paquete faltante exacto y el comando de instalación, en lugar de pasar minutos compilando Rust para fallar al final.
+- **`scripts/cli/doctor.sh`**:
+  - Añadida verificación de herramientas de arranque UEFI (`grub`, `dosfstools`, `mtools`).
+  - Mapeo de cada comando al nombre del paquete Arch correspondiente (`pkgconf`, `gettext`, `libisoburn`, `squashfs-tools`, etc.).
+  - **Instalación automática/interactiva**: Cuando detecta herramientas faltantes, propone su instalación con `sudo pacman -S --needed ...` y permite confirmar interactivamente con `[S/n]` o automáticamente mediante la bandera `--install` / `-y`.
+
+### Diagnósticos de Virtualización Hardware KVM
+- **`scripts/cli/doctor.sh` y `scripts/cli/run.sh`**:
+  - Comprobación del dispositivo `/dev/kvm`, permisos del usuario actual y detección de virtualización deshabilitada en la BIOS/UEFI (`Intel Virtualization Technology` / `SVM`).
+  - `run.sh` emite advertencias claras si KVM no está habilitado y configura un fallback seguro por emulación de software (`-cpu max`, 2 hilos) para evitar que QEMU falle silenciosamente.
+
+### Saneamiento del Workspace de Rust (0 warnings)
+- Limpieza integral de 56 advertencias de compilación en `preferences`, `churros-welcome`, `control-center` y `popups`:
+  - Eliminación de imports redundantes (`gtk::prelude::*`) en 17 archivos.
+  - Corrección de variables mutables innecesarias y código muerto.
+  - Reemplazo de métodos deprecados de GTK4 (`load_from_data` → `load_from_string`).
+
+### Higiene del Repositorio y Limpieza
+- Actualizado `.gitignore` y `scripts/cli/clean.sh` para gestionar y limpiar los archivos temporales de `archiso/airootfs/` en caso de compilaciones interrumpidas.
+- Corregido aviso de ShellCheck en `scripts/cli/check.sh`.
+
+### Optimización y Carga Perezosa en Panel de Configuración (`churros-settings`)
+- **Arquitectura Lazy-Loading en `window.rs`**:
+  - En lugar de construir vorazmente las 34 páginas y subpáginas durante el arranque, se registran contenedores `gtk::Box` ligeros y se almacena la fábrica constructora en un mapa `builders`.
+  - Solo se construye en el arranque la página inicial activa (`system` o la última visitada). Todas las subpáginas y páginas secundarias se instancian bajo demanda la primera vez que se seleccionan y se conservan cacheadas en memoria.
+  - Esto reduce el tiempo de apertura de la aplicación en aproximadamente un 90% (de más de 1 segundo a unos ~100 ms).
+- **Aceleración de Consultas del Sistema y Caché**:
+  - `applications.rs`: Conteo de paquetes optimizado leyendo directamente las carpetas de `/var/lib/pacman/local` en <1 ms en lugar de lanzar el subproceso `pacman -Q` (~130 ms).
+  - `system.rs`: Caché en memoria de proceso vía `OnceLock` para `cpu`, `gpu` (evitando re-ejecutar `lspci`), `kernel` y `hostname`.
+  - `theme.rs`: Evitada la ejecución repetitiva de `gsettings` y migración de temas en cada arranque mediante un flag en caché.
+  - `style.css`: Corregida la sintaxis duplicada de offsets en `box-shadow` (`0 0 20px var(--accent-glow)`) que provocaba avisos de parseo CSS en GTK4.
+
+---
+
+## 2026-09-17 — ChurrOS 1.1
+
+Release pública **v1.1** (sin tag git). ISOs `ChurrOS-2026.09.17-x86_64-niri-1.1.iso` y `ChurrOS-2026.09.17-x86_64-xfce-1.1.iso` en download.churroslinux.org.
+
+---
+
+## 2026-08-25 — Multi-edición XFCE, App HeaderBars & Responsividad
+
+### Soporte Multi-Edición (`niri` + `xfce`)
+- Añadida bandera `--edition <niri|xfce>` al comando `./churros build`.
+- Creado `archiso/packages.xfce.x86_64` con la suite completa de XFCE 4, panel ChurrOS, xfwm4, xsettings y utilidades X11.
+- Configuración de dotfiles en `archiso/airootfs/etc/skel/.config/xfce4/` para panel, gestor de ventanas y xsettings oscuros con Adwaita/Papirus.
+- `greetd` configurado dinámicamente para autologin a `/usr/bin/startxfce4` (XFCE) o `/usr/bin/niri` (Niri). Después se sustituyó por `/usr/bin/churros-xfce-session` (ver 2026-10-10).
+- `churros-apply-wallpaper` adaptado para configurar el fondo tanto en `swaybg` como en `xfce4-desktop` vía `xfconf-query`.
+
+### Apps Rust: HeaderBars y Responsividad
+- **ChurrOS Welcome (`churros-welcome`)**:
+  - Integrada barra de título `AdwHeaderBar` con botones estándar de ventana (cerrar, maximizar, minimizar).
+  - Integrada la tarjeta de Información del Sistema (`system_card`) en el FlowBox principal, mostrando CPU, RAM, Kernel, SO, Arquitectura y Hostname directamente desde `/proc` y `/etc/os-release`.
+  - Configurado `FlowBox` responsivo (hasta 4 columnas, colapsable a 2 o 1) con desplazamiento automático en `ScrolledWindow`.
+  - Autostart compatible con XFCE (`.config/autostart/churros-welcome.desktop`).
+- **Configuración (`churros-settings`)**:
+  - Añadida barra de título `AdwHeaderBar` con controles de ventana.
+  - Integrado el botón hamburguesa en la barra de título para colapsar y expandir el menú lateral en pantallas estrechas.
+  - Filtrado condicional de páginas: en XFCE se ocultan automáticamente las subpáginas exclusivas de Niri/Waybar.
+  - Ajuste de línea automático (`wrap(true)`) en títulos y descripciones de filas.
+- **Control Center (`churros-control-center`)**:
+  - Añadido botón de cierre en cabecera y contenedor con scroll para pantallas de baja resolución.
+
+### ReGreet + Greetd: Pantalla de Login macOS, Autologin y Personalización
+- **Greeter Gráfico ReGreet + Cage**:
+  - Implementado `ReGreet` (Rust + GTK4) corriendo sobre el compositor kiosko `cage` con `WLR_NO_HARDWARE_CURSORS=1` para evitar bugs de orientación de cursor en virtual GPUs.
+  - Creado tema CSS estilo macOS Liquid Glass (`archiso/airootfs/etc/greetd/regreet.css`) con campos píldora (`border-radius: 9999px`), avatar circular, desenfoque y resplandor de foco en color acento naranja ChurrOS (`#F97316`).
+  - Terminal gráfica aislada en `VT7` para evitar la exposición de logs de arranque de la consola de systemd (`VT1`).
+- **Autenticación e Idioma**:
+  - Configurado `/etc/pam.d/greetd` con `system-local-login` para solicitar y validar la contraseña del usuario.
+  - Script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` para sincronizar automáticamente el saludo (`greeting_msg`) y formato de fecha según el idioma seleccionado en Calamares.
+  - Integración completa con el checkbox de autologin de Calamares y compatibilidad con `churros-settings` (sección *Usuarios y Login*).
+
+---
+
+## 2026-08-24 — ChurrOS 1.0
+
+Release pública **v1.0** (tag `v1.0`, commit ec04d97 "feat(rollback): snapshots btrfs + release v1.0"). ISO `ChurrOS-2026.08.24-x86_64-v1.0.iso` y torrent en download.churroslinux.org; la ISO XFCE de esta versión (`ChurrOS-2026.08.31-x86_64-1.0-xfce.iso`) salió el 2026-08-31. La GitHub Release v1.0 (2026-08-25) no lleva la ISO: solo `churros-utils-1.0.tar.zst` y `updates.json`.
+
+---
+
 ## 2026-08-17 — ChurrOS 0.7
 
-Release pública **v0.7**. ISO `ChurrOS-2026.08.17-x86_64-v0.7.iso` y torrent en download.churroslinux.org.
+Release pública **v0.7** (sin tag git). ISO `ChurrOS-2026.08.17-x86_64-v0.7.iso` y torrent en download.churroslinux.org.
 
 Incluye actualizador (pacman, Flatpak y utilidades de ChurrOS), tienda Bazaar, rediseño de popups y personalización de Waybar.
 
@@ -112,7 +298,102 @@ La ISO supera el límite de 2 GiB de GitHub: se publica partida en dos `.7z` má
 
 ---
 
+## 2026-08-07 — Preferences Brain (release v0.4.0)
+
+> Era Python, anterior a la v0.6: las rutas `.py` de esta entrada ya no existen (el código Python se borró el 2026-08-14 en 0d1eb18, al terminar el port a Rust). Las apps están ahora en `rust/`.
+
+Sesión de 60 commits centrada en madurar el panel de preferencias, eliminar bugs latentes y ampliar la cobertura de la GUI.
+
+### Selector de zona horaria integrado
+
+- `services/datetime.py` nuevo: `DatetimeService` con `get_timezone()`, `get_ntp()`, `list_timezones()` (598 zonas), `set_timezone()`/`set_ntp()` vía `churros-pkexec`.
+- `pages/datetime.py` reescrito: reloj vivo (segundo a segundo), switch NTP integrado, **selector de zona con `Gtk.SearchEntry` que filtra en vivo** y abre un `Popover` con `ListBox` de resultados (max 200 visibles). Al hacer clic, aplica via `churros-pkexec` (polkit).
+- `50-churros-store.rules` añadida autorización para `timedatectl` junto a `pacman/flatpak/yay/paru`.
+- Eliminado el flujo anterior con `fzf`+`foot`; ahora todo se hace dentro de la GUI.
+
+### Nuevas páginas
+
+- **Mako** (`pages/mako.py`) — Tipografía, colores, bordes, disposición, padding, comportamiento + reload + **toggle DND**.
+- **Backup** (`pages/backup.py`) — Exportar/importar/resetear la config de `~/.config/churros/`.
+- **Night Light** (`pages/night_light.py`) — `wlsunset` (temperatura, gamma, automático).
+- **Lock Screen** (`pages/lock_screen.py`) — `swaylock` + `swayidle`.
+- **Window Rules** (`pages/window_rules.py`) — Editor visual de `window-rule {}` blocks en KDL.
+- **Logs** (`pages/logs.py`) — Ver logs del sistema.
+- **Niri** (`pages/niri.py`) — Toggle animaciones + sliders de duración de `window-open` y `workspace-switch`.
+
+### Bugs críticos resueltos
+
+- `NiriConfig.reload()` añadido (`f19966e`). Antes 11 sitios llamaban `NiriConfig.reload()` que no existía → `AttributeError`. Ahora envía `pkill -HUP niri`.
+- `DisplayService.set_vrr()` añadido (`f19966e`). Faltaba wrapper; backend base ya lo tenía.
+- `ComboRow` reescrito como `Gtk.Box` directo (`e1c2477`). Antes heredaba de `Gtk.Button` → el button capturaba el click del dropdown. Bug manifiesto: pulsar la flecha no abría el menú.
+- `Row.set_title()` / `Row.set_subtitle()` añadidos como API pública (`f19966e`).
+- `ColorPickerRow` acepta `subtitle` kwarg (`e517f4f`). Bug rompía `do_activate()` al construir `LockScreenPage`.
+- `display_timeout.py` — `parent_page` corregido de `"power"` a `"display"` (`18ac16a`).
+- `pages/shortcuts.py` borrada (`0b9bcd5`) — duplicaba `keyboard.py` (la única página de atajos).
+- `archiso/packages/` — 9 artefactos de pacman quitados del índice (`ed7ab08`).
+- `churros-settings` sin permisos de ejecución (`65c5f95`).
+- Screen negro al cambiar wallpaper + modo oscuro (`ecd4adc`).
+- OVMF_VARS.fd copia independiente (`dea9249`).
+
+### Robustez y logs
+
+- `churros-settings` (launcher bash) blindado (`677789f`):
+  - Output redirigido a `$XDG_RUNTIME_DIR/churros-settings.log` (fallback `/tmp/churros-settings.log`).
+  - Autodetección de `WAYLAND_DISPLAY` si no exportado.
+  - Si la app falla, no aborta la sesión del usuario.
+- `main.py` blindado (`677789f`):
+  - Cada bloque crítico envuelto en try/except.
+  - Errores se loguean con stack trace completo.
+  - `_build_wallpaper` ahora no muere si el wallpaper no existe.
+
+### Apariencia reorganizada
+
+`pages/appearance.py` reorganizada en 9 grupos temáticos (`053872d`):
+
+1. Tema (claro/oscuro)
+2. Color de acento
+3. Tipos de letra
+4. Cursor
+5. Iconos
+6. Fondo de pantalla
+7. Esquinas / forma
+8. Pywal (paleta dinámica)
+9. Waybar
+
+ThemeService y AccentService tienen **hooks pywal** — cuando pywal está activo, regenera paleta desde el wallpaper.
+
+### Búsqueda mejorada
+
+- Search global con subpáginas (`36d9b7e`) — buscar "modo oscuro" salta a `Apariencia → Tema` y resalta el row correspondiente.
+- Layout responsive — sidebar narrow en pantallas estrechas.
+- Color picker entry editable — pegar hex manualmente funciona.
+
+### Atajos globales
+
+`PreferencesWindow` registra (`2d7f7bf`):
+
+| Atajo | Acción |
+|-------|--------|
+| `Ctrl+F` | Foco al search del sidebar |
+| `Ctrl+B` | Toggle sidebar narrow |
+| `Shift+Ctrl+N` | Toggle sidebar narrow (alias) |
+
+### Pulido de páginas existentes
+
+- **Power profile** — descripciones + advertencias sobre rendimiento (`6b1c8a6`).
+- **Sleep** — estado batería integrado (`6b1c8a6`).
+- **Fonts** — preview en vivo + debounce (`6b1c8a6`).
+
+### CI
+
+- `./churros check` corre en GitHub Actions (`.github/workflows/ci.yml`) en cada push a `main` y PR.
+- Verifica: bash syntax, shellcheck error level, Python syntax, duplicate entries en `packages.x86_64`, Niri autostart commands resolvibles, `msgfmt --check` en `po/*.po`, repo hygiene (no generated files tracked).
+
+---
+
 ## 2026-07-25 — Popups, Control Center, Welcome, Preferencias
+
+> Era Python, anterior a la v0.6: las rutas `.py` de esta entrada ya no existen (el código Python se borró el 2026-08-14 en 0d1eb18, al terminar el port a Rust). Las apps están ahora en `rust/`.
 
 ### Resumen
 
@@ -121,7 +402,7 @@ Sesión grande: terminadas las fases de personalización faltantes (5c, 5d), arr
 ### Bug crítico: `niri validate` fallaba y rompía el arranque del live ISO
 
 - `archiso/airootfs/etc/skel/.config/niri/config.kdl` tenía una cláusula `match app-id=r#"firefox$"# title="^Picture-in-Picture$"` que no es KDL válido (raw string literal). Cambiado a dos sentencias `match` separadas que actúan con AND semántico (cada `window-rule` aplica si todos sus `match` coinciden).
-- Conflictos de atajos: `Mod+V` estaba asignado tanto a `churros-settings` como a `toggle-window-floating`. Reorganizados:
+- Conflictos de atajos: `Mod+V` estaba asignado tanto a `churros-settings` como a `toggle-window-floating`. Reorganizados (tabla de entonces; los atajos actuales están en [desktop-config.md](desktop-config.md#atajos)):
 
 | Atajo | Acción |
 |-------|--------|
@@ -365,7 +646,7 @@ Antes mostraba cada wallpaper como un `Row` con título y subtítulo. Reescrito 
 
 Antes `preferences/i18n.py` era el único que existía; los popups lo referenciaban pero no estaba en el path. Ahora:
 
-- Copia:`archiso/airootfs/usr/share/churros/i18n.py` (idéntico a `preferences/i18n.py`).
+- Copia: `archiso/airootfs/usr/share/churros/i18n.py` (idéntico a `preferences/i18n.py`).
 - Las apps solo necesitan `churros/` en el `sys.path` para importar `i18n`.
 - `preferences/i18n.py` se mantiene para no romper imports antiguos dentro de preferences (que tienen `.` en el path).
 
@@ -373,190 +654,3 @@ Antes `preferences/i18n.py` era el único que existía; los popups lo referencia
 
 - Quitada la referencia a `churros-welcome/churros-welcome.sh` (eliminado en sesión anterior, pero la línea en profiledef seguía).
 - Permisos declarados para `/usr/bin/churros-popup` (0755), `/usr/bin/churros-control-center` (0755), `/usr/bin/churros-settings` (0755), `/usr/bin/churros-welcome` (0755).
-
----
-
-## 2026-08-07 — Preferences Brain (release v0.4.0)
-
-Sesión de 60 commits centrada en madurar el panel de preferencias, eliminar bugs latentes y ampliar la cobertura de la GUI.
-
-### Selector de zona horaria integrado
-
-- `services/datetime.py` nuevo: `DatetimeService` con `get_timezone()`, `get_ntp()`, `list_timezones()` (598 zonas), `set_timezone()`/`set_ntp()` vía `churros-pkexec`.
-- `pages/datetime.py` reescrito: reloj vivo (segundo a segundo), switch NTP integrado, **selector de zona con `Gtk.SearchEntry` que filtra en vivo** y abre un `Popover` con `ListBox` de resultados (max 200 visibles). Al hacer clic, aplica via `churros-pkexec` (polkit).
-- `50-churros-store.rules` añadida autorización para `timedatectl` junto a `pacman/flatpak/yay/paru`.
-- Eliminado el flujo anterior con `fzf`+`foot`; ahora todo se hace dentro de la GUI.
-
-### Nuevas páginas
-
-- **Mako** (`pages/mako.py`) — Tipografía, colores, bordes, disposición, padding, comportamiento + reload + **toggle DND**.
-- **Backup** (`pages/backup.py`) — Exportar/importar/resetear la config de `~/.config/churros/`.
-- **Night Light** (`pages/night_light.py`) — `wlsunset` (temperatura, gamma, automático).
-- **Lock Screen** (`pages/lock_screen.py`) — `swaylock` + `swayidle`.
-- **Window Rules** (`pages/window_rules.py`) — Editor visual de `window-rule {}` blocks en KDL.
-- **Logs** (`pages/logs.py`) — Ver logs del sistema.
-- **Niri** (`pages/niri.py`) — Toggle animaciones + sliders de duración de `window-open` y `workspace-switch`.
-
-### Bugs críticos resueltos
-
-- `NiriConfig.reload()` añadido (`f19966e`). Antes 11 sitios llamaban `NiriConfig.reload()` que no existía → `AttributeError`. Ahora envía `pkill -HUP niri`.
-- `DisplayService.set_vrr()` añadido (`f19966e`). Faltaba wrapper; backend base ya lo tenía.
-- `ComboRow` reescrito como `Gtk.Box` directo (`e1c2477`). Antes heredaba de `Gtk.Button` → el button capturaba el click del dropdown. Bug manifiesto: pulsar la flecha no abría el menú.
-- `Row.set_title()` / `Row.set_subtitle()` añadidos como API pública (`f19966e`).
-- `ColorPickerRow` acepta `subtitle` kwarg (`e517f4f`). Bug rompía `do_activate()` al construir `LockScreenPage`.
-- `display_timeout.py` — `parent_page` corregido de `"power"` a `"display"` (`18ac16a`).
-- `pages/shortcuts.py` borrada (`0b9bcd5`) — duplicaba `keyboard.py` (la única página de atajos).
-- `archiso/packages/` — 9 artefactos de pacman quitados del índice (`ed7ab08`).
-- `churros-settings` sin permisos de ejecución (`65c5f95`).
-- Screen negro al cambiar wallpaper + modo oscuro (`ecd4adc`).
-- OVMF_VARS.fd copia independiente (`dea9249`).
-
-### Robustez y logs
-
-- `churros-settings` (launcher bash) blindado (`677789f`):
-  - Output redirigido a `$XDG_RUNTIME_DIR/churros-settings.log` (fallback `/tmp/churros-settings.log`).
-  - Autodetección de `WAYLAND_DISPLAY` si no exportado.
-  - Si la app falla, no aborta la sesión del usuario.
-- `main.py` blindado (`677789f`):
-  - Cada bloque crítico envuelto en try/except.
-  - Errores se loguean con stack trace completo.
-  - `_build_wallpaper` ahora no muere si el wallpaper no existe.
-
-### Apariencia reorganizada
-
-`pages/appearance.py` reorganizada en 9 grupos temáticos (`053872d`):
-
-1. Tema (claro/oscuro)
-2. Color de acento
-3. Tipos de letra
-4. Cursor
-5. Iconos
-6. Fondo de pantalla
-7. Esquinas / forma
-8. Pywal (paleta dinámica)
-9. Waybar
-
-ThemeService y AccentService tienen **hooks pywal** — cuando pywal está activo, regenera paleta desde el wallpaper.
-
-### Búsqueda mejorada
-
-- Search global con subpáginas (`36d9b7e`) — buscar "modo oscuro" salta a `Apariencia → Tema` y resalta el row correspondiente.
-- Layout responsive — sidebar narrow en pantallas estrechas.
-- Color picker entry editable — pegar hex manualmente funciona.
-
-### Atajos globales
-
-`PreferencesWindow` registra (`2d7f7bf`):
-
-| Atajo | Acción |
-|-------|--------|
-| `Ctrl+F` | Foco al search del sidebar |
-| `Ctrl+B` | Toggle sidebar narrow |
-| `Shift+Ctrl+N` | Toggle sidebar narrow (alias) |
-
-### Pulido de páginas existentes
-
-- **Power profile** — descripciones + advertencias sobre rendimiento (`6b1c8a6`).
-- **Sleep** — estado batería integrado (`6b1c8a6`).
-- **Fonts** — preview en vivo + debounce (`6b1c8a6`).
-
-### CI
-
-- `./churros check` corre en GitHub Actions (`.github/workflows/ci.yml`) en cada push a `main` y PR.
-- Verifica: bash syntax, shellcheck error level, Python syntax, duplicate entries en `packages.x86_64`, Niri autostart commands resolvibles, `msgfmt --check` en `po/*.po`, repo hygiene (no generated files tracked).
-
----
-
-## 2026-08-25 — Multi-edición XFCE, App HeaderBars & Responsividad
-
-### Soporte Multi-Edición (`niri` + `xfce`)
-- Añadida bandera `--edition <niri|xfce>` al comando `./churros build`.
-- Creado `archiso/packages.xfce.x86_64` con la suite completa de XFCE 4, panel ChurrOS, xfwm4, xsettings y utilidades X11.
-- Configuración de dotfiles en `archiso/airootfs/etc/skel/.config/xfce4/` para panel, gestor de ventanas y xsettings oscuros con Adwaita/Papirus.
-- `greetd` configurado dinámicamente para autologin a `/usr/bin/startxfce4` (XFCE) o `/usr/bin/niri` (Niri).
-- `churros-apply-wallpaper` adaptado para configurar el fondo tanto en `swaybg` como en `xfce4-desktop` vía `xfconf-query`.
-
-### Apps Rust: HeaderBars y Responsividad
-- **ChurrOS Welcome (`churros-welcome`)**:
-  - Integrada barra de título `AdwHeaderBar` con botones estándar de ventana (cerrar, maximizar, minimizar).
-  - Integrada la tarjeta de Información del Sistema (`system_card`) en el FlowBox principal, mostrando CPU, RAM, Kernel, SO, Arquitectura y Hostname directamente desde `/proc` y `/etc/os-release`.
-  - Configurado `FlowBox` responsivo (hasta 4 columnas, colapsable a 2 o 1) con desplazamiento automático en `ScrolledWindow`.
-  - Autostart compatible con XFCE (`.config/autostart/churros-welcome.desktop`).
-- **Configuración (`churros-settings`)**:
-  - Añadida barra de título `AdwHeaderBar` con controles de ventana.
-  - Integrado el botón hamburguesa en la barra de título para colapsar y expandir el menú lateral en pantallas estrechas.
-  - Filtrado condicional de páginas: en XFCE se ocultan automáticamente las subpáginas exclusivas de Niri/Waybar.
-  - Ajuste de línea automático (`wrap(true)`) en títulos y descripciones de filas.
-- **Control Center (`churros-control-center`)**:
-  - Añadido botón de cierre en cabecera y contenedor con scroll para pantallas de baja resolución.
-
-### ReGreet + Greetd: Pantalla de Login macOS, Autologin y Personalización
-- **Greeter Gráfico ReGreet + Cage**:
-  - Implementado `ReGreet` (Rust + GTK4) corriendo sobre el compositor kiosko `cage` con `WLR_NO_HARDWARE_CURSORS=1` para evitar bugs de orientación de cursor en virtual GPUs.
-  - Creado tema CSS estilo macOS Liquid Glass (`archiso/airootfs/etc/greetd/regreet.css`) con campos píldora (`border-radius: 9999px`), avatar circular, desenfoque y resplandor de foco en color acento naranja ChurrOS (`#F97316`).
-  - Terminal gráfica aislada en `VT7` para evitar la exposición de logs de arranque de la consola de systemd (`VT1`).
-- **Autenticación e Idioma**:
-  - Configurado `/etc/pam.d/greetd` con `system-local-login` para solicitar y validar la contraseña del usuario.
-  - Script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` para sincronizar automáticamente el saludo (`greeting_msg`) y formato de fecha según el idioma seleccionado en Calamares.
-  - Integración completa con el checkbox de autologin de Calamares y compatibilidad con `churros-settings` (sección *Usuarios y Login*).
-
----
-
-## 2026-09-22 — Pre-flight Checks de Build, Saneamiento de Rust Workspace y Diagnósticos KVM en CLI
-
-### Pre-flight Checks Tempranos en Build y Doctor
-- **`scripts/cli/build.sh`**:
-  - Implementada comprobación pre-flight antes del paso 0 que valida la presencia de dependencias críticas en el host (`mkarchiso`, `mksquashfs`, `xorriso`, `grub-mkstandalone`, `mkfs.fat`, `mcopy`, `mmd`). Si falta alguna herramienta requerida para generar la imagen UEFI, el script aborta en menos de 1 segundo indicando el paquete faltante exacto y el comando de instalación, en lugar de pasar minutos compilando Rust para fallar al final.
-- **`scripts/cli/doctor.sh`**:
-  - Añadida verificación de herramientas de arranque UEFI (`grub`, `dosfstools`, `mtools`).
-  - Mapeo de cada comando al nombre del paquete Arch correspondiente (`pkgconf`, `gettext`, `libisoburn`, `squashfs-tools`, etc.).
-  - **Instalación automática/interactiva**: Cuando detecta herramientas faltantes, propone su instalación con `sudo pacman -S --needed ...` y permite confirmar interactivamente con `[S/n]` o automáticamente mediante la bandera `--install` / `-y`.
-
-### Diagnósticos de Virtualización Hardware KVM
-- **`scripts/cli/doctor.sh` y `scripts/cli/run.sh`**:
-  - Comprobación del dispositivo `/dev/kvm`, permisos del usuario actual y detección de virtualización deshabilitada en la BIOS/UEFI (`Intel Virtualization Technology` / `SVM`).
-  - `run.sh` emite advertencias claras si KVM no está habilitado y configura un fallback seguro por emulación de software (`-cpu max`, 2 hilos) para evitar que QEMU falle silenciosamente.
-
-### Saneamiento del Workspace de Rust (0 warnings)
-- Limpieza integral de 56 advertencias de compilación en `preferences`, `churros-welcome`, `control-center` y `popups`:
-  - Eliminación de imports redundantes (`gtk::prelude::*`) en 17 archivos.
-  - Corrección de variables mutables innecesarias y código muerto.
-  - Reemplazo de métodos deprecados de GTK4 (`load_from_data` → `load_from_string`).
-
-### Higiene del Repositorio y Limpieza
-- Actualizado `.gitignore` y `scripts/cli/clean.sh` para gestionar y limpiar los archivos temporales de `archiso/airootfs/` en caso de compilaciones interrumpidas.
-- Corregido aviso de ShellCheck en `scripts/cli/check.sh`.
-
-### Optimización y Carga Perezosa en Panel de Configuración (`churros-settings`)
-- **Arquitectura Lazy-Loading en `window.rs`**:
-  - En lugar de construir vorazmente las 34 páginas y subpáginas durante el arranque, se registran contenedores `gtk::Box` ligeros y se almacena la fábrica constructora en un mapa `builders`.
-  - Solo se construye en el arranque la página inicial activa (`system` o la última visitada). Todas las subpáginas y páginas secundarias se instancian bajo demanda la primera vez que se seleccionan y se conservan cacheadas en memoria.
-  - Esto reduce el tiempo de apertura de la aplicación en aproximadamente un 90% (de más de 1 segundo a unos ~100 ms).
-- **Aceleración de Consultas del Sistema y Caché**:
-  - `applications.rs`: Conteo de paquetes optimizado leyendo directamente las carpetas de `/var/lib/pacman/local` en <1 ms en lugar de lanzar el subproceso `pacman -Q` (~130 ms).
-  - `system.rs`: Caché en memoria de proceso vía `OnceLock` para `cpu`, `gpu` (evitando re-ejecutar `lspci`), `kernel` y `hostname`.
-  - `theme.rs`: Evitada la ejecución repetitiva de `gsettings` y migración de temas en cada arranque mediante un flag en caché.
-  - `style.css`: Corregida la sintaxis duplicada de offsets en `box-shadow` (`0 0 20px var(--accent-glow)`) que provocaba avisos de parseo CSS en GTK4.
-
-### Solución a Crash de Sesión X11 (XFCE) en Greetd
-- **`churros-xfce-session`**: Se ha creado un script contenedor en `/usr/bin/churros-xfce-session` que se encarga de lanzar de manera correcta el entorno XFCE desde el Display Manager (Regreet/Greetd). Este contenedor ejecuta `startx /usr/bin/startxfce4` de forma condicional si no se detecta el entorno de visualización, logrando que el servidor Xorg asigne apropiadamente el TTY mediante `systemd-logind` y se resuelva el crasheo que devolvía al usuario a la pantalla de login.
-- Integración en `desktop.sh`: Se ha automatizado la inyección en `/usr/share/xsessions/xfce.desktop` para usar este wrapper en entornos X11.
-
-### Autostart Condicional de ChurrOS Tour
-- Para el entorno **Niri**, se ha incluido un `spawn-sh-at-startup` en `config.kdl` que invoca `churros-tour` condicionalmente solo si existe el archivo `~/.config/autostart/churros-tour.desktop`.
-- Para el entorno **XFCE**, este mecanismo ya funciona de forma nativa a través de los directorios de autostart del estándar XDG. 
-- Se ha expuesto `churros-tour` en `/usr/share/applications/churros-tour.desktop` para que sea visible en cualquier lanzador o menú, y se ha limpiado su binario de desarrollo compilado que había entrado en caché del repositorio.
-
-### Corrección de Cursor de Ratón en Entorno XFCE (Hardware Real)
-- **El problema:** Al acceder a XFCE desde una instalación física, el ratón no aparecía ni respondía. Esto se debe a que `xorg-server` requiere un módulo adaptador (`xf86-input-libinput`) para interpretar eventos de hardware de entrada provenientes de `libinput`, lo cual es vital al iniciar fuera de un gestor de pantalla compuesto como GDM.
-- **La solución:** Se ha añadido el paquete `xf86-input-libinput` a la lista de paquetes requeridos (`packages.xfce.x86_64`), permitiendo que Xorg detecte correctamente los periféricos en hardware físico.
-
-### Falsa detección de Wayland en XFCE (Error de labwc)
-- **El problema:** En las últimas versiones, el script `startxfce4` comprueba la existencia de la variable `WAYLAND_DISPLAY`. Greetd/Regreet dejaban un residuo de esta variable en la sesión tras cerrar `cage` (su propio entorno Wayland). Como resultado, XFCE creía que debía arrancar una sesión nativa en Wayland y pedía a gritos el compositor `labwc`, abortando el arranque de Xorg.
-- **La solución:** Se ha inyectado un `unset WAYLAND_DISPLAY` en `churros-xfce-session` para limpiar el entorno residual heredado del greeter y forzar siempre un entorno X11 robusto para XFCE. (Nota: los errores de `libseat` mostrados en log son inofensivos; simplemente indican el *fallback* seguro a `systemd-logind`).
-
-### Solución a Crash de Xorg (Recursive xinit)
-- **El problema:** Tras corregir el error del DRM con `sleep 1`, persistía una pantalla negra que devolvía a Greetd. Al ejecutar `unset DISPLAY` globalmente al inicio del wrapper, se borraba la variable `$DISPLAY` inyectada por Xorg en la sesión cliente. Como resultado, `startxfce4` creía que no había un servidor gráfico activo y lanzaba `xinit` por segunda vez dentro del propio `xinit`, colapsando inmediatamente.
-- **La solución:** Se ha reubicado el `unset DISPLAY` y `unset WAYLAND_DISPLAY` para que solo afecten al proceso padre (Greetd) y no al proceso hijo (la sesión X11 iniciada con `--xinit`). De esta forma, `startxfce4` reconoce `$DISPLAY=:0` correctamente.
-
-

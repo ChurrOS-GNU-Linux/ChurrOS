@@ -11,11 +11,14 @@ PUBLIC_COMMANDS=(
     run
     clean
     check
+    test
+    rust
     doctor
     info
     version
     logo
     apps
+    cluster
 )
 
 run_script() {
@@ -62,11 +65,14 @@ show_help() {
     printf "  %-12s %s\n" "run"     "Build (if needed) and launch QEMU"
     printf "  %-12s %s\n" "clean"   "Remove build artifacts"
     printf "  %-12s %s\n" "check"   "Run static checks over the repository"
+    printf "  %-12s %s\n" "test"    "Run the test layers (static, container, ISO, QEMU boot)"
+    printf "  %-12s %s\n" "rust"    "Build and test the Rust apps (Arch container, like CI)"
     printf "  %-12s %s\n" "apps"    "Open distro apps on the host (no ISO)"
     printf "  %-12s %s\n" "doctor"  "Check development environment"
     printf "  %-12s %s\n" "info"    "Display project information"
     printf "  %-12s %s\n" "version" "Display CLI version"
     printf "  %-12s %s\n" "logo"    "Print ChurrOS logo"
+    printf "  %-12s %s\n" "cluster" "Manage distributed compilation cluster (distcc/workers)"
 
     echo
 
@@ -74,11 +80,14 @@ show_help() {
     echo
 
     echo "  ./churros build"
+    echo "  ./churros build --container   # any distro: build inside the Arch container"
     echo "  ./churros run"
     echo "  ./churros run --nokvm"
     echo "  ./churros run --fresh"
     echo "  ./churros run --clean"
     echo "  ./churros check"
+    echo "  ./churros test --iso --boot   # audit and boot the latest ISO in out/"
+    echo "  ./churros rust"
     echo "  ./churros doctor"
     echo "  ./churros apps calamares"
     echo

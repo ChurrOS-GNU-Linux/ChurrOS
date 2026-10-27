@@ -14,16 +14,16 @@ navigation: widget
 strings:
   productName: "ChurrOS"
   shortProductName: ChurrOS
-  version: 1.2
-  shortVersion: 1.2
-  versionedName: ChurrOS 1.2
-  shortVersionedName: ChurrOS 1.2
+  version: 1.4
+  shortVersion: 1.4
+  versionedName: ChurrOS 1.4
+  shortVersionedName: ChurrOS 1.4
   bootloaderEntryName: ChurrOS
-  productUrl: https://github.com/Hoyuse/ChurrOS
-  supportUrl: https://github.com/Hoyuse/ChurrOS/issues
-  knownIssuesUrl: https://github.com/Hoyuse/ChurrOS/issues
-  releaseNotesUrl: https://github.com/Hoyuse/ChurrOS/releases
-  donateUrl: https://github.com/Hoyuse/ChurrOS
+  productUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS
+  supportUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues
+  knownIssuesUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues
+  releaseNotesUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases
+  donateUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS
 
 images:
   productIcon: "logo.svg"

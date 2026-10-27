@@ -47,14 +47,14 @@ fn run(args: &[&str]) -> String {
     buf.trim().to_string()
 }
 
-/// Comandos "set": equivalente a subprocess.run(capture_output=False, timeout=2).
-/// Se lanzan sin esperar (mismo efecto, no bloquea la UI).
+/// Comandos "set": equivalente a subprocess.run(capture_output=False).
+/// status() recoge el proceso para no dejar zombis.
 fn run_no_output(args: &[&str]) {
     let _ = Command::new(args[0])
         .args(&args[1..])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .status();
 }
 
 pub struct PowerService;
@@ -70,6 +70,43 @@ fn battery_device() -> Option<String> {
 }
 
 impl PowerService {
+    /// Governor de cpufreq de cpu0 (performance, schedutil, powersave...).
+    pub fn cpu_governor() -> String {
+        std::fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "Desconocido".to_string())
+    }
+
+    /// Planificador de CPU del kernel: BORE (kernels CachyOS) o EEVDF de serie.
+    pub fn kernel_scheduler() -> String {
+        let has_sysctl = ["/proc/sys/kernel/sched_bore", "/proc/sys/kernel/sched_poc_count"]
+            .iter()
+            .any(|p| std::path::Path::new(p).exists());
+        let version = std::fs::read_to_string("/proc/version")
+            .unwrap_or_default()
+            .to_lowercase();
+        if has_sysctl || version.contains("cachyos") || version.contains("bore") {
+            "CachyOS BORE (Bajo retardo)".to_string()
+        } else {
+            "EEVDF / Estándar".to_string()
+        }
+    }
+
+    /// Estado del demonio de Feral GameMode (`gamemoded -s`, timeout 2 s).
+    pub fn gamemode_status() -> String {
+        if !churros_services::which("gamemoded") {
+            return "No instalado".to_string();
+        }
+        // "gamemode is active" / "gamemode is inactive"
+        if run(&["gamemoded", "-s"]).contains("is active") {
+            "En ejecución".to_string()
+        } else {
+            "Inactivo (listo para juegos)".to_string()
+        }
+    }
+
     /// True si hay una batería detectada (upower -e termina en "battery").
     pub fn battery_present() -> bool {
         battery_device().is_some()

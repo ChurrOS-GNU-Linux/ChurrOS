@@ -1,0 +1,25 @@
+<!DOCTYPE menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<menu>
+  <menu id="apps">
+    <item>
+      <label>Terminal</label>
+      <action name="Execute">
+        <command>foot</command>
+      </action>
+    </item>
+    <item>
+      <label>File Manager</label>
+      <action name="Execute">
+        <command>pcmanfm</command>
+      </action>
+    </item>
+    <separator/>
+    <item>
+      <label>Logout</label>
+      <action name="Execute">
+        <command>labwc --exit</command>
+      </action>
+    </item>
+  </menu>
+</menu>

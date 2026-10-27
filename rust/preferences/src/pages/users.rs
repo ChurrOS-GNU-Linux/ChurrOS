@@ -108,7 +108,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
     let greeting_row = Row::new(
         "Mensaje de bienvenida",
         Some("Texto mostrado en la pantalla de inicio"),
-        Some("theme.svg"),
+        Some("palette.svg"),
         Some(&greeting),
         None,
         None,
