@@ -57,10 +57,6 @@ id = "release:assets:churros-tour"
 note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-tour/ (donde el tour lee churr.png, iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos."
 
 [[issue]]
-id = "release:bundle:mode:usr/share/churros/scripts/configure-greeter-locale"
-note = "Está en git con modo 644 y profiledef.sh le da 755 en la ISO. El bundle lleva el modo de git e install_stage lo instala 0644: tras una actualización OTA deja de ser ejecutable. Impacto bajo hoy (solo lo ejecuta Calamares desde la ISO, shellprocess-cleanup.conf); se arregla con git update-index --chmod=+x."
-
-[[issue]]
 id = "release:cargo-target-dir:stale-binaries"
 note = "build-churros-release.sh busca los binarios en rust/target/release aunque CARGO_TARGET_DIR (lo exporta scripts/lib/container.sh; build-rust.sh sí lo respeta) mande la compilación a otro directorio, y `[ -x \"$binary\" ]` salta sin error lo que no encuentra: el bundle sale con los binarios de una compilación anterior, o sin ellos, y el script dice «listo»."
 
