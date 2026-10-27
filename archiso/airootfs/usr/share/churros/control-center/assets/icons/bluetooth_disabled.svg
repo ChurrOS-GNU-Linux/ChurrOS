@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <!-- Runa atenuada -->
-  <path d="M6 7 L17 17 L12 22 L12 2 L17 7 L6 17" stroke="#94A3B8" stroke-width="2" stroke-linejoin="miter" opacity="0.3"/>
-  <!-- Línea de desactivación / Bloqueo angular -->
-  <path d="M19 5 L5 19" stroke="#94A3B8" stroke-width="2" stroke-linecap="square"/>
-</svg>

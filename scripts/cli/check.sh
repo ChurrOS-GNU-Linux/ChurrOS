@@ -2099,6 +2099,22 @@ else
     pass "no generated files tracked"
 fi
 
+# Rust app runtime assets should never be tracked (build-rust.sh generates them)
+tracked_rust_assets=$(git ls-files | grep -cE '^archiso/airootfs/usr/share/churros/churros-(welcome|settings|popup|control-center|tour)/' || true)
+if [ "$tracked_rust_assets" -gt 0 ]; then
+    notice "$tracked_rust_assets Rust app runtime assets are tracked in git (should be in .gitignore)"
+else
+    pass "no Rust app runtime assets tracked"
+fi
+
+# Dead control-center/ (binary reads churros-control-center/)
+tracked_dead_cc=$(git ls-files | grep -cE '^archiso/airootfs/usr/share/churros/control-center/' || true)
+if [ "$tracked_dead_cc" -gt 0 ]; then
+    notice "dead control-center/ directory is tracked (binary reads churros-control-center/)"
+else
+    pass "no dead control-center/ directory"
+fi
+
 # ---------------------------------------------------------------- Summary
 
 printf '\n----------------------------------------\n'

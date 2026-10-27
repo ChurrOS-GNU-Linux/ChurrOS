@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <!-- Núcleo central octogonal de brillo -->
-  <polygon points="12,7 16,9 17,12 16,15 12,17 8,15 7,12 8,9" fill="currentColor"/>
-  <!-- Rayos solares angulares en cruz y diagonales (Gris técnico) -->
-  <path d="M12 2 V4 M12 20 V22 M2 12 H4 M20 12 H22" stroke="#94A3B8" stroke-width="2" stroke-linecap="square"/>
-  <path d="M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5" stroke="#94A3B8" stroke-width="2" stroke-linecap="square"/>
-</svg>
