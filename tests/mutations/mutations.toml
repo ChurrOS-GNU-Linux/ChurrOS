@@ -1270,13 +1270,13 @@ expect = "release:manifest:arch:aarch64/updates.json"
 why = "Arch field hardcoded in the manifest heredoc."
 
 [[mutation]]
-name = "test_release_bundle: Crate asset changed without updating the tracked airootfs copy, so the bundle ships the st"
-file = "rust/churros-tour/assets/style.css"
-find = "    min-width: 320px;\n    min-height: 320px;"
-replace = "    min-width: 360px;\n    min-height: 320px;"
-caught_by = "tests.static.test_release_bundle"
-expect = "release:assets:churros-tour"
-why = "Crate asset changed without updating the tracked airootfs copy, so the bundle ships the stale asset."
+name = "test_rust_contract: The tour assets leave .gitignore and go back to being a tracked copy"
+file = ".gitignore"
+find = "archiso/airootfs/usr/share/churros/churros-tour/\n"
+replace = ""
+caught_by = "tests.static.test_rust_contract"
+expect = "deploy:gitignore:churros-tour"
+why = "build-rust.sh overwrites usr/share/churros/churros-tour/ on every build: without the .gitignore entry it shows up in git status and ends up committed as a copy of rust/churros-tour/assets that goes stale when the crate changes."
 
 [[mutation]]
 name = "test_release_bundle: Typo in the client's manifest URL"

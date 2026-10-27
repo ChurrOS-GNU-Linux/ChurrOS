@@ -55,12 +55,14 @@ archiso/airootfs/usr/bin/churros-welcome
 archiso/airootfs/usr/bin/churros-settings
 archiso/airootfs/usr/bin/churros-popup
 archiso/airootfs/usr/bin/churros-control-center
+archiso/airootfs/usr/bin/churros-tour
 
 # Rust apps' runtime assets copied by scripts/build-rust.sh
 archiso/airootfs/usr/share/churros/churros-welcome/
 archiso/airootfs/usr/share/churros/churros-settings/
 archiso/airootfs/usr/share/churros/churros-popup/
 archiso/airootfs/usr/share/churros/churros-control-center/
+archiso/airootfs/usr/share/churros/churros-tour/
 
 # Release bundles produced by scripts/build-churros-release.sh
 release/
