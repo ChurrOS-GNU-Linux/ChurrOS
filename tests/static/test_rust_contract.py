@@ -342,6 +342,7 @@ def deployment() -> Deployment:
         for directory in (root / "scripts", root / "rust", root / "archiso/airootfs/usr/bin", fake):
             directory.mkdir(parents=True)
         shutil.copy2(ROOT / "scripts/build-rust.sh", root / "scripts/build-rust.sh")
+        shutil.copy2(ROOT / "scripts/deploy-rust-assets.sh", root / "scripts/deploy-rust-assets.sh")
         shutil.copy2(ROOT / "rust/Cargo.toml", root / "rust/Cargo.toml")
         names = set()
         for crate in testlib.crates():
