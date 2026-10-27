@@ -53,10 +53,6 @@ id = "release:assets:churros-control-center"
 note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-control-center/ (donde el control center lee iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. El usr/share/churros/control-center/ versionado no lo lee nadie."
 
 [[issue]]
-id = "release:bundle:mode:usr/share/churros/scripts/configure-greeter-locale"
-note = "Está en git con modo 644 y profiledef.sh le da 755 en la ISO. El bundle lleva el modo de git e install_stage lo instala 0644: tras una actualización OTA deja de ser ejecutable. Impacto bajo hoy (solo lo ejecuta Calamares desde la ISO, shellprocess-cleanup.conf); se arregla con git update-index --chmod=+x."
-
-[[issue]]
 id = "release:cargo-target-dir:stale-binaries"
 note = "build-churros-release.sh busca los binarios en rust/target/release aunque CARGO_TARGET_DIR (lo exporta scripts/lib/container.sh; build-rust.sh sí lo respeta) mande la compilación a otro directorio, y `[ -x \"$binary\" ]` salta sin error lo que no encuentra: el bundle sale con los binarios de una compilación anterior, o sin ellos, y el script dice «listo»."
 
@@ -65,10 +61,6 @@ id = "release:signing:unsigned-manifest"
 note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el bundle, build-churros-release.sh no firma y minisign no está en ninguna lista de paquetes (TODO #139, #141 en churros-update-utils). verify_manifest solo avisa por stdout y sigue: quien controle lo que sirve download.churroslinux.org/churros/ instala ficheros como root en /usr/bin de todas las instalaciones, porque el sha256 del bundle viene del mismo manifiesto sin autenticar."
 
 # --- test_calamares_config ---
-[[issue]]
-id = "calamares-yaml:modules/shellprocess-cleanup.conf:duplicate:script[].timeout"
-note = "El último comando de installer/calamares/modules/shellprocess-cleanup.conf (el sed de password_pbkdf2 en grub.cfg) lleva 'timeout: 5' dos veces, resto de un comando borrado. yaml-cpp se queda con uno y hoy no cambia nada, pero muestra que nadie valida estos YAML. Arreglo: borrar la línea repetida."
-
 [[issue]]
 id = "calamares-sequence:ignored-conf:modules/hwclock.conf"
 note = "hwclock es noconfig en Calamares 3.4.2 (src/modules/hwclock/module.desc): installer/calamares/modules/hwclock.conf no se lee nunca y el módulo siempre corre hwclock --systohc --utc. Fichero muerto que hace creer que se configura algo. Arreglo: borrarlo."
