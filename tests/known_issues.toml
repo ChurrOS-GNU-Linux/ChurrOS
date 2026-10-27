@@ -65,17 +65,6 @@ id = "release:signing:unsigned-manifest"
 note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el bundle, build-churros-release.sh no firma y minisign no está en ninguna lista de paquetes (TODO #139, #141 en churros-update-utils). verify_manifest solo avisa por stdout y sigue: quien controle lo que sirve download.churroslinux.org/churros/ instala ficheros como root en /usr/bin de todas las instalaciones, porque el sha256 del bundle viene del mismo manifiesto sin autenticar."
 
 # --- test_calamares_config ---
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/hwclock.conf"
-note = "hwclock es noconfig en Calamares 3.4.2 (src/modules/hwclock/module.desc): installer/calamares/modules/hwclock.conf no se lee nunca y el módulo siempre corre hwclock --systohc --utc. Fichero muerto que hace creer que se configura algo. Arreglo: borrarlo."
-
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/localecfg.conf"
-note = "localecfg es noconfig en Calamares 3.4.2: installer/calamares/modules/localecfg.conf (region, zone, defaultLanguage) no se lee nunca; localecfg usa lo que se eligió en la página locale. Arreglo: borrarlo (los valores por defecto van en locale.conf)."
-
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/networkcfg.conf"
-note = "networkcfg es noconfig en Calamares 3.4.2: installer/calamares/modules/networkcfg.conf (replaceHosts, preferGeoIP) no se lee nunca, y esas claves no existen en networkcfg. Arreglo: borrarlo."
 
 [[issue]]
 id = "calamares-sequence:initcpiocfg-overwrites:modules/shellprocess-fixboot.conf"
