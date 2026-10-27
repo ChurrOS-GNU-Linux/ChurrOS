@@ -53,6 +53,10 @@ id = "release:assets:churros-control-center"
 note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-control-center/ (donde el control center lee iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. El usr/share/churros/control-center/ versionado no lo lee nadie."
 
 [[issue]]
+id = "release:assets:churros-tour"
+note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-tour/ (donde el tour lee churr.png, iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos."
+
+[[issue]]
 id = "release:bundle:mode:usr/share/churros/scripts/configure-greeter-locale"
 note = "Está en git con modo 644 y profiledef.sh le da 755 en la ISO. El bundle lleva el modo de git e install_stage lo instala 0644: tras una actualización OTA deja de ser ejecutable. Impacto bajo hoy (solo lo ejecuta Calamares desde la ISO, shellprocess-cleanup.conf); se arregla con git update-index --chmod=+x."
 
@@ -147,14 +151,6 @@ id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-1
 note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefox, pero packages.server.x86_64 no trae firefox: en la sesión Live de la ISO server el botón no hace nada."
 
 # --- test_rust_contract ---
-[[issue]]
-id = "deploy:gitignore:churros-tour"
-note = ".gitignore lista los binarios y assets que scripts/build-rust.sh escribe en archiso/airootfs para welcome, settings, popup y control-center, pero no archiso/airootfs/usr/bin/churros-tour ni archiso/airootfs/usr/share/churros/churros-tour/. Por eso los assets del tour están versionados (una copia de rust/churros-tour/assets que cada build sobrescribe y que se queda vieja en cuanto cambie el crate) y el binario aparece en git status si un build no llega al trap. Arreglo: añadir las dos rutas a .gitignore y `git rm -r --cached archiso/airootfs/usr/share/churros/churros-tour`."
-
-[[issue]]
-id = "deploy:clean:churros-tour"
-note = "scripts/cli/clean.sh (./churros clean) borra los binarios Rust generados uno a uno y le falta archiso/airootfs/usr/bin/churros-tour (el trap de build.sh sí lo borra): tras un build cortado antes del trap, clean no lo quita y, como tampoco está en .gitignore, queda un ELF sin versionar en el árbol. Arreglo: añadir `rm -f archiso/airootfs/usr/bin/churros-tour` a clean.sh (mejor: recorrer los crates con deploy = true)."
-
 # --- test_editions / test_systemd_units ---
 
 [[issue]]
@@ -234,9 +230,6 @@ id = "unit-enable:pi/aarch64:ufw.service"
 note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-systemd.conf activan ufw.service, pero archiso/packages.pi.aarch64 no trae ufw: enable_unit solo avisa, Calamares lo salta (no es mandatory) y la Live y el sistema instalado de la pi quedan sin cortafuegos; Ajustes > Privacidad ejecuta ufw y falla. Arreglo: añadir ufw a packages.pi.aarch64."
 
 # --- test_build_dryrun ---
-[[issue]]
-id = "build:not-ignored-after-interrupt:archiso/airootfs/usr/bin/churros-tour"
-note = ".gitignore lista los binarios Rust que despliega scripts/build-rust.sh (churros-welcome, -settings, -popup, -control-center) pero no churros-tour. Si un build se interrumpe antes del trap, el ELF queda sin seguimiento en archiso/airootfs/usr/bin y un `git add -A` lo sube al repo."
 
 # --- tests/iso/check_iso.py (confirmado en una ISO niri x86_64 construida) ---
 
