@@ -12,8 +12,7 @@ use std::process::Command;
 pub struct BackupService;
 
 fn home() -> PathBuf {
-    let home = churros_services::home_dir();
-    PathBuf::from(home)
+    churros_services::home_path()
 }
 
 fn churros_dir() -> PathBuf {

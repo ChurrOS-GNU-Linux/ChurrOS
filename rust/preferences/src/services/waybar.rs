@@ -30,8 +30,7 @@ const EMBEDDED_COLORS: &str = include_str!(concat!(
 ));
 
 fn home() -> PathBuf {
-    let home = churros_services::home_dir();
-    PathBuf::from(home)
+    churros_services::home_path()
 }
 
 fn config_path() -> PathBuf {
@@ -237,55 +236,7 @@ fn write_style(values: &Value) {
     let _ = write_file(&style_path(), &patched);
 }
 
-fn uid() -> u32 {
-    Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-        // Fallo → no-root (nunca intentar escritura privilegiada por defecto)
-        .unwrap_or(1000)
-}
 
-fn build_env() -> Vec<(String, String)> {
-    let mut env: Vec<(String, String)> = std::env::vars().collect();
-
-    let u = uid();
-    let xrd = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{u}"));
-
-    if !env.iter().any(|(k, _)| k == "XDG_RUNTIME_DIR") {
-        env.push(("XDG_RUNTIME_DIR".to_string(), xrd.clone()));
-    }
-
-    let has_wayland = env.iter().any(|(k, _)| k == "WAYLAND_DISPLAY");
-    if !has_wayland {
-        if std::path::Path::new(&xrd).is_dir() {
-            if let Ok(entries) = fs::read_dir(&xrd) {
-                let mut valid_socks: Vec<(std::time::SystemTime, String)> = entries
-                    .flatten()
-                    .filter_map(|e| {
-                        let name = e.file_name().to_string_lossy().to_string();
-                        if name.starts_with("wayland-") && !name.ends_with(".lock") {
-                            let mtime = e
-                                .metadata()
-                                .and_then(|m| m.modified())
-                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                            Some((mtime, name))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                valid_socks.sort_by(|a, b| b.0.cmp(&a.0));
-                if let Some((_, sock)) = valid_socks.first() {
-                    env.push(("WAYLAND_DISPLAY".to_string(), sock.clone()));
-                }
-            }
-        }
-    }
-
-    env
-}
 
 fn timestamp() -> String {
     Command::new("date")
@@ -482,7 +433,7 @@ impl WaybarService {
     /// `false`: SIGUSR2 (pywal: solo colors-waybar.css).
     /// El spawn no depende de poder abrir `/tmp/waybar.log`.
     pub fn reload(full_restart: bool) {
-        let env = build_env();
+        let env = churros_services::session_env();
         if full_restart {
             terminate_waybar(&env);
             spawn_waybar(&env);

@@ -55,12 +55,6 @@ fn run_no_output(args: &[&str]) {
         .status();
 }
 
-fn which(cmd: &str) -> bool {
-    std::env::var_os("PATH").map_or(false, |paths| {
-        std::env::split_paths(&paths).any(|dir| dir.join(cmd).is_file())
-    })
-}
-
 /// Dispositivo de audio (models/audio_device.py)
 #[derive(Clone)]
 pub struct AudioDevice {
@@ -74,7 +68,7 @@ pub struct AudioService;
 impl AudioService {
     /// True si wpctl (PipeWire) está disponible.
     pub fn available() -> bool {
-        which("wpctl")
+        churros_services::which("wpctl")
     }
 
     /// Sinks (salidas).

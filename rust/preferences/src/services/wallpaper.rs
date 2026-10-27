@@ -12,66 +12,6 @@ use crate::services::settings;
 
 pub struct WallpaperService;
 
-fn build_env() -> Vec<(String, String)> {
-    let mut env: Vec<(String, String)> = std::env::vars().collect();
-
-    let uid = current_uid();
-    let xrd = format!("/run/user/{uid}");
-
-    if !env.iter().any(|(k, _)| k == "XDG_RUNTIME_DIR") {
-        env.push(("XDG_RUNTIME_DIR".to_string(), xrd.clone()));
-    }
-
-    if !env.iter().any(|(k, _)| k == "WAYLAND_DISPLAY") {
-        if Path::new(&xrd).is_dir() {
-            if let Ok(entries) = fs::read_dir(&xrd) {
-                let mut valid_socks: Vec<(std::time::SystemTime, String)> = entries
-                    .flatten()
-                    .filter_map(|e| {
-                        let name = e.file_name().to_string_lossy().to_string();
-                        if name.starts_with("wayland-") && !name.ends_with(".lock") {
-                            let mtime = e
-                                .metadata()
-                                .and_then(|m| m.modified())
-                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                            Some((mtime, name))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                valid_socks.sort_by(|a, b| b.0.cmp(&a.0));
-                if let Some((_, sock)) = valid_socks.first() {
-                    env.push(("WAYLAND_DISPLAY".to_string(), sock.clone()));
-                }
-            }
-        }
-    }
-
-    env
-}
-
-fn current_uid() -> u32 {
-    if let Ok(content) = fs::read_to_string("/proc/self/status") {
-        for line in content.lines() {
-            if let Some(rest) = line.strip_prefix("Uid:") {
-                if let Some(first) = rest.split_whitespace().next() {
-                    if let Ok(uid) = first.parse::<u32>() {
-                        return uid;
-                    }
-                }
-            }
-        }
-    }
-    1000
-}
-
-/// shutil.which equivalente: busca el binario en $PATH
-fn which(name: &str) -> bool {
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    path_var.split(':').any(|dir| Path::new(dir).join(name).is_file())
-}
-
 /// Ejecuta un comando con timeout y captura stdout/stderr. None si falla/timeout.
 fn run_with_timeout(
     args: &[&str],
@@ -223,7 +163,7 @@ impl WallpaperService {
             return false;
         }
 
-        let env = build_env();
+        let env = churros_services::session_env();
         let env_refs: Vec<(&str, &str)> = env
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -238,7 +178,7 @@ impl WallpaperService {
 
         // Backend 1: wrapper churros-apply-wallpaper (con timeout: no bloquear
         // la UI si el wrapper se cuelga). swaybg solo si Noctalia no corre.
-        if which("churros-apply-wallpaper") {
+        if churros_services::which("churros-apply-wallpaper") {
             let r = run_with_timeout(
                 &["churros-apply-wallpaper", path],
                 Duration::from_secs(10),
@@ -271,7 +211,7 @@ impl WallpaperService {
         }
 
         // Backend 2: swaybg
-        if which("swaybg") {
+        if churros_services::which("swaybg") {
             let _ = Command::new("pkill")
                 .args(["-x", "swaybg"])
                 .envs(env_refs.iter().map(|(k, v)| (*k, *v)))
@@ -341,7 +281,7 @@ impl WallpaperService {
 /// Noctalia está en marcha: el script reintenta el IPC y no llama a swaybg.
 /// Si el script no está, el mismo reintento (3 veces, espera corta) se hace aquí.
 fn apply_with_noctalia(path: &str, env_refs: &[(&str, &str)]) -> bool {
-    if which("churros-apply-wallpaper") {
+    if churros_services::which("churros-apply-wallpaper") {
         let r = run_with_timeout(
             &["churros-apply-wallpaper", path],
             Duration::from_secs(18),
@@ -364,7 +304,7 @@ fn apply_with_noctalia(path: &str, env_refs: &[(&str, &str)]) -> bool {
         };
     }
 
-    if !which("noctalia") {
+    if !churros_services::which("noctalia") {
         return false;
     }
     for attempt in 1..=3 {

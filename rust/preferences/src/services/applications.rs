@@ -70,17 +70,11 @@ impl ApplicationsService {
 
     #[allow(dead_code)] // por paridad con services/applications.py (flatpak_enabled)
     pub fn flatpak_enabled() -> bool {
-        which("flatpak")
+        churros_services::which("flatpak")
     }
 
     #[allow(dead_code)] // por paridad con services/applications.py (snap_enabled)
     pub fn snap_enabled() -> bool {
-        which("snap")
+        churros_services::which("snap")
     }
-}
-
-fn which(cmd: &str) -> bool {
-    std::env::var_os("PATH").map_or(false, |paths| {
-        std::env::split_paths(&paths).any(|dir| dir.join(cmd).is_file())
-    })
 }
