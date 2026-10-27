@@ -101,46 +101,10 @@ note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no ex
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
 note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/initramfs-linux-cachyos.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
 
-[[issue]]
-id = "calamares-xref:initcpio-hook:plymouth:pi/aarch64"
-note = "installer/calamares/modules/initcpiocfg.conf antepone el hook plymouth, pero archiso/packages.pi.aarch64 no instala plymouth: mkinitcpio sale con 1 ('Hook plymouth cannot be found') y el paso initcpio aborta la instalación de la edición pi. Arreglo: añadir plymouth a la lista pi, o quitar el prepend (initcpiocfg ya añade plymouth solo cuando está instalado)."
-
-[[issue]]
-id = "calamares-xref:users-shell:pi/aarch64"
-note = "installer/calamares/modules/users.conf crea la cuenta con shell /bin/zsh y archiso/packages.pi.aarch64 no incluye zsh: el único usuario de una instalación pi no puede iniciar sesión. Arreglo: añadir zsh a la lista pi."
-
-[[issue]]
-id = "calamares-xref:sudo:pi/aarch64"
-note = "users.conf mete al usuario en wheel (sudoersGroup) y Calamares escribe /etc/sudoers.d/10-installer, pero archiso/packages.pi.aarch64 no instala sudo: el usuario de la edición pi no tiene sudo. Arreglo: añadir sudo a la lista pi."
-
 # --- test_references ---
 [[issue]]
 id = "ref:niri/i686:scripts/cli/build.sh:initial_session:niri"
 note = "La ISO i686 arranca greetd con [initial_session] command = \"niri\" (SESSION_CMD de scripts/cli/build.sh), pero archlinux32 no empaqueta niri y packages.i686 no lo lista (lo dice su cabecera): la sesión Live autologin falla y la edición por defecto i686 no tiene escritorio."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/etc/passwd:/usr/bin/zsh"
-note = "etc/passwd da a root la shell /usr/bin/zsh, pero packages.pi.aarch64 no trae zsh (ni llega como dependencia): en la ISO Pi el login de root en otra consola o por serie no tiene shell (y root/.zlogin, el respaldo que arranca greetd, nunca se ejecuta)."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/root/scripts/users.sh:/bin/zsh"
-note = "users.sh crea el usuario Live churros con -s /bin/zsh y packages.pi.aarch64 no trae zsh: en la ISO Pi churros queda con una shell que no existe (login en consola, su, terminal)."
-
-[[issue]]
-id = "ref:pi/aarch64:installer/calamares/modules/users.conf:/bin/zsh"
-note = "Calamares (users.conf user.shell) crea el usuario del sistema instalado con /bin/zsh, que no está en packages.pi.aarch64: en la Pi instalada el usuario no puede entrar por consola ni SSH."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/etc/xdg/labwc/rc.xml:foot"
-note = "rc.xml de labwc lanza foot con W-Return y desde el menú raíz, pero packages.pi.aarch64 solo trae foot-terminfo: en la edición Pi el atajo y la entrada Terminal no hacen nada."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/etc/xdg/labwc/menu.xml:foot"
-note = "menu.xml de labwc tiene la entrada Terminal con foot, que no está en packages.pi.aarch64 (solo foot-terminfo): la entrada no hace nada."
-
-[[issue]]
-id = "ref:pi/aarch64:archiso/airootfs/usr/share/churros/pi/waybar/config.jsonc:foot"
-note = "La waybar de Pi abre foot con clic derecho en custom/launcher, pero packages.pi.aarch64 solo trae foot-terminfo: el clic no hace nada."
 
 [[issue]]
 id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
@@ -148,82 +112,6 @@ note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefo
 
 # --- test_rust_contract ---
 # --- test_editions / test_systemd_units ---
-
-[[issue]]
-id = "pkg-list:packages.pi.aarch64:duplicado:fuzzel"
-note = "fuzzel está dos veces en archiso/packages.pi.aarch64. pacstrap lo tolera, pero es la única lista con duplicados (check.sh no la revisa) y señala ediciones a mano sin control. Arreglo: borrar una de las líneas."
-
-[[issue]]
-id = "pkg-list:packages.pi.aarch64:duplicado:iwd"
-note = "iwd está dos veces en archiso/packages.pi.aarch64. pacstrap lo tolera, pero es la única lista con duplicados (check.sh no la revisa). Arreglo: borrar una de las líneas."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:archlinuxarm-keyring"
-note = "installer/calamares/modules/aarch64/shellprocess-pacman.conf ejecuta `pacman-key --populate archlinuxarm` en el sistema instalado, pero archiso/packages.pi.aarch64 no trae archlinuxarm-keyring (en ALARM base solo arrastra archlinux-keyring; packages.aarch64 sí lo lista). El paso shellprocess@pacman-init falla y la instalación de la pi se para; además pacman en la Live pi no puede verificar los paquetes de Arch Linux ARM. Arreglo: añadir archlinuxarm-keyring a packages.pi.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:kcoreaddons"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kcoreaddons y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:kcrash"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kcrash y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:kpmcore"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae kpmcore y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:libpwquality"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae libpwquality y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:os-prober"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae os-prober y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que el particionado de Calamares y grub-mkconfig no detectan otros sistemas (sin arranque dual). Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:polkit-qt6"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae polkit-qt6 y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:qt6-declarative"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-declarative y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:qt6-svg"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-svg y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:qt6-translations"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae qt6-translations y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que Calamares sale sin traducir. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:yaml-cpp"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae yaml-cpp y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares encuentra librerías sin resolver (ldd) y el instalador no arranca en la Live pi. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:zenity"
-note = "La edición pi integra Calamares (build.sh lo hace en toda arquitectura salvo i686) y customize_airootfs.sh lo desempaqueta con bsdtar, sin resolver dependencias. archiso/packages.pi.aarch64 no trae zenity y tampoco le llega como dependencia (pacman -Sp de la lista contra Arch Linux ARM), así que /usr/local/bin/calamares no puede mostrar el diálogo de error cuando faltan librerías. Arreglo: copiar a packages.pi.aarch64 el bloque de dependencias de Calamares que ya tiene packages.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:plymouth"
-note = "installer/calamares/modules/initcpiocfg.conf antepone el hook 'plymouth' en todas las ediciones con instalador, pero archiso/packages.pi.aarch64 no trae plymouth: mkinitcpio falla con \"Hook 'plymouth' cannot be found\" en el paso initcpio y la instalación de la pi se para. Arreglo: añadir plymouth a packages.pi.aarch64 (o no añadir el hook en aarch64)."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:qemu-guest-agent"
-note = "archiso/packages.pi.aarch64 no trae qemu-guest-agent, que traen las demás listas: la prueba de arranque (tests/vm/boot_smoke.py) espera al guest agent y no puede inspeccionar la Live pi. No afecta a quien usa la ISO; deja la edición pi sin prueba de arranque. Arreglo: añadir qemu-guest-agent a packages.pi.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:sudo"
-note = "root/scripts/users.sh escribe /etc/sudoers.d/churros y /usr/local/bin/calamares se eleva con `exec sudo -n`, pero archiso/packages.pi.aarch64 no trae sudo (ni le llega como dependencia): en la Live pi no hay sudo y el instalador no puede arrancar como root. Arreglo: añadir sudo a packages.pi.aarch64."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:zsh"
-note = "root/scripts/users.sh crea churros con `-s /bin/zsh` y archiso/airootfs/etc/passwd da /usr/bin/zsh a root, pero archiso/packages.pi.aarch64 no trae zsh: los dos usuarios de la Live pi tienen una shell que no existe (el login en consola, su y sudo -i fallan). Arreglo: añadir zsh a packages.pi.aarch64."
-
-[[issue]]
-id = "unit-enable:pi/aarch64:ufw.service"
-note = "root/scripts/services.sh (enable_unit ufw.service) y Calamares services-systemd.conf activan ufw.service, pero archiso/packages.pi.aarch64 no trae ufw: enable_unit solo avisa, Calamares lo salta (no es mandatory) y la Live y el sistema instalado de la pi quedan sin cortafuegos; Ajustes > Privacidad ejecuta ufw y falla. Arreglo: añadir ufw a packages.pi.aarch64."
 
 # --- test_build_dryrun ---
 

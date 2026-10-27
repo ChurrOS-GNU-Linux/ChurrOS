@@ -52,10 +52,8 @@ pamixer
 bluez
 bluez-utils
 networkmanager
-iwd
 pcmanfm
 grim
-fuzzel
 adwaita-icon-theme
 papirus-icon-theme
 gsettings-desktop-schemas
@@ -78,3 +76,41 @@ espeakup
 
 # Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
 modemmanager
+
+# Llavero de Arch Linux ARM: shellprocess-pacman.conf ejecuta
+# `pacman-key --populate archlinuxarm` en el sistema instalado
+archlinuxarm-keyring
+
+# Shell de root (etc/passwd) y de churros/usuario instalado (users.sh, users.conf)
+zsh
+
+# sudo: users.sh escribe /etc/sudoers.d/churros, /usr/local/bin/calamares
+# se eleva con `exec sudo -n` y users.conf usa el grupo wheel
+sudo
+
+# Terminal de labwc (rc.xml, menu.xml) y del lanzador de waybar
+foot
+
+# Cortafuegos: services.sh y services-systemd.conf activan ufw.service
+ufw
+
+# initcpiocfg.conf antepone el hook plymouth
+plymouth
+
+# Prueba de arranque (tests/vm/boot_smoke.py) usa el guest agent
+qemu-guest-agent
+
+# Calamares installer dependencies (mismo bloque que packages.aarch64):
+# customize_airootfs.sh desempaqueta Calamares con bsdtar, sin resolver
+# dependencias. (udisks2 ya está arriba)
+kcoreaddons
+kpmcore
+libpwquality
+polkit-qt6
+yaml-cpp
+qt6-declarative
+qt6-svg
+kcrash
+os-prober
+zenity
+qt6-translations

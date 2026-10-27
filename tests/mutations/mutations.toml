@@ -471,13 +471,13 @@ expect = "hook:50-churros-snapshot.hook:Operation=Upgarde"
 why = "pacman rejects the hook: no pre-transaction btrfs snapshots."
 
 [[mutation]]
-name = "test_systemd_units: 'Cleanup' drops the '-'"
-file = "archiso/airootfs/etc/systemd/system/greetd.service.d/plymouth.conf"
-find = "ExecStartPre=-/usr/bin/plymouth quit"
-replace = "ExecStartPre=/usr/bin/plymouth quit"
-caught_by = "tests.static.test_systemd_units"
-expect = "unit-exec:pi/aarch64:etc/systemd/system/greetd.service.d/plymouth.conf:/usr/bin/plymouth"
-why = "'Cleanup' drops the '-': on an edition without plymouth greetd.service fails before starting."
+name = "test_editions: la lista pi vuelve a quedarse sin plymouth"
+file = "archiso/packages.pi.aarch64"
+find_re = "^plymouth\\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:pi/aarch64:plymouth"
+why = "Una limpieza quita plymouth de la lista pi (\"no hay splash en la Pi\"): initcpiocfg.conf sigue anteponiendo el hook y mkinitcpio aborta la instalación. Sustituye a la mutación que quitaba el '-' de greetd.service.d/plymouth.conf, que ya no hace daño en ninguna edición: todas traen plymouth."
 
 [[mutation]]
 name = "test_systemd_units: systemd ignores the misspelled section"
