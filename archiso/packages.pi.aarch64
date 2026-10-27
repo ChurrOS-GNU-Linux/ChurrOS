@@ -1,6 +1,7 @@
 base
 arch-install-scripts
 archinstall
+archlinuxarm-keyring
 brightnessctl
 btrfs-progs
 cryptsetup
@@ -10,8 +11,9 @@ efibootmgr
 ethtool
 exfatprogs
 f2fs-tools
-fuzzel
+foot
 foot-terminfo
+fuzzel
 gptfdisk
 grub
 hdparm
@@ -34,8 +36,11 @@ mmc-utils
 mtools
 nano
 nvme-cli
+plymouth
+qemu-guest-agent
 rsync
 smartmontools
+sudo
 udftools
 usbutils
 wireless-regdb
@@ -43,6 +48,7 @@ wireless_tools
 wpa_supplicant
 xdg-utils
 xfsprogs
+zsh
 labwc
 wl-clipboard
 pipewire
@@ -52,10 +58,8 @@ pamixer
 bluez
 bluez-utils
 networkmanager
-iwd
 pcmanfm
 grim
-fuzzel
 adwaita-icon-theme
 papirus-icon-theme
 gsettings-desktop-schemas
@@ -69,9 +73,23 @@ cage
 polkit
 polkit-gnome
 udisks2
+ufw
 raspberrypi-bootloader
 raspberrypi-utils
 waybar
+
+# Calamares installer dependencies
+kcoreaddons
+kcrash
+kpmcore
+libpwquality
+os-prober
+polkit-qt6
+qt6-declarative
+qt6-svg
+qt6-translations
+yaml-cpp
+zenity
 
 # Lector de pantalla de la entrada Accessibility (livecd-talk.service)
 espeakup

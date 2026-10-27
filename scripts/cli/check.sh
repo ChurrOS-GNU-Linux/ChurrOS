@@ -117,7 +117,7 @@ section "ISO package list"
 
 # Una lista por edición (packages.<edicion>.x86_64) más las listas de arquitectura base (i686 y aarch64).
 # Se recorren todas para que añadir una edición no obligue a tocar este script.
-for pkg_list in archiso/packages*.x86_64 archiso/packages.i686 archiso/packages.aarch64; do
+for pkg_list in archiso/packages*.x86_64 archiso/packages*.i686 archiso/packages*.aarch64; do
     [ -f "$pkg_list" ] || continue
 
     dups=$(grep -v '^#' "$pkg_list" | grep -v '^$' | sort | uniq -d)
