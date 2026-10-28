@@ -2377,3 +2377,12 @@ replace = ""
 caught_by = "tests.static.test_editions"
 expect = "edition-pkg:xfce/x86_64:zram-generator"
 why = "Sin zram-generator, etc/systemd/zram-generator.conf no hace nada: la Live XFCE no tiene swap y un equipo de 2 GB puede quedarse sin memoria en unpackfs."
+
+[[mutation]]
+name = "test_editions: calamares wrapper pierde DISPLAY en preserve-env"
+file = "archiso/airootfs/usr/local/bin/calamares"
+find = "--preserve-env=DISPLAY,XAUTHORITY,"
+replace = "--preserve-env="
+caught_by = "tests.static.test_editions"
+expect = "DISPLAY debe estar en --preserve-env de sudo"
+why = "Sin DISPLAY y XAUTHORITY en sudo preserve-env, Calamares no puede conectar al display X11 en la edición XFCE y aborta al arrancar."

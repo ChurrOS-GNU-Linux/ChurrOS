@@ -343,6 +343,14 @@ class BuildMatrixTest(unittest.TestCase):
                                      "stamp-os-release.sh no tiene variante para esta edición")
                     self.assertEqual(fields.get("VERSION_ID"), "2.0.0")
 
+    def test_calamares_wrapper_preserves_display(self):
+        """El wrapper /usr/local/bin/calamares debe preservar DISPLAY y XAUTHORITY para X11 (XFCE)."""
+        content = testlib.read_text(ROOT / "archiso/airootfs/usr/local/bin/calamares")
+        self.assertIn("DISPLAY", content, "el wrapper de Calamares debe soportar DISPLAY para sesiones X11")
+        self.assertIn("XAUTHORITY", content, "el wrapper de Calamares debe preservar XAUTHORITY para sesiones X11")
+        self.assertRegex(content, r"--preserve-env=[^\n]*DISPLAY", "DISPLAY debe estar en --preserve-env de sudo")
+        self.assertRegex(content, r"--preserve-env=[^\n]*XAUTHORITY", "XAUTHORITY debe estar en --preserve-env de sudo")
+
 
 class PackageListTest(unittest.TestCase):
     """archiso/packages.*: limpias y con lo que la configuración necesita."""
