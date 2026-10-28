@@ -401,6 +401,7 @@ class ReleaseBundleFits(unittest.TestCase):
         project = tmp / "project"
         (project / "scripts").mkdir(parents=True)
         shutil.copy2(RELEASE_SCRIPT, project / "scripts")
+        shutil.copy2(ROOT / "scripts/deploy-rust-assets.sh", project / "scripts")
         shutil.copy2(ROOT / "VERSION", project)
         (project / "archiso").mkdir()
         (project / "archiso/airootfs").symlink_to(OVERLAY)

@@ -67,18 +67,8 @@ for crate_dir in "$RUST_DIR"/*/; do
     fi
 done
 
-# Desplegar assets de cada crate Rust a /usr/share/churros/<app>/
-for crate_dir in "$RUST_DIR"/*/; do
-    [ -f "$crate_dir/Cargo.toml" ] || continue
-    grep -q '^deploy = true$' "$crate_dir/Cargo.toml" || continue
-    crate_name=$(sed -n 's/^name = "\(.*\)"/\1/p' "$crate_dir/Cargo.toml" | head -1)
-    [ -n "$crate_name" ] || continue
-    # Assets: si existe directorio assets/ en el crate, copiarlo
-    if [ -d "$crate_dir/assets" ]; then
-        echo "  [rust] assets $crate_name -> $PROJECT_DIR/archiso/airootfs/usr/share/churros/$crate_name/"
-        mkdir -p "$PROJECT_DIR/archiso/airootfs/usr/share/churros/$crate_name"
-        cp -r "$crate_dir/assets" "$PROJECT_DIR/archiso/airootfs/usr/share/churros/$crate_name/"
-    fi
-done
+# Desplegar assets de crates marcados para el sistema Live.
+bash "$SCRIPT_DIR/deploy-rust-assets.sh" \
+    "$PROJECT_DIR/archiso/airootfs/usr/share/churros"
 
 echo "[rust] Apps Rust desplegadas."
