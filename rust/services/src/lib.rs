@@ -18,6 +18,7 @@ pub mod waybar_style;
 pub mod wifi;
 
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -46,6 +47,16 @@ pub fn home_dir() -> String {
         }
     }
     "/root".to_string()
+}
+
+/// Directorio HOME como PathBuf.
+pub fn home_path() -> PathBuf {
+    PathBuf::from(home_dir())
+}
+
+/// UID del usuario efectivo actual (getuid(2)).
+pub fn uid() -> u32 {
+    unsafe { libc::getuid() }
 }
 
 /// Resultado de ejecutar un comando: (returncode, stdout, stderr).
@@ -140,3 +151,71 @@ pub fn which(bin: &str) -> bool {
         })
         .unwrap_or(false)
 }
+
+/// Entorno enriquecido para sesiones gráficas Wayland, garantizando
+/// XDG_RUNTIME_DIR y WAYLAND_DISPLAY (si existe socket en tiempo de ejecución).
+pub fn session_env() -> Vec<(String, String)> {
+    let mut env: Vec<(String, String)> = std::env::vars().collect();
+    let u = uid();
+    let xrd = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{u}"));
+
+    if !env.iter().any(|(k, _)| k == "XDG_RUNTIME_DIR") {
+        env.push(("XDG_RUNTIME_DIR".to_string(), xrd.clone()));
+    }
+
+    if !env.iter().any(|(k, _)| k == "WAYLAND_DISPLAY") {
+        if Path::new(&xrd).is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&xrd) {
+                let mut valid_socks: Vec<(std::time::SystemTime, String)> = entries
+                    .flatten()
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("wayland-") && !name.ends_with(".lock") {
+                            let mtime = e
+                                .metadata()
+                                .and_then(|m| m.modified())
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                            Some((mtime, name))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                valid_socks.sort_by(|a, b| b.0.cmp(&a.0));
+                if let Some((_, sock)) = valid_socks.first() {
+                    env.push(("WAYLAND_DISPLAY".to_string(), sock.clone()));
+                }
+            }
+        }
+    }
+
+    env
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uid_matches_libc() {
+        assert_eq!(uid(), unsafe { libc::getuid() });
+    }
+
+    #[test]
+    fn test_home_path_non_empty() {
+        assert!(!home_path().as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_which_existing_and_missing() {
+        assert!(which("sh"));
+        assert!(!which("nonexistent_binary_xyz_123"));
+    }
+
+    #[test]
+    fn test_session_env_contains_runtime_dir() {
+        let env = session_env();
+        assert!(env.iter().any(|(k, _)| k == "XDG_RUNTIME_DIR"));
+    }
+}
+

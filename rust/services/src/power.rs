@@ -18,9 +18,7 @@ fn current_desktop() -> String {
 }
 
 fn current_uid() -> String {
-    run(&["id", "-u"], 2000)
-        .map(|(_, out, _)| out.trim().to_string())
-        .unwrap_or_default()
+    crate::uid().to_string()
 }
 
 pub fn lock() {

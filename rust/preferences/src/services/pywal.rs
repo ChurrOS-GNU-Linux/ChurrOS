@@ -19,25 +19,13 @@ use crate::services::mako_config::MakoConfig;
 
 pub struct PywalService;
 
-fn home() -> PathBuf {
-    let home = churros_services::home_dir();
-    PathBuf::from(home)
-}
-
 fn cache_file() -> PathBuf {
-    home().join(".cache").join("wal").join("colors.json")
-}
-
-fn which(name: &str) -> bool {
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    path_var
-        .split(':')
-        .any(|dir| Path::new(dir).join(name).is_file())
+    churros_services::home_path().join(".cache").join("wal").join("colors.json")
 }
 
 impl PywalService {
     pub fn available() -> bool {
-        which("wal")
+        churros_services::which("wal")
     }
 
     pub fn enabled() -> bool {

@@ -21,12 +21,7 @@ const LIGHTDM_MAIN_PATH: &str = "/etc/lightdm/lightdm.conf";
 const WRITE_ROOT_CONFIG: &str = "/usr/local/bin/churros-write-root-config";
 
 fn getuid() -> u32 {
-    Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-        .unwrap_or(1000) // fallo → no-root, nunca intentar escritura privilegiada
+    churros_services::uid()
 }
 
 /// Campos de /etc/passwd para el uid actual: (name, uid, gid, gecos, shell)
