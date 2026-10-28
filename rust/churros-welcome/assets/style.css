@@ -59,10 +59,10 @@ flowboxchild:hover,
 flowboxchild:selected,
 flowboxchild:active,
 flowboxchild:focus {
-    background-color: transparent !important;
-    background: transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
+    background-color: transparent;
+    background: transparent;
+    outline: none;
+    box-shadow: none;
 }
 
 .logo {

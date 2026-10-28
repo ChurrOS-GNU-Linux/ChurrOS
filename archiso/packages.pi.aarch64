@@ -1,6 +1,7 @@
 base
 arch-install-scripts
 archinstall
+archlinuxarm-keyring
 brightnessctl
 btrfs-progs
 cryptsetup
@@ -10,8 +11,9 @@ efibootmgr
 ethtool
 exfatprogs
 f2fs-tools
-fuzzel
+foot
 foot-terminfo
+fuzzel
 gptfdisk
 grub
 hdparm
@@ -34,8 +36,11 @@ mmc-utils
 mtools
 nano
 nvme-cli
+plymouth
+qemu-guest-agent
 rsync
 smartmontools
+sudo
 udftools
 usbutils
 wireless-regdb
@@ -43,6 +48,7 @@ wireless_tools
 wpa_supplicant
 xdg-utils
 xfsprogs
+zsh
 labwc
 wl-clipboard
 pipewire
@@ -67,50 +73,26 @@ cage
 polkit
 polkit-gnome
 udisks2
+ufw
 raspberrypi-bootloader
 raspberrypi-utils
 waybar
+
+# Calamares installer dependencies
+kcoreaddons
+kcrash
+kpmcore
+libpwquality
+os-prober
+polkit-qt6
+qt6-declarative
+qt6-svg
+qt6-translations
+yaml-cpp
+zenity
 
 # Lector de pantalla de la entrada Accessibility (livecd-talk.service)
 espeakup
 
 # Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
 modemmanager
-
-# Llavero de Arch Linux ARM: shellprocess-pacman.conf ejecuta
-# `pacman-key --populate archlinuxarm` en el sistema instalado
-archlinuxarm-keyring
-
-# Shell de root (etc/passwd) y de churros/usuario instalado (users.sh, users.conf)
-zsh
-
-# sudo: users.sh escribe /etc/sudoers.d/churros, /usr/local/bin/calamares
-# se eleva con `exec sudo -n` y users.conf usa el grupo wheel
-sudo
-
-# Terminal de labwc (rc.xml, menu.xml) y del lanzador de waybar
-foot
-
-# Cortafuegos: services.sh y services-systemd.conf activan ufw.service
-ufw
-
-# initcpiocfg.conf antepone el hook plymouth
-plymouth
-
-# Prueba de arranque (tests/vm/boot_smoke.py) usa el guest agent
-qemu-guest-agent
-
-# Calamares installer dependencies (mismo bloque que packages.aarch64):
-# customize_airootfs.sh desempaqueta Calamares con bsdtar, sin resolver
-# dependencias. (udisks2 ya está arriba)
-kcoreaddons
-kpmcore
-libpwquality
-polkit-qt6
-yaml-cpp
-qt6-declarative
-qt6-svg
-kcrash
-os-prober
-zenity
-qt6-translations

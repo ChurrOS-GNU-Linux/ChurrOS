@@ -34,59 +34,6 @@ fn gtk_ini(dir: &str) -> PathBuf {
     PathBuf::from(home).join(".config").join(dir).join("settings.ini")
 }
 
-fn build_env() -> Vec<(String, String)> {
-    let mut env: Vec<(String, String)> = std::env::vars().collect();
-    let uid = libc_getuid();
-    let xrd = format!("/run/user/{uid}");
-
-    if env.iter().all(|(k, _)| k != "XDG_RUNTIME_DIR") {
-        env.push(("XDG_RUNTIME_DIR".to_string(), xrd.clone()));
-    }
-
-    if env.iter().all(|(k, _)| k != "WAYLAND_DISPLAY") {
-        if std::path::Path::new(&xrd).is_dir() {
-            if let Ok(entries) = fs::read_dir(&xrd) {
-                let mut valid_socks: Vec<(std::time::SystemTime, String)> = entries
-                    .flatten()
-                    .filter_map(|e| {
-                        let name = e.file_name().to_string_lossy().to_string();
-                        if name.starts_with("wayland-") && !name.ends_with(".lock") {
-                            let mtime = e
-                                .metadata()
-                                .and_then(|m| m.modified())
-                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                            Some((mtime, name))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                valid_socks.sort_by(|a, b| b.0.cmp(&a.0));
-                if let Some((_, name)) = valid_socks.first() {
-                    env.push(("WAYLAND_DISPLAY".to_string(), name.clone()));
-                }
-            }
-        }
-    }
-
-    env
-}
-
-fn libc_getuid() -> u32 {
-    if let Ok(content) = fs::read_to_string("/proc/self/status") {
-        for line in content.lines() {
-            if let Some(rest) = line.strip_prefix("Uid:") {
-                if let Some(first) = rest.split_whitespace().next() {
-                    if let Ok(uid) = first.parse::<u32>() {
-                        return uid;
-                    }
-                }
-            }
-        }
-    }
-    1000
-}
-
 /// Actualiza una clave del ini preservando el resto (cursor, fuente, …).
 fn update_ini_key(ini: &Path, key: &str, value: &str) {
     if let Some(parent) = ini.parent() {
@@ -212,7 +159,7 @@ fn persist_desktop(dark: bool) {
             .output();
     }
 
-    let env = build_env();
+    let env = churros_services::session_env();
     let env_refs: Vec<(&str, &str)> = env
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))

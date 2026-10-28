@@ -87,6 +87,9 @@ if [ -d "$AIROOTFS/usr/share/churros" ]; then
     cp -r "$AIROOTFS/usr/share/churros" "$STAGE/usr/share/churros"
     echo "    + usr/share/churros"
 fi
+# App assets are generated from the Rust workspace and may not exist in a
+# fresh checkout's ignored airootfs overlay. Stage them directly in the bundle.
+bash "$SCRIPT_DIR/deploy-rust-assets.sh" "$STAGE/usr/share/churros"
 
 # 5. Versión instalada (se autoactualiza al extraer el bundle)
 echo "$VERSION" > "$STAGE/etc/churros-version"

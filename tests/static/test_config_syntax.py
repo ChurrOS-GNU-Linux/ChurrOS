@@ -532,6 +532,7 @@ def css_check(text: str) -> None:
 
 
 CSS_IMPORT = re.compile(r"""@import\s+(?:url\(\s*)?["']?([^"')\s;]+)""")
+CSS_IMPORTANT = re.compile(r"!\s*important\b", re.IGNORECASE)
 
 
 # ------------------------------------------------------------------- tema GRUB
@@ -822,6 +823,25 @@ class Stylesheets(unittest.TestCase):
                     findings[f"import:{target}"] = f"@import \"{target}\" no existe"
             return findings
         check_each(self, "css-import", product_files(".css", ".qss"), check)
+
+    def test_css_no_important(self):
+        """GTK no admite !important: descarta la declaración entera.
+
+        gtkcssprovider.c parsea el valor y, si quedan tokens antes del ';',
+        da "Junk at end of value for <propiedad>" y tira la declaración. Con
+        `!important` en todas las reglas (regreet.css del rediseño Bento Glass)
+        el tema no se aplica. La prioridad la da el proveedor, no !important.
+        """
+        def check(path):
+            # Comentarios fuera, conservando los saltos para que la línea cuadre.
+            code = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"),
+                          testlib.read_text(path), flags=re.DOTALL)
+            lines = sorted({line_of(code, m.start()) for m in CSS_IMPORTANT.finditer(code)})
+            if not lines:
+                return {}
+            shown = ", ".join(map(str, lines[:10])) + (" …" if len(lines) > 10 else "")
+            return {"important": f"!important en {len(lines)} línea(s) ({shown}): GTK descarta esas declaraciones"}
+        check_each(self, "css-important", product_files(".css"), check)
 
 
 class GrubThemes(unittest.TestCase):

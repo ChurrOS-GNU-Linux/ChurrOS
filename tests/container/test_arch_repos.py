@@ -489,6 +489,38 @@ class PackageListsTest(unittest.TestCase):
                     )
                 testlib.assert_findings(self, f"repo-pkg:{list_name(item)}", findings)
 
+    def test_netinstall_packages_exist(self):
+        """netinstall.yaml (x86_64) solo nombra paquetes de los repos o del local.
+
+        Hoy netinstall solo está en la vista previa (./churros apps calamares),
+        no en la secuencia de settings.conf. Si vuelve, Calamares instala cada
+        grupo marcado con pacman -S: un nombre que ya no existe (nvidia y
+        nvidia-dkms desaparecieron de Arch al pasar el driver a los módulos
+        abiertos) hace fallar el grupo y, con `critical: true`, la instalación.
+        """
+        if "x86_64" not in resolvable_arches():
+            self.skipTest("pacman.x86_64.conf usa el mirrorlist del equipo: solo resuelve en un contenedor x86_64")
+        yaml = testlib.require_module(self, "yaml")
+        groups = yaml.safe_load(testlib.read_text(testlib.ROOT / "installer/calamares/modules/netinstall.yaml"))
+        names: set[str] = set()
+
+        def walk(items):
+            for group in items or []:
+                for package in group.get("packages") or []:
+                    names.add(package.get("name") if isinstance(package, dict) else package)
+                walk(group.get("subgroups"))
+
+        walk(groups.get("groups", []) if isinstance(groups, dict) else groups)
+        available = set(repo_package_names("x86_64"))
+        findings = {}
+        for name in sorted(names - available - testlib.local_packages()):
+            hint = difflib.get_close_matches(name, available, n=1)
+            findings[f"repo-pkg:netinstall.yaml:{name}"] = (
+                f"netinstall.yaml: '{name}' no está en los repos de x86_64 ({', '.join(repos('x86_64').names)})"
+                + (f". ¿Querías '{hint[0]}'?" if hint else "")
+            )
+        testlib.assert_findings(self, "repo-pkg:netinstall.yaml", findings)
+
     def test_list_dependencies_resolve(self):
         for item in editions():
             with self.subTest(lista=item.package_list):

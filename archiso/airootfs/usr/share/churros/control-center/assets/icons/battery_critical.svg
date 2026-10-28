@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <path d="M2 7 L15 7 L17 9 L17 15 L15 17 L2 17 Z" stroke="#94A3B8" stroke-width="2" stroke-linejoin="miter"/>
-  <path d="M20 10 L22 10 L22 14 L20 14 Z" fill="#94A3B8"/>
-  <!-- Celda mínima en alerta -->
-  <rect x="5" y="10" width="2" height="4" fill="currentColor"/>
-</svg>

@@ -66,15 +66,6 @@ fn save_data(data: &Value) {
     let _ = fs::write(config_file(), serde_json::to_string_pretty(data).unwrap_or_default());
 }
 
-/// ¿Existe el binario en PATH? (como shutil.which)
-fn which(bin: &str) -> bool {
-    Command::new("sh")
-        .args(["-c", &format!("command -v {bin} >/dev/null 2>&1")])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
 /// Construye el comando swaylock a partir de la config (equivalente a _build_swaylock_cmd).
 fn build_swaylock_cmd(data: &Value) -> Vec<String> {
     let mut cmd = vec!["swaylock".to_string()];
@@ -177,11 +168,11 @@ impl LockScreenService {
     }
 
     pub fn is_available() -> bool {
-        which("swaylock")
+        churros_services::which("swaylock")
     }
 
     pub fn is_idle_available() -> bool {
-        which("swayidle")
+        churros_services::which("swayidle")
     }
 
     pub fn is_running_idle() -> bool {

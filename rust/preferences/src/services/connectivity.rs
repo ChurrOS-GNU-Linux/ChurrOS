@@ -100,12 +100,6 @@ fn run_no_output(args: &[&str]) {
         .status();
 }
 
-fn which(cmd: &str) -> bool {
-    std::env::var_os("PATH").map_or(false, |paths| {
-        std::env::split_paths(&paths).any(|dir| dir.join(cmd).is_file())
-    })
-}
-
 // ---------------------------------------------------------------- modelos
 
 /// Red Wi-Fi con los campos que usa la página (services/wifi.py get()).
@@ -141,7 +135,7 @@ impl ConnectivityService {
     }
 
     fn nm_running() -> bool {
-        if !which("nmcli") {
+        if !churros_services::which("nmcli") {
             return false;
         }
         nm_run(&["systemctl", "is-active", "NetworkManager"]) == Some("active".to_string())
@@ -338,7 +332,7 @@ impl ConnectivityService {
     }
 
     fn bt_running() -> bool {
-        if !which("bluetoothctl") {
+        if !churros_services::which("bluetoothctl") {
             return false;
         }
         nm_run(&["systemctl", "is-active", "bluetooth"]) == Some("active".to_string())

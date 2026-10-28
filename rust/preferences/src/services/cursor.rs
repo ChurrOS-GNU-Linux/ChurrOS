@@ -15,19 +15,7 @@ fn home() -> String {
 }
 
 fn uid() -> u32 {
-    // getuid sin crate libc: leer /proc/self/status (mismo truco que services/theme.rs)
-    if let Ok(content) = fs::read_to_string("/proc/self/status") {
-        for line in content.lines() {
-            if let Some(rest) = line.strip_prefix("Uid:") {
-                if let Some(first) = rest.split_whitespace().next() {
-                    if let Ok(uid) = first.parse::<u32>() {
-                        return uid;
-                    }
-                }
-            }
-        }
-    }
-    1000
+    churros_services::uid()
 }
 
 /// Socket wayland real del runtime dir (wayland-0, wayland-1, ...).

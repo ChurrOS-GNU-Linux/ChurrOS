@@ -36,25 +36,6 @@ note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}up
 id = "release:client:arch:i686"
 note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}updates.json (el alias x86_64 que deja build-churros-release.sh), ignora su campo 'arch' y validate_tarball no comprueba la máquina ELF. Una instalación i686 que use «Actualizar utilidades» de Ajustes o churros-update-auto instala churros-settings, churros-welcome... x86_64 en /usr/bin y las apps dejan de arrancar (Exec format error)."
 
-[[issue]]
-id = "release:assets:churros-welcome"
-note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-welcome/ (donde la app lee sus assets) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. Iconos y CSS nuevos no llegan a las instalaciones."
-
-[[issue]]
-id = "release:assets:churros-settings"
-note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-settings/ (donde Ajustes lee sus assets) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. Iconos y CSS nuevos no llegan a las instalaciones."
-
-[[issue]]
-id = "release:assets:churros-popup"
-note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-popup/ (donde los popups leen su CSS) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos."
-
-[[issue]]
-id = "release:assets:churros-control-center"
-note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-control-center/ (donde el control center lee iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos. El usr/share/churros/control-center/ versionado no lo lee nadie."
-
-[[issue]]
-id = "release:assets:churros-tour"
-note = "build-churros-release.sh copia archiso/airootfs/usr/share/churros tal cual está en disco. usr/share/churros/churros-tour/ (donde el tour lee churr.png, iconos y style.css) está en .gitignore y solo lo llena build-rust.sh durante un build de ISO (el trap no lo borra): una release desde un clon limpio sale sin los assets, y desde un árbol con un build anterior lleva los de ese build, quizá viejos."
 
 [[issue]]
 id = "release:cargo-target-dir:stale-binaries"
@@ -65,17 +46,6 @@ id = "release:signing:unsigned-manifest"
 note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el bundle, build-churros-release.sh no firma y minisign no está en ninguna lista de paquetes (TODO #139, #141 en churros-update-utils). verify_manifest solo avisa por stdout y sigue: quien controle lo que sirve download.churroslinux.org/churros/ instala ficheros como root en /usr/bin de todas las instalaciones, porque el sha256 del bundle viene del mismo manifiesto sin autenticar."
 
 # --- test_calamares_config ---
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/hwclock.conf"
-note = "hwclock es noconfig en Calamares 3.4.2 (src/modules/hwclock/module.desc): installer/calamares/modules/hwclock.conf no se lee nunca y el módulo siempre corre hwclock --systohc --utc. Fichero muerto que hace creer que se configura algo. Arreglo: borrarlo."
-
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/localecfg.conf"
-note = "localecfg es noconfig en Calamares 3.4.2: installer/calamares/modules/localecfg.conf (region, zone, defaultLanguage) no se lee nunca; localecfg usa lo que se eligió en la página locale. Arreglo: borrarlo (los valores por defecto van en locale.conf)."
-
-[[issue]]
-id = "calamares-sequence:ignored-conf:modules/networkcfg.conf"
-note = "networkcfg es noconfig en Calamares 3.4.2: installer/calamares/modules/networkcfg.conf (replaceHosts, preferGeoIP) no se lee nunca, y esas claves no existen en networkcfg. Arreglo: borrarlo."
 
 [[issue]]
 id = "calamares-sequence:initcpiocfg-overwrites:modules/shellprocess-fixboot.conf"
@@ -101,10 +71,12 @@ note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no ex
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
 note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/initramfs-linux-cachyos.img, pero GRUB arranca /boot/initramfs-linux.img (el de unpackfs, copiado del ISO con los hooks de archiso; lo regenera linux.preset)."
 
+
 # --- test_references ---
 [[issue]]
 id = "ref:niri/i686:scripts/cli/build.sh:initial_session:niri"
 note = "La ISO i686 arranca greetd con [initial_session] command = \"niri\" (SESSION_CMD de scripts/cli/build.sh), pero archlinux32 no empaqueta niri y packages.i686 no lo lista (lo dice su cabecera): la sesión Live autologin falla y la edición por defecto i686 no tiene escritorio."
+
 
 [[issue]]
 id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
@@ -112,6 +84,7 @@ note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefo
 
 # --- test_rust_contract ---
 # --- test_editions / test_systemd_units ---
+
 
 # --- test_build_dryrun ---
 

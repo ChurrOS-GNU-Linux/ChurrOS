@@ -117,7 +117,7 @@ section "ISO package list"
 
 # Una lista por edición (packages.<edicion>.x86_64) más las listas de arquitectura base (i686 y aarch64).
 # Se recorren todas para que añadir una edición no obligue a tocar este script.
-for pkg_list in archiso/packages*.x86_64 archiso/packages.i686 archiso/packages.aarch64; do
+for pkg_list in archiso/packages*.x86_64 archiso/packages*.i686 archiso/packages*.aarch64; do
     [ -f "$pkg_list" ] || continue
 
     dups=$(grep -v '^#' "$pkg_list" | grep -v '^$' | sort | uniq -d)
@@ -2005,6 +2005,13 @@ else
     fail "scripts/test-privileged-helpers.py"
 fi
 
+if asset_out=$(python3 scripts/test-deploy-rust-assets.py 2>&1); then
+    pass "assets de apps Rust incluidos en bundles (scripts/test-deploy-rust-assets.py)"
+else
+    printf '%s\n' "$asset_out" | tail -n 40
+    fail "scripts/test-deploy-rust-assets.py"
+fi
+
 if network_out=$(python3 scripts/test-network-services.py 2>&1); then
     pass "network service ownership (scripts/test-network-services.py)"
 else
@@ -2097,6 +2104,22 @@ if [ "$tracked_artifacts" -gt 0 ]; then
     notice "$tracked_artifacts generated files are tracked in git"
 else
     pass "no generated files tracked"
+fi
+
+# Rust app runtime assets should never be tracked (build-rust.sh generates them)
+tracked_rust_assets=$(git ls-files | grep -cE '^archiso/airootfs/usr/share/churros/churros-(welcome|settings|popup|control-center|tour)/' || true)
+if [ "$tracked_rust_assets" -gt 0 ]; then
+    notice "$tracked_rust_assets Rust app runtime assets are tracked in git (should be in .gitignore)"
+else
+    pass "no Rust app runtime assets tracked"
+fi
+
+# Dead control-center/ (binary reads churros-control-center/)
+tracked_dead_cc=$(git ls-files | grep -cE '^archiso/airootfs/usr/share/churros/control-center/' || true)
+if [ "$tracked_dead_cc" -gt 0 ]; then
+    notice "dead control-center/ directory is tracked (binary reads churros-control-center/)"
+else
+    pass "no dead control-center/ directory"
 fi
 
 # ---------------------------------------------------------------- Summary
