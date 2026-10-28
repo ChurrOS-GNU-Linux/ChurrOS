@@ -33,14 +33,14 @@ window {
    ========================================================================= */
 frame.widget-clock,
 .widget-clock {
-    background-color: rgba(24, 18, 15, 0.78) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-top-width: 0px !important;
-    border-bottom-left-radius: 20px !important;
-    border-bottom-right-radius: 20px !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.40) !important;
-    padding: 10px 32px !important;
+    background-color: rgba(24, 18, 15, 0.78);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-top-width: 0px;
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.40);
+    padding: 10px 32px;
 }
 
 frame.widget-clock label,
@@ -59,14 +59,14 @@ frame.widget-clock label,
    ========================================================================= */
 frame.background:not(.widget-clock),
 .login-box {
-    background-color: @bg_chocolate !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 26px !important;
+    background-color: @bg_chocolate;
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 26px;
     box-shadow: inset 0 1px 0 rgba(255, 245, 230, 0.22),
-                0 24px 64px rgba(45, 15, 5, 0.45) !important;
-    padding: 34px 30px !important;
-    margin-left: 220px !important;
+                0 24px 64px rgba(45, 15, 5, 0.45);
+    padding: 34px 30px;
+    margin-left: 220px;
 }
 
 /* Título de bienvenida y mensajes de estado */
@@ -91,10 +91,10 @@ label.entry-label {
 
 /* Separador horizontal: sutil y translúcido (reemplaza la línea negra fea) */
 separator {
-    background: rgba(255, 255, 255, 0.10) !important;
-    border: none !important;
-    min-height: 1px !important;
-    margin: 16px 0 8px 0 !important;
+    background: rgba(255, 255, 255, 0.10);
+    border: none;
+    min-height: 1px;
+    margin: 16px 0 8px 0;
 }
 
 /* =========================================================================
@@ -103,15 +103,15 @@ separator {
 entry,
 passwordentry,
 .password-entry {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 9999px !important;
-    color: @text_primary !important;
-    caret-color: @accent_color !important;
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 9999px;
+    color: @text_primary;
+    caret-color: @accent_color;
     font-size: 14px;
-    padding: 8px 18px !important;
-    min-height: 42px !important;
+    padding: 8px 18px;
+    min-height: 42px;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
     transition: all 180ms ease;
 }
@@ -119,10 +119,10 @@ passwordentry,
 entry:focus,
 passwordentry:focus,
 .password-entry:focus {
-    background-color: rgba(255, 255, 255, 0.12) !important;
-    border-color: @accent_color !important;
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: @accent_color;
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.35),
-                0 4px 16px rgba(0, 0, 0, 0.30) !important;
+                0 4px 16px rgba(0, 0, 0, 0.30);
 }
 
 entry placeholder,
@@ -134,52 +134,52 @@ passwordentry placeholder {
 combobox,
 combobox > box,
 combobox button {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 9999px !important;
-    color: @text_primary !important;
-    font-size: 13px !important;
-    padding: 6px 16px !important;
-    min-height: 40px !important;
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 9999px;
+    color: @text_primary;
+    font-size: 13px;
+    padding: 6px 16px;
+    min-height: 40px;
     transition: all 150ms ease;
 }
 
 combobox:hover,
 combobox button:hover {
-    background-color: rgba(255, 255, 255, 0.14) !important;
-    border-color: @accent_color !important;
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: @accent_color;
 }
 
 /* Botones circulares de alternar edición manual (lápiz) */
 togglebutton,
 #user_toggle,
 #sess_toggle {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 9999px !important;
-    color: @text_primary !important;
-    padding: 8px 12px !important;
-    min-height: 40px !important;
-    min-width: 40px !important;
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 9999px;
+    color: @text_primary;
+    padding: 8px 12px;
+    min-height: 40px;
+    min-width: 40px;
     transition: all 150ms ease;
 }
 
 togglebutton:hover,
 #user_toggle:hover,
 #sess_toggle:hover {
-    background-color: rgba(249, 115, 22, 0.22) !important;
-    border-color: @accent_color !important;
-    color: #FFFFFF !important;
+    background-color: rgba(249, 115, 22, 0.22);
+    border-color: @accent_color;
+    color: #FFFFFF;
 }
 
 togglebutton:checked,
 #user_toggle:checked,
 #sess_toggle:checked {
-    background-color: @accent_color !important;
-    border-color: @accent_hover !important;
-    color: #FFFFFF !important;
+    background-color: @accent_color;
+    border-color: @accent_hover;
+    color: #FFFFFF;
 }
 
 /* =========================================================================
@@ -188,53 +188,53 @@ togglebutton:checked,
 window button.suggested-action,
 button.suggested-action,
 #login_button {
-    background: linear-gradient(135deg, #FB923C, #EA580C) !important;
-    background-color: @accent_color !important;
-    background-image: linear-gradient(135deg, #FB923C, #EA580C) !important;
-    border: 1px solid #FDBA74 !important;
-    border-radius: 9999px !important;
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
-    padding: 10px 28px !important;
-    min-height: 42px !important;
-    box-shadow: 0 4px 18px rgba(234, 88, 12, 0.45) !important;
+    background: linear-gradient(135deg, #FB923C, #EA580C);
+    background-color: @accent_color;
+    background-image: linear-gradient(135deg, #FB923C, #EA580C);
+    border: 1px solid #FDBA74;
+    border-radius: 9999px;
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 28px;
+    min-height: 42px;
+    box-shadow: 0 4px 18px rgba(234, 88, 12, 0.45);
     transition: all 160ms ease;
 }
 
 window button.suggested-action:hover,
 button.suggested-action:hover,
 #login_button:hover {
-    background: linear-gradient(135deg, #FDBA74, #F97316) !important;
-    box-shadow: 0 6px 24px rgba(249, 115, 22, 0.60) !important;
+    background: linear-gradient(135deg, #FDBA74, #F97316);
+    box-shadow: 0 6px 24px rgba(249, 115, 22, 0.60);
 }
 
 window button.suggested-action:active,
 button.suggested-action:active,
 #login_button:active {
-    background: #EA580C !important;
+    background: #EA580C;
     transform: scale(0.97);
 }
 
 #cancel_button,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle) {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 9999px !important;
-    color: @text_primary !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    padding: 8px 20px !important;
-    min-height: 38px !important;
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 9999px;
+    color: @text_primary;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 20px;
+    min-height: 38px;
     transition: all 150ms ease;
 }
 
 #cancel_button:hover,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle):hover {
-    background-color: rgba(255, 255, 255, 0.16) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
-    color: #FFFFFF !important;
+    background-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #FFFFFF;
 }
 
 /* =========================================================================
@@ -244,17 +244,17 @@ window button.destructive-action,
 button.destructive-action,
 #reboot_button,
 #poweroff_button {
-    background: rgba(255, 255, 255, 0.08) !important;
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    background-image: none !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 9999px !important;
-    color: @text_secondary !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    padding: 8px 22px !important;
-    min-height: 36px !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20) !important;
+    background: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    border: 1px solid @border_glass;
+    border-radius: 9999px;
+    color: @text_secondary;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 22px;
+    min-height: 36px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20);
     transition: all 150ms ease;
 }
 
@@ -262,18 +262,18 @@ window button.destructive-action:hover,
 button.destructive-action:hover,
 #reboot_button:hover,
 #poweroff_button:hover {
-    background: rgba(239, 68, 68, 0.20) !important;
-    background-color: rgba(239, 68, 68, 0.20) !important;
-    border-color: rgba(239, 68, 68, 0.45) !important;
-    color: #FCA5A5 !important;
-    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25) !important;
+    background: rgba(239, 68, 68, 0.20);
+    background-color: rgba(239, 68, 68, 0.20);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #FCA5A5;
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25);
 }
 
 window button.destructive-action:active,
 button.destructive-action:active,
 #reboot_button:active,
 #poweroff_button:active {
-    background-color: rgba(220, 38, 38, 0.35) !important;
+    background-color: rgba(220, 38, 38, 0.35);
     transform: scale(0.97);
 }
 
@@ -282,18 +282,18 @@ button.destructive-action:active,
    ========================================================================= */
 infobar,
 #notif_info {
-    background-color: rgba(24, 18, 15, 0.92) !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 16px !important;
-    color: @text_primary !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50) !important;
+    background-color: rgba(24, 18, 15, 0.92);
+    border: 1px solid @border_glass;
+    border-radius: 16px;
+    color: @text_primary;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
 }
 
 infobar.error,
 #notif_info.error {
-    background-color: rgba(127, 29, 29, 0.90) !important;
-    border-color: rgba(239, 68, 68, 0.45) !important;
-    color: #FECACA !important;
+    background-color: rgba(127, 29, 29, 0.90);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #FECACA;
 }
 
 #notif_label {
@@ -304,33 +304,33 @@ infobar.error,
 
 popover,
 popover.background {
-    background-color: rgba(24, 18, 15, 0.96) !important;
-    border: 1px solid @border_glass !important;
-    border-radius: 18px !important;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.70) !important;
-    padding: 8px !important;
+    background-color: rgba(24, 18, 15, 0.96);
+    border: 1px solid @border_glass;
+    border-radius: 18px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.70);
+    padding: 8px;
 }
 
 popover contents {
-    background: transparent !important;
-    border-radius: 16px !important;
+    background: transparent;
+    border-radius: 16px;
 }
 
 popover modelbutton,
 popover button,
 menuitem {
-    border-radius: 12px !important;
-    padding: 8px 14px !important;
-    color: @text_primary !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
+    border-radius: 12px;
+    padding: 8px 14px;
+    color: @text_primary;
+    font-size: 13px;
+    font-weight: 500;
     transition: all 120ms ease;
 }
 
 popover modelbutton:hover,
 popover button:hover,
 menuitem:hover {
-    background-color: rgba(249, 115, 22, 0.20) !important;
-    color: @accent_color !important;
+    background-color: rgba(249, 115, 22, 0.20);
+    color: @accent_color;
 }
 
