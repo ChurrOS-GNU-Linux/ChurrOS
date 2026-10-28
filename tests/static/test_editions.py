@@ -346,10 +346,16 @@ class BuildMatrixTest(unittest.TestCase):
     def test_calamares_wrapper_preserves_display(self):
         """El wrapper /usr/local/bin/calamares debe preservar DISPLAY y XAUTHORITY para X11 (XFCE)."""
         content = testlib.read_text(ROOT / "archiso/airootfs/usr/local/bin/calamares")
-        self.assertIn("DISPLAY", content, "el wrapper de Calamares debe soportar DISPLAY para sesiones X11")
-        self.assertIn("XAUTHORITY", content, "el wrapper de Calamares debe preservar XAUTHORITY para sesiones X11")
-        self.assertRegex(content, r"--preserve-env=[^\n]*DISPLAY", "DISPLAY debe estar en --preserve-env de sudo")
-        self.assertRegex(content, r"--preserve-env=[^\n]*XAUTHORITY", "XAUTHORITY debe estar en --preserve-env de sudo")
+        match = re.search(r"--preserve-env=(\S+)", content)
+        self.assertIsNotNone(match, "el wrapper de Calamares ya no llama a sudo --preserve-env")
+        # Nombres exactos: un regex sobre la línea aceptaría WAYLAND_DISPLAY por DISPLAY.
+        kept = set(match.group(1).split(","))
+        for var in ("DISPLAY", "XAUTHORITY"):
+            self.assertIn(var, kept, f"{var} debe estar en --preserve-env de sudo")
+        # startx no siempre exporta XAUTHORITY; sin él, root busca /root/.Xauthority
+        # y Qt falla con "could not connect to display".
+        self.assertRegex(content, r'export XAUTHORITY="\$\{XAUTHORITY:-\$HOME/\.Xauthority\}"',
+                         "el wrapper debe exportar XAUTHORITY (por defecto ~/.Xauthority) antes de sudo")
 
 
 class PackageListTest(unittest.TestCase):

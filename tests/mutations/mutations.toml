@@ -2381,8 +2381,26 @@ why = "Sin zram-generator, etc/systemd/zram-generator.conf no hace nada: la Live
 [[mutation]]
 name = "test_editions: calamares wrapper pierde DISPLAY en preserve-env"
 file = "archiso/airootfs/usr/local/bin/calamares"
-find = "--preserve-env=DISPLAY,XAUTHORITY,"
+find = "--preserve-env=DISPLAY,"
 replace = "--preserve-env="
 caught_by = "tests.static.test_editions"
 expect = "DISPLAY debe estar en --preserve-env de sudo"
-why = "Sin DISPLAY y XAUTHORITY en sudo preserve-env, Calamares no puede conectar al display X11 en la edición XFCE y aborta al arrancar."
+why = "Solo queda WAYLAND_DISPLAY en preserve-env: en X11 (XFCE) Calamares como root no sabe a qué display conectar. El regex anterior lo daba por bueno porque WAYLAND_DISPLAY contiene DISPLAY."
+
+[[mutation]]
+name = "test_editions: calamares wrapper pierde XAUTHORITY en preserve-env"
+file = "archiso/airootfs/usr/local/bin/calamares"
+find = "DISPLAY,XAUTHORITY,WAYLAND_DISPLAY"
+replace = "DISPLAY,WAYLAND_DISPLAY"
+caught_by = "tests.static.test_editions"
+expect = "XAUTHORITY debe estar en --preserve-env de sudo"
+why = "Sin XAUTHORITY, root no tiene la cookie de X del usuario y Qt aborta con could not connect to display."
+
+[[mutation]]
+name = "test_editions: calamares wrapper deja de exportar XAUTHORITY"
+file = "archiso/airootfs/usr/local/bin/calamares"
+find = "    export XAUTHORITY=\"${XAUTHORITY:-$HOME/.Xauthority}\"\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "el wrapper debe exportar XAUTHORITY"
+why = "Si la sesión no exporta XAUTHORITY, preservarlo no sirve de nada: root busca /root/.Xauthority y Qt no conecta al display X11."
