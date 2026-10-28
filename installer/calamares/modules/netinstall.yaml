@@ -12,8 +12,8 @@ groups:
     critical: true
     expanded: true
     packages:
-      - name: "nvidia-dkms"
-        description: "Driver oficial (DKMS)"
+      - name: "nvidia-open-dkms"
+        description: "Driver oficial, módulos abiertos (DKMS; GTX 16xx/RTX 20xx o más nuevas)"
       - name: "nvidia-utils"
         description: "Aceleración 3D"
       - name: "nvidia-settings"

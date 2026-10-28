@@ -927,6 +927,15 @@ caught_by = "tests.static.test_config_syntax"
 expect = "sin cerrar"
 why = "Llave sin cerrar en style.css de waybar: GTK descarta la hoja desde ahí y waybar sale por error de CSS"
 
+[[mutation]]
+name = "test_config_syntax: !important en el tema de ReGreet"
+file = "archiso/airootfs/etc/greetd/regreet.css"
+find = "    border-radius: 26px;\n"
+replace = "    border-radius: 26px !important;\n"
+caught_by = "tests.static.test_config_syntax"
+expect = "css-important:archiso/airootfs/etc/greetd/regreet.css:important"
+why = "GTK no admite !important: 'Junk at end of value' y la declaración se descarta. Así se perdió casi todo el tema Bento Glass de ReGreet."
+
 
 # --- rust ---
 
@@ -1561,6 +1570,16 @@ caught_by = "tests.container.test_arch_repos"
 expect = "repo-pkg:packages.x86_64:network-manager"
 requires = "container"
 why = "An AI guesses the Debian/upstream name instead of the Arch package name. (noctalia-shell used to be the example, but the [cachyos] repo now packages it.)"
+
+[[mutation]]
+name = "test_arch_repos: netinstall names the NVIDIA driver Arch no longer ships"
+file = "installer/calamares/modules/netinstall.yaml"
+find = "- name: \"nvidia-open-dkms\""
+replace = "- name: \"nvidia-dkms\""
+caught_by = "tests.container.test_arch_repos"
+expect = "repo-pkg:netinstall.yaml:nvidia-dkms"
+requires = "container"
+why = "Arch dropped nvidia and nvidia-dkms when the driver moved to the open kernel modules (nvidia-open, nvidia-open-dkms); the [cachyos] repo does not have them either. Selecting the critical NVIDIA group would abort the install."
 
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
