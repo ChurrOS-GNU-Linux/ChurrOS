@@ -83,6 +83,8 @@ REQUIRED = (
      r'grubInstall:\s*"grub-install"', "el paso bootloader de Calamares ejecuta grub-install"),
     ("efibootmgr", "installer", "installer/calamares/modules/bootloader.conf",
      r'efiBootMgr:\s*"efibootmgr"', "el paso bootloader de Calamares ejecuta efibootmgr"),
+    ("zram-generator", "all", "archiso/airootfs/etc/systemd/zram-generator.conf", r"(?m)^\[zram0\]",
+     "la Live configura swap zram0; sin el paquete el fichero no hace nada y unpackfs puede quedarse sin memoria con 2 GB"),
     ("qemu-guest-agent", "all", None, None,
      "tests/vm (arranque en QEMU) habla con la Live por qemu-guest-agent"),
 )

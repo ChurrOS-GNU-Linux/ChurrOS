@@ -2348,3 +2348,32 @@ replace = ": # recovery removed\n"
 caught_by = "tests.static.test_build_dryrun"
 expect = "build:edition-list-not-restored-for-niri"
 why = "If the recovery hook disappears, the existing SIGKILL regression must catch that a subsequent niri build uses the previous edition's package list."
+
+# --- welcome.conf / zram (equipos de 2 GB) ---
+
+[[mutation]]
+name = "test_calamares_config: ram vuelve a ser obligatoria en welcome.conf"
+file = "installer/calamares/modules/welcome.conf"
+find = "  required:\n    - storage\n"
+replace = "  required:\n    - storage\n    - ram\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-welcome:ram-required"
+why = "Con ram en required, un equipo de 2 GB físicos (~1.8 GiB en MemTotal) no pasa la página de bienvenida: Calamares deja Siguiente desactivado."
+
+[[mutation]]
+name = "test_calamares_config: requiredRam vuelve a 2"
+file = "installer/calamares/modules/welcome.conf"
+find = "requiredRam: 1.0"
+replace = "requiredRam: 2"
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-welcome:required-ram"
+why = "requiredRam: 2 marca en rojo la RAM de un equipo de 2 GB físicos (MemTotal ~1.8 GiB)."
+
+[[mutation]]
+name = "test_editions: XFCE pierde zram-generator"
+file = "archiso/packages.xfce.x86_64"
+find = "zram-generator\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:xfce/x86_64:zram-generator"
+why = "Sin zram-generator, etc/systemd/zram-generator.conf no hace nada: la Live XFCE no tiene swap y un equipo de 2 GB puede quedarse sin memoria en unpackfs."
