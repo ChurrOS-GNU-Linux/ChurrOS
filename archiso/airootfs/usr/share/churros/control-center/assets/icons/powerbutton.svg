@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <!-- Anillo angular exterior (Gris técnico) -->
-  <path d="M7 6 L4 10 V16 L8 20 H16 L20 16 V10 L17 6" stroke="#94A3B8" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/>
-  <!-- Barra de encendido vertical -->
-  <path d="M12 3 V11" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
-</svg>

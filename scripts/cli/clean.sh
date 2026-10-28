@@ -45,6 +45,19 @@ rm -f archiso/airootfs/usr/bin/churros-settings 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-popup 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-control-center 2>/dev/null || true
 rm -f archiso/airootfs/usr/bin/churros-tour 2>/dev/null || true
+# Rust apps' runtime assets deployed by scripts/build-rust.sh
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/churros-welcome 2>/dev/null || true
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/churros-settings 2>/dev/null || true
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/churros-popup 2>/dev/null || true
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/churros-control-center 2>/dev/null || true
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/churros-tour 2>/dev/null || true
+# GRUB theme copied into the airootfs for the installed system
 rm -rf --one-file-system archiso/airootfs/usr/share/churros/grub-theme 2>/dev/null || true
+# mkinitcpio artifacts from ARM builds
+rm -f archiso/airootfs/etc/mkinitcpio.d/linux.preset.x86-stash 2>/dev/null || true
+rm -f archiso/airootfs/etc/mkinitcpio.d/linux-aarch64.preset 2>/dev/null || true
+rm -f archiso/airootfs/etc/mkinitcpio.conf.d/archiso.conf.x86-stash 2>/dev/null || true
+rm -rf --one-file-system archiso/airootfs/usr/share/churros/mkinitcpio 2>/dev/null || true
+rm -f archiso/airootfs/etc/greetd/config.toml.bak 2>/dev/null || true
 
 echo "Done."

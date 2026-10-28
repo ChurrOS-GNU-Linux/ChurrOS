@@ -67,7 +67,6 @@ Documentos que ya no describen el estado actual y se conservan como referencia h
 | Documento | Contenido |
 |-----------|-----------|
 | [Pywal dynamic colors](archivo/pywal-dynamic-colors.md) | Nota de traspaso de la rama `fix/pywal-dynamic-colors` (entró en `main` con la PR #72). |
-| [ChurrOS.pptx](ChurrOS.pptx) | Presentación de una charla sobre el proyecto; puede contener datos desactualizados. |
 
 ## Cómo mantener esta documentación
 

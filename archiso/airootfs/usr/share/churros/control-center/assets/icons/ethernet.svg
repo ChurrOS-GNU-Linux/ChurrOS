@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <!-- Línea de bus central (Gris técnico) -->
-  <path d="M5 19 H19 M5 19 V21 M12 15 V21 M19 19 V21" stroke="#94A3B8" stroke-width="2" stroke-linejoin="miter"/>
-  <!-- Conector central angular -->
-  <path d="M9 5 H15 V11 L12 15 L9 11 Z" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/>
-  <rect x="11" y="7" width="2" height="3" fill="currentColor"/>
-</svg>

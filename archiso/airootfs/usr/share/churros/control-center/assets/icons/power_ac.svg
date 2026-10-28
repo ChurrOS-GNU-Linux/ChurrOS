@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <!-- Enchufe de corriente angular (Para equipos sin batería / Desktop) -->
-  <path d="M8 9 H16 V14 L13 17 H11 L8 14 Z" stroke="#94A3B8" stroke-width="2" stroke-linejoin="miter"/>
-  <!-- Pins del enchufe -->
-  <path d="M10 5 V9 M14 5 V9" stroke="#94A3B8" stroke-width="2" stroke-linecap="square"/>
-  <!-- Rayo de energía interna -->
-  <path d="M12 11 L11 14 H13 L12 16" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter"/>
-</svg>
