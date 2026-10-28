@@ -400,6 +400,10 @@ class UnitFilesTest(unittest.TestCase):
                     ok, why = command_status(argv[0], item)
                     if not ok:
                         failures.setdefault(("unit-exec", detail), {})[item.id] = f"{rel(path)} {key}={value}: {why}"
+                if "greetd.service.d/plymouth.conf" in rel(path) and argv[0].endswith("plymouth") and "-" not in prefix:
+                    failures.setdefault(("unit-exec", detail), {})["pi/aarch64"] = (
+                        f"{rel(path)} {key}={value}: /usr/bin/plymouth quit debe llevar '-' (falla si plymouth no está activo)"
+                    )
         # '-': systemd ignora el fallo; solo cuenta si no funciona en ninguna edición.
         ids = {item.id for item in testlib.EDITIONS}
         failures = {k: v for k, v in failures.items() if k not in tolerant or set(v) >= ids}
