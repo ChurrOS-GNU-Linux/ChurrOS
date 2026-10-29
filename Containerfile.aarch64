@@ -82,6 +82,7 @@ RUN set -eu \
         lld \
         nodejs \
         python \
+        python-yaml \
         sudo \
         curl \
         ca-certificates \
