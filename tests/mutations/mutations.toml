@@ -1204,6 +1204,35 @@ expect = "no es el repo local aarch64/"
 why = "Hard-coded x86 repo dir: the aarch64 ISO ships /root/packages without its calamares and with the wrong local packages"
 
 
+# --- container_launch ---
+
+[[mutation]]
+name = "test_container_launch: run --container opens the X display to every local user"
+file = "scripts/cli/run.sh"
+find = "xhost \"+SI:localuser:$x_user\""
+replace = "xhost +local:"
+caught_by = "tests.static.test_container_launch"
+expect = "run.sh debe autorizar en X solo al UID"
+why = "xhost +local: lets any local user connect to the X server (keylogging, input injection) and stayed open after QEMU exited. Only the UID that runs QEMU in the container needs access."
+
+[[mutation]]
+name = "test_container_launch: the X grant is never revoked"
+file = "scripts/cli/run.sh"
+find = "trap 'xhost \"-$X_GRANT\" >/dev/null 2>&1 || true' EXIT"
+replace = ": # no revoke"
+caught_by = "tests.static.test_container_launch"
+expect = "revocarlo al salir"
+why = "Without the EXIT trap the xhost grant outlives QEMU and the display stays open to that UID for the rest of the session."
+
+[[mutation]]
+name = "test_container_launch: container_run hardcodes public DNS servers"
+file = "scripts/lib/container.sh"
+find = "        --security-opt label=disable\n"
+replace = "        --security-opt label=disable\n        --dns 1.1.1.1 --dns 8.8.8.8\n"
+caught_by = "tests.static.test_container_launch"
+expect = "container_run fija servidores DNS"
+why = "Hardcoded public DNS breaks builds on networks with internal DNS, local mirrors or filtered egress. A contributor whose router DNS times out passes CHURROS_CONTAINER_ARGS='--dns 1.1.1.1' instead."
+
 # --- release ---
 
 [[mutation]]
