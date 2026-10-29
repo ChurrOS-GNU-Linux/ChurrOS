@@ -41,13 +41,15 @@ En i686 la ISO se construye como edición niri, pero `archiso/packages.i686` no 
 
 ## 2. Diseño
 
-El tema (`/etc/greetd/regreet.css`) es de cristal esmerilado con el acento naranja de ChurrOS:
+El tema (`/etc/greetd/regreet.css`) toma referencias de la sobriedad de la pantalla de inicio de macOS —superficies translúcidas, tarjeta compacta y una acción principal clara— sin copiar su logotipo, tipografía ni controles. Mantiene el fondo y la identidad propios de ChurrOS:
 
 - **Fondo de pantalla**: `/usr/share/churros/wallpapers/default.png`, o el que se sincronice desde Ajustes (ver la sección 5).
-- **Campos de entrada y botones en píldora** (`border-radius: 9999px`): entrada de contraseña y selector de sesión translúcidos (`rgba(255, 255, 255, 0.16)`).
-- **Foco**: resplandor en el naranja de ChurrOS (`#F97316`).
-- **Avatar circular** con borde y sombra suave.
-- **Reloj y saludo** con la tipografía `Inter`. El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
+- **Tarjeta central de cristal** oscura, de bordes suaves y con sombra discreta; no se desplaza con márgenes fijos para no descentrarse en pantallas pequeñas.
+- **Campos y selectores** redondeados, con contraste suficiente sobre el cristal.
+- **Foco y acción principal** en naranja ChurrOS (`#F97316`); los controles secundarios son más tenues.
+- **Reloj y saludo** con `Inter` y fuente de respaldo. El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
+
+El rediseño es CSS de GTK y no cambia greetd, PAM, usuarios, sesiones ni el proceso de autenticación. La comprobación estática valida la sintaxis; para confirmar el aspecto final también se debe revisar el greeter en una sesión gráfica real.
 
 ---
 
