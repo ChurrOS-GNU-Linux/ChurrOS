@@ -68,6 +68,7 @@ RUN pacman-key --init \
         lld \
         nodejs \
         python \
+        python-yaml \
     && pacman -Scc --noconfirm
 
 # archiso/pacman.x86_64.conf usa el repo [cachyos], que firma su base de

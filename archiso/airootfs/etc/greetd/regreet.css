@@ -1,177 +1,149 @@
 /*
-    ChurrOS ReGreet Theme — Bento Glass (Figma Inspired)
-    ────────────────────────────────────────────────────
-    Official ChurrOS Design System Tokens:
-    - Primary Accent:   ChurrOS Orange (#F97316)
-    - Hover Accent:     #FB923C
-    - Active Accent:    #EA580C
-    - Chocolate Glass:  rgba(24, 18, 15, 0.82)
-    - Warm Pill Bg:     rgba(255, 255, 255, 0.08)
-    - Border Glass:     rgba(255, 235, 215, 0.16)
-    - Specular Glow:    inset 0 1px 0 rgba(255, 245, 230, 0.22)
-    - Text Primary:     #FFFDF8 (Warm White)
-    - Text Secondary:   #D6C7B8 (Warm Muted Cream)
-    - Radii:            Bento Box 26px, Floating Pills 9999px
-*/
+ * ChurrOS ReGreet — Warm Glass
+ * Minimal glass surfaces inspired by macOS login screens, with ChurrOS's
+ * own graphite palette and orange accent. GTK CSS only: no !important.
+ */
 
 @define-color accent_color #F97316;
 @define-color accent_hover #FB923C;
-@define-color accent_active #EA580C;
-@define-color bg_chocolate rgba(24, 18, 15, 0.82);
-@define-color text_primary #FFFDF8;
-@define-color text_secondary #D6C7B8;
-@define-color border_glass rgba(255, 235, 215, 0.16);
+@define-color accent_pressed #EA580C;
+@define-color glass rgba(24, 24, 27, 0.84);
+@define-color glass_soft rgba(255, 255, 255, 0.08);
+@define-color glass_hover rgba(255, 255, 255, 0.13);
+@define-color glass_border rgba(255, 255, 255, 0.18);
+@define-color text_primary #F8FAFC;
+@define-color text_muted #CBD0D8;
 
 window {
     background-color: transparent;
     color: @text_primary;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', 'Noto Sans', sans-serif;
+    font-size: 14px;
 }
 
-/* =========================================================================
-   1. Reloj Superior (Floating Warm Glass Pill)
-   ========================================================================= */
+/* A restrained clock capsule, like the lightweight macOS menu-bar chrome. */
 frame.widget-clock,
 .widget-clock {
-    background-color: rgba(24, 18, 15, 0.78);
+    background-color: @glass;
     background-image: none;
-    border: 1px solid @border_glass;
-    border-top-width: 0px;
-    border-bottom-left-radius: 20px;
-    border-bottom-right-radius: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.40);
-    padding: 10px 32px;
+    border: 1px solid @glass_border;
+    border-top-width: 0;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+    padding: 9px 24px;
 }
 
 frame.widget-clock label,
 .widget-clock label {
-    font-family: 'JetBrains Mono', 'Inter', monospace;
-    font-size: 14px;
-    font-weight: 500;
     color: @text_primary;
-    letter-spacing: 0.5px;
-}
-
-/* =========================================================================
-   2. Tarjeta Central Bento Glass (Login Hero Card)
-   - margin-left: 220px desplaza la tarjeta hacia la derecha para NO tapar
-     la mascota conejo de ChurrOS que está en el lateral izquierdo.
-   ========================================================================= */
-frame.background:not(.widget-clock),
-.login-box {
-    background-color: @bg_chocolate;
-    background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 26px;
-    box-shadow: inset 0 1px 0 rgba(255, 245, 230, 0.22),
-                0 24px 64px rgba(45, 15, 5, 0.45);
-    padding: 34px 30px;
-    margin-left: 220px;
-}
-
-/* Título de bienvenida y mensajes de estado */
-#message_label,
-label.title {
-    font-size: 21px;
-    font-weight: 600;
-    color: @text_primary;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.50);
-    margin-bottom: 6px;
-}
-
-/* Etiquetas laterales (User:, Session:, Password:) */
-frame.background:not(.widget-clock) grid > label,
-label.entry-label {
+    font-family: 'Inter', 'Noto Sans', sans-serif;
     font-size: 13px;
     font-weight: 500;
-    color: @text_secondary;
-    font-family: 'Inter', sans-serif;
-    letter-spacing: 0.3px;
 }
 
-/* Separador horizontal: sutil y translúcido (reemplaza la línea negra fea) */
+/* Keep the login surface centered and compact on wide and small displays. */
+frame.background:not(.widget-clock),
+.login-box {
+    background-color: @glass;
+    background-image: none;
+    border: 1px solid @glass_border;
+    border-radius: 22px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                0 20px 56px rgba(0, 0, 0, 0.34);
+    padding: 28px 28px;
+}
+
+#message_label,
+label.title {
+    color: @text_primary;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+frame.background:not(.widget-clock) grid > label,
+label.entry-label {
+    color: @text_muted;
+    font-family: 'Inter', 'Noto Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+}
+
 separator {
-    background: rgba(255, 255, 255, 0.10);
+    background-color: rgba(255, 255, 255, 0.12);
     border: none;
     min-height: 1px;
-    margin: 16px 0 8px 0;
+    margin: 12px 0 8px;
 }
 
-/* =========================================================================
-   3. Entradas de Texto y Contraseña (Pills)
-   ========================================================================= */
+/* Rounded fields keep the native GTK controls legible and easy to focus. */
 entry,
 passwordentry,
 .password-entry {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.09);
     background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
+    border: 1px solid @glass_border;
+    border-radius: 13px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
     color: @text_primary;
     caret-color: @accent_color;
     font-size: 14px;
-    padding: 8px 18px;
     min-height: 42px;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
-    transition: all 180ms ease;
+    padding: 8px 14px;
 }
 
 entry:focus,
 passwordentry:focus,
 .password-entry:focus {
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: rgba(255, 255, 255, 0.13);
     border-color: @accent_color;
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.35),
-                0 4px 16px rgba(0, 0, 0, 0.30);
+    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.28);
 }
 
 entry placeholder,
 passwordentry placeholder {
-    color: #A89F95;
+    color: #AEB4BE;
 }
 
-/* Desplegable de sesión y usuario */
 combobox,
 combobox > box,
 combobox button {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: @glass_soft;
     background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
+    border: 1px solid @glass_border;
+    border-radius: 13px;
     color: @text_primary;
     font-size: 13px;
-    padding: 6px 16px;
     min-height: 40px;
-    transition: all 150ms ease;
+    padding: 6px 12px;
 }
 
 combobox:hover,
 combobox button:hover {
-    background-color: rgba(255, 255, 255, 0.14);
-    border-color: @accent_color;
+    background-color: @glass_hover;
+    border-color: rgba(255, 255, 255, 0.28);
 }
 
-/* Botones circulares de alternar edición manual (lápiz) */
 togglebutton,
 #user_toggle,
 #sess_toggle {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: @glass_soft;
     background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
+    border: 1px solid @glass_border;
+    border-radius: 12px;
     color: @text_primary;
-    padding: 8px 12px;
-    min-height: 40px;
-    min-width: 40px;
-    transition: all 150ms ease;
+    min-height: 38px;
+    min-width: 38px;
+    padding: 7px 10px;
 }
 
 togglebutton:hover,
 #user_toggle:hover,
 #sess_toggle:hover {
-    background-color: rgba(249, 115, 22, 0.22);
+    background-color: rgba(249, 115, 22, 0.18);
     border-color: @accent_color;
-    color: #FFFFFF;
 }
 
 togglebutton:checked,
@@ -182,155 +154,129 @@ togglebutton:checked,
     color: #FFFFFF;
 }
 
-/* =========================================================================
-   4. Botón de Login (Naranja Cálido ChurrOS, sin el azul genérico de Adwaita)
-   ========================================================================= */
+/* One clear primary action; the orange remains unmistakably ChurrOS. */
 window button.suggested-action,
 button.suggested-action,
 #login_button {
-    background: linear-gradient(135deg, #FB923C, #EA580C);
     background-color: @accent_color;
-    background-image: linear-gradient(135deg, #FB923C, #EA580C);
-    border: 1px solid #FDBA74;
-    border-radius: 9999px;
+    background-image: none;
+    border: 1px solid @accent_hover;
+    border-radius: 13px;
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.28);
     color: #FFFFFF;
-    font-weight: 600;
     font-size: 14px;
-    padding: 10px 28px;
+    font-weight: 600;
     min-height: 42px;
-    box-shadow: 0 4px 18px rgba(234, 88, 12, 0.45);
-    transition: all 160ms ease;
+    padding: 9px 22px;
 }
 
 window button.suggested-action:hover,
 button.suggested-action:hover,
 #login_button:hover {
-    background: linear-gradient(135deg, #FDBA74, #F97316);
-    box-shadow: 0 6px 24px rgba(249, 115, 22, 0.60);
+    background-color: @accent_hover;
+    border-color: #FDBA74;
 }
 
 window button.suggested-action:active,
 button.suggested-action:active,
 #login_button:active {
-    background: #EA580C;
-    transform: scale(0.97);
+    background-color: @accent_pressed;
 }
 
 #cancel_button,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle) {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: @glass_soft;
     background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
+    border: 1px solid @glass_border;
+    border-radius: 12px;
     color: @text_primary;
     font-size: 13px;
     font-weight: 500;
-    padding: 8px 20px;
     min-height: 38px;
-    transition: all 150ms ease;
+    padding: 7px 16px;
 }
 
 #cancel_button:hover,
 button:not(.suggested-action):not(.destructive-action):not(#user_toggle):not(#sess_toggle):hover {
-    background-color: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #FFFFFF;
+    background-color: @glass_hover;
+    border-color: rgba(255, 255, 255, 0.28);
 }
 
-/* =========================================================================
-   5. Botones de Apagado y Reinicio (Píldoras Elegantes, no bloques rojos)
-   ========================================================================= */
+/* Power controls are quiet until hovered, with destructive actions still clear. */
 window button.destructive-action,
 button.destructive-action,
 #reboot_button,
 #poweroff_button {
-    background: rgba(255, 255, 255, 0.08);
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: @glass_soft;
     background-image: none;
-    border: 1px solid @border_glass;
-    border-radius: 9999px;
-    color: @text_secondary;
+    border: 1px solid @glass_border;
+    border-radius: 12px;
+    box-shadow: none;
+    color: @text_muted;
     font-size: 12px;
     font-weight: 500;
-    padding: 8px 22px;
     min-height: 36px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20);
-    transition: all 150ms ease;
+    padding: 7px 16px;
 }
 
 window button.destructive-action:hover,
 button.destructive-action:hover,
 #reboot_button:hover,
 #poweroff_button:hover {
-    background: rgba(239, 68, 68, 0.20);
-    background-color: rgba(239, 68, 68, 0.20);
-    border-color: rgba(239, 68, 68, 0.45);
+    background-color: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.42);
     color: #FCA5A5;
-    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25);
 }
 
-window button.destructive-action:active,
-button.destructive-action:active,
-#reboot_button:active,
-#poweroff_button:active {
-    background-color: rgba(220, 38, 38, 0.35);
-    transform: scale(0.97);
-}
-
-/* =========================================================================
-   6. Notificaciones y Popovers
-   ========================================================================= */
 infobar,
 #notif_info {
-    background-color: rgba(24, 18, 15, 0.92);
-    border: 1px solid @border_glass;
-    border-radius: 16px;
+    background-color: rgba(24, 24, 27, 0.94);
+    border: 1px solid @glass_border;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.36);
     color: @text_primary;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
 }
 
 infobar.error,
 #notif_info.error {
-    background-color: rgba(127, 29, 29, 0.90);
-    border-color: rgba(239, 68, 68, 0.45);
+    background-color: rgba(127, 29, 29, 0.92);
+    border-color: rgba(239, 68, 68, 0.42);
     color: #FECACA;
 }
 
 #notif_label {
+    color: inherit;
     font-size: 13px;
     font-weight: 500;
-    color: inherit;
 }
 
 popover,
 popover.background {
-    background-color: rgba(24, 18, 15, 0.96);
-    border: 1px solid @border_glass;
-    border-radius: 18px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.70);
-    padding: 8px;
+    background-color: rgba(24, 24, 27, 0.97);
+    border: 1px solid @glass_border;
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42);
+    padding: 6px;
 }
 
 popover contents {
-    background: transparent;
-    border-radius: 16px;
+    background-color: transparent;
+    border-radius: 12px;
 }
 
 popover modelbutton,
 popover button,
 menuitem {
-    border-radius: 12px;
-    padding: 8px 14px;
+    border-radius: 10px;
     color: @text_primary;
     font-size: 13px;
     font-weight: 500;
-    transition: all 120ms ease;
+    padding: 7px 12px;
 }
 
 popover modelbutton:hover,
 popover button:hover,
 menuitem:hover {
-    background-color: rgba(249, 115, 22, 0.20);
-    color: @accent_color;
+    background-color: rgba(249, 115, 22, 0.18);
+    color: @accent_hover;
 }
-

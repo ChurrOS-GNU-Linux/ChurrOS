@@ -930,8 +930,8 @@ why = "Llave sin cerrar en style.css de waybar: GTK descarta la hoja desde ahí 
 [[mutation]]
 name = "test_config_syntax: !important en el tema de ReGreet"
 file = "archiso/airootfs/etc/greetd/regreet.css"
-find = "    border-radius: 26px;\n"
-replace = "    border-radius: 26px !important;\n"
+find = "    border-radius: 22px;\n"
+replace = "    border-radius: 22px !important;\n"
 caught_by = "tests.static.test_config_syntax"
 expect = "css-important:archiso/airootfs/etc/greetd/regreet.css:important"
 why = "GTK no admite !important: 'Junk at end of value' y la declaración se descarta. Así se perdió casi todo el tema Bento Glass de ReGreet."
