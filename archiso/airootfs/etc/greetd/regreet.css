@@ -48,8 +48,8 @@ frame.background:not(.widget-clock) {
     background-image: none;
     border: 1px solid @surface_border;
     border-radius: 22px;
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.30);
-    padding: 22px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.26);
+    padding: 18px;
 }
 
 #message_label,
