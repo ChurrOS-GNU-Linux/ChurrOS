@@ -65,8 +65,24 @@ if ! churros_in_container && { [ "$USE_CONTAINER" -eq 1 ] || ! command -v "$QEMU
             echo "[qemu] Ejecutando ChurrOS dentro del contenedor con aceleración gráfica y KVM..."
         fi
 
+        # QEMU corre como root del contenedor y no tiene la cookie de
+        # ~/.Xauthority: X solo lo acepta por UID. Se autoriza únicamente al
+        # usuario del host que es ese root (el propio con podman o docker
+        # rootless, root con el demonio de docker) y se revoca al salir.
+        # Nunca `xhost +local:`: abre la pantalla a cualquier usuario local.
+        X_GRANT=""
         if [ -n "${DISPLAY:-}" ] && command -v xhost >/dev/null 2>&1; then
-            xhost +local: >/dev/null 2>&1 || true
+            x_user=root
+            if [ "$(id -u)" -ne 0 ]; then
+                if [ "$ENGINE" = podman ] ||
+                    docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+                    x_user="$(id -un)"
+                fi
+            fi
+            if ! xhost 2>/dev/null | grep -qx "SI:localuser:$x_user" &&
+                xhost "+SI:localuser:$x_user" >/dev/null 2>&1; then
+                X_GRANT="SI:localuser:$x_user"
+            fi
         fi
 
         IMAGE="localhost/churros-builder"
@@ -101,10 +117,16 @@ if ! churros_in_container && { [ "$USE_CONTAINER" -eq 1 ] || ! command -v "$QEMU
             [ "$a" != "--container" ] && filtered_args+=("$a")
         done
 
-        exec "$ENGINE" run --rm "${DEV_ARGS[@]}" "${MOUNT_ARGS[@]}" \
+        # Sin exec: el permiso de X se quita cuando QEMU termina (también con Ctrl+C).
+        if [ -n "$X_GRANT" ]; then
+            trap 'xhost "-$X_GRANT" >/dev/null 2>&1 || true' EXIT
+        fi
+        status=0
+        "$ENGINE" run --rm "${DEV_ARGS[@]}" "${MOUNT_ARGS[@]}" \
             -e CHURROS_IN_CONTAINER=1 \
             "$IMAGE" \
-            bash ./scripts/cli/run.sh "${filtered_args[@]}"
+            bash ./scripts/cli/run.sh "${filtered_args[@]}" || status=$?
+        exit "$status"
     fi
 fi
 
