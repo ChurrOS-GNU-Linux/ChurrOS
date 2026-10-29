@@ -228,6 +228,8 @@ plymouth
 papirus-icon-theme
 adwaita-icon-theme
 fastfetch
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
+zram-generator
 
 # Multimedia base
 ffmpeg

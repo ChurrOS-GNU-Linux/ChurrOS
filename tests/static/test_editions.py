@@ -83,6 +83,8 @@ REQUIRED = (
      r'grubInstall:\s*"grub-install"', "el paso bootloader de Calamares ejecuta grub-install"),
     ("efibootmgr", "installer", "installer/calamares/modules/bootloader.conf",
      r'efiBootMgr:\s*"efibootmgr"', "el paso bootloader de Calamares ejecuta efibootmgr"),
+    ("zram-generator", "all", "archiso/airootfs/etc/systemd/zram-generator.conf", r"(?m)^\[zram0\]",
+     "la Live configura swap zram0; sin el paquete el fichero no hace nada y unpackfs puede quedarse sin memoria con 2 GB"),
     ("qemu-guest-agent", "all", None, None,
      "tests/vm (arranque en QEMU) habla con la Live por qemu-guest-agent"),
 )
@@ -340,6 +342,20 @@ class BuildMatrixTest(unittest.TestCase):
                     self.assertEqual(fields.get("VARIANT_ID", "").strip('"'), name,
                                      "stamp-os-release.sh no tiene variante para esta edición")
                     self.assertEqual(fields.get("VERSION_ID"), "2.0.0")
+
+    def test_calamares_wrapper_preserves_display(self):
+        """El wrapper /usr/local/bin/calamares debe preservar DISPLAY y XAUTHORITY para X11 (XFCE)."""
+        content = testlib.read_text(ROOT / "archiso/airootfs/usr/local/bin/calamares")
+        match = re.search(r"--preserve-env=(\S+)", content)
+        self.assertIsNotNone(match, "el wrapper de Calamares ya no llama a sudo --preserve-env")
+        # Nombres exactos: un regex sobre la línea aceptaría WAYLAND_DISPLAY por DISPLAY.
+        kept = set(match.group(1).split(","))
+        for var in ("DISPLAY", "XAUTHORITY"):
+            self.assertIn(var, kept, f"{var} debe estar en --preserve-env de sudo")
+        # startx no siempre exporta XAUTHORITY; sin él, root busca /root/.Xauthority
+        # y Qt falla con "could not connect to display".
+        self.assertRegex(content, r'export XAUTHORITY="\$\{XAUTHORITY:-\$HOME/\.Xauthority\}"',
+                         "el wrapper debe exportar XAUTHORITY (por defecto ~/.Xauthority) antes de sudo")
 
 
 class PackageListTest(unittest.TestCase):

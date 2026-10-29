@@ -131,3 +131,21 @@ note = "En la sesión Live de server (CI, UEFI y BIOS con KVM) light-locker abor
 [[issue]]
 id = "boot-xfce-x86_64:coredump:light-locker"
 note = "Misma causa que boot-server-x86_64:coredump:light-locker (misma sesión XFCE con greetd): en la sesión Live de XFCE (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar con SIGABRT en dbus_message_append_args: necesita LightDM. Decidir el bloqueador (xfce4-screensaver) y quitar light-locker de la lista."
+
+# --- tests/static/test_editions.py (zram-generator) ---
+
+[[issue]]
+id = "edition-pkg:niri/aarch64:zram-generator"
+note = "archiso/packages.aarch64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de niri/aarch64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
+
+[[issue]]
+id = "edition-pkg:niri/i686:zram-generator"
+note = "archiso/packages.i686 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de niri/i686 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
+
+[[issue]]
+id = "edition-pkg:pi/aarch64:zram-generator"
+note = "archiso/packages.pi.aarch64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de pi/aarch64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
+
+[[issue]]
+id = "edition-pkg:server/x86_64:zram-generator"
+note = "archiso/packages.server.x86_64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de server/x86_64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."

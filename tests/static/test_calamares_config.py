@@ -45,6 +45,8 @@ from tests import testlib
 CALAMARES = testlib.ROOT / "installer/calamares"
 MODULES = CALAMARES / "modules"
 SETTINGS = CALAMARES / "settings.conf"
+# MemTotal de un equipo de 2 GB físicos con gráfica integrada (GiB).
+MIN_SUPPORTED_RAM_GIB = 1.7
 BRANDING = CALAMARES / "branding"
 
 # Ediciones y arquitecturas que llevan el instalador (build.sh lo omite en i686).
@@ -1294,6 +1296,31 @@ class CalamaresConfigTest(unittest.TestCase):
         return findings
 
     # -------------------------------------------------------- 5. referencias
+
+    def test_6_welcome_requirements(self):
+        """welcome.conf no puede rechazar un equipo de 2 GB.
+
+        Con 2 GB físicos MemTotal ronda 1.7-1.9 GiB (memoria reservada por el
+        firmware y la gráfica integrada). Si `ram` está en `required` o
+        `requiredRam` pasa de ese valor, Calamares deja "Siguiente" desactivado.
+        """
+        category = "calamares-welcome"
+        findings = {}
+        requirements = self.load(MODULES / "welcome.conf").get("requirements") or {}
+        required = requirements.get("required") or []
+        if "ram" in required:
+            findings[f"{category}:ram-required"] = (
+                "welcome.conf: 'ram' en required bloquea la instalación cuando falta RAM; "
+                "déjalo solo en check (aviso)")
+        ram = requirements.get("requiredRam")
+        if not isinstance(ram, (int, float)) or ram > MIN_SUPPORTED_RAM_GIB:
+            findings[f"{category}:required-ram"] = (
+                f"welcome.conf: requiredRam={ram!r} supera {MIN_SUPPORTED_RAM_GIB} GiB, "
+                "lo que ve un equipo de 2 GB físicos")
+        if "storage" not in required:
+            findings[f"{category}:storage-not-required"] = (
+                "welcome.conf: 'storage' tiene que seguir en required (sin disco no hay instalación)")
+        testlib.assert_findings(self, category, findings)
 
     def test_5_cross_references(self):
         """services-systemd, displaymanager, users, initcpiocfg y netinstall contra las ediciones."""
