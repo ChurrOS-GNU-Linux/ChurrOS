@@ -41,15 +41,16 @@ En i686 la ISO se construye como edición niri, pero `archiso/packages.i686` no 
 
 ## 2. Diseño
 
-El tema (`/etc/greetd/regreet.css`) toma referencias de la sobriedad de la pantalla de inicio de macOS —superficies translúcidas, tarjeta compacta y una acción principal clara— sin copiar su logotipo, tipografía ni controles. Mantiene el fondo y la identidad propios de ChurrOS:
+El tema (`/etc/greetd/regreet.css`) toma de la referencia una composición despejada: fondo ChurrOS a pantalla completa, tarjeta pequeña centrada, contraseña como acción principal y controles de apagado apartados abajo. Mantiene la identidad propia de ChurrOS y no copia el logotipo ni los controles de macOS:
 
 - **Fondo de pantalla**: `/usr/share/churros/wallpapers/default.png`, o el que se sincronice desde Ajustes (ver la sección 5).
-- **Tarjeta central de cristal** oscura, de bordes suaves y con sombra discreta; no se desplaza con márgenes fijos para no descentrarse en pantallas pequeñas.
-- **Campos y selectores** redondeados, con contraste suficiente sobre el cristal.
-- **Foco y acción principal** en naranja ChurrOS (`#F97316`); los controles secundarios son más tenues.
+- **Tarjeta central oscura** con un solo borde fino y sombra moderada; los componentes internos no apilan contornos ni efectos de cristal.
+- **Controles simples**: campos y selectores redondeados de forma discreta, edición manual disponible desde botones secundarios poco llamativos.
+- **Foco y acción principal** en naranja ChurrOS (`#F97316`); Cancelar y los controles de energía tienen menos peso visual.
+- **Selección recordada**: `skip_selection = true` hace que, después del primer inicio de sesión correcto, ReGreet muestre directamente el campo de contraseña usando el último usuario y sesión. «Cancelar» vuelve al selector para cambiar cualquiera de los dos. En un equipo sin datos de inicio previo se presenta el selector normal.
 - **Reloj y saludo** con `Inter` y fuente de respaldo. El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
 
-El rediseño es CSS de GTK y no cambia greetd, PAM, usuarios, sesiones ni el proceso de autenticación. La comprobación estática valida la sintaxis; para confirmar el aspecto final también se debe revisar el greeter en una sesión gráfica real.
+El cambio conserva greetd, PAM, usuarios, sesiones y el proceso de autenticación. La comprobación estática valida sintaxis, pero para confirmar tamaños y alineación reales hay que revisar el greeter en una sesión gráfica y probar la ISO.
 
 ---
 
