@@ -1,8 +1,13 @@
 # ChurrOS ReGreet Configuration (GTK4 Graphical Login)
 
+# Reuse the last successful user/session and show the password prompt directly.
+# Cancel returns to the user/session selector.
+skip_selection = true
+
 [background]
 path = "/usr/share/churros/wallpapers/default.png"
 fit = "Cover"
+
 
 [GTK]
 application_prefer_dark_theme = true
