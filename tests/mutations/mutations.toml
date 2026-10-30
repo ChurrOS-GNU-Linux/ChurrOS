@@ -903,8 +903,8 @@ why = "Se pierde la cabecera [Desktop Entry]: Ajustes desaparece del lanzador"
 [[mutation]]
 name = "test_config_syntax: Errata en un placeholder de mkarchiso"
 file = "archiso/syslinux/archiso_sys-linux.cfg"
-find = "archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% copytoram=n"
-replace = "archisobasedir=%INSTAL_DIR% archisosearchuuid=%ARCHISO_UUID% copytoram=n"
+find = "archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% checksum=y copytoram=n"
+replace = "archisobasedir=%INSTAL_DIR% archisosearchuuid=%ARCHISO_UUID% checksum=y copytoram=n"
 caught_by = "tests.static.test_config_syntax"
 expect = "%INSTAL_DIR% no lo sustituye mkarchiso"
 why = "Errata en un placeholder de mkarchiso: la entrada BIOS no encuentra airootfs.sfs y cae a la shell de emergencia"
@@ -1947,8 +1947,8 @@ why = "Nada nombra Xorg, pero churros-xfce-session hace startx: la Live de XFCE 
 [[mutation]]
 name = "test_config_syntax: la entrada BIOS de la Live pierde archisosearchuuid"
 file = "archiso/syslinux/archiso_sys-linux.cfg"
-find_re = '^(APPEND archisobasedir=%INSTALL_DIR%) archisosearchuuid=%ARCHISO_UUID% (copytoram=n cow_spacesize=2G)$'
-replace = '\1 \2'
+find_re = '^(APPEND archisobasedir=%INSTALL_DIR%) archisosearchuuid=%ARCHISO_UUID% checksum=y (copytoram=n cow_spacesize=2G)$'
+replace = '\1 checksum=y \2'
 caught_by = "tests.static.test_config_syntax"
 expect = "boot-cmdline:archiso/syslinux/archiso_sys-linux.cfg:medium:arch"
 why = "El initramfs no encuentra el medio y acaba en la shell de emergencia; los PR solo arrancaban por UEFI."
@@ -2256,7 +2256,7 @@ why = "La categoría real es wiring:test-script: la entrada no silencia nada."
 [[mutation]]
 name = "test_config_syntax: la entrada BIOS de accesibilidad pierde su APPEND"
 file = "archiso/syslinux/archiso_sys-linux.cfg"
-find_re = '^APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% accessibility=on copytoram=n cow_spacesize=2G\n'
+find_re = '^APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% accessibility=on checksum=y copytoram=n cow_spacesize=2G\n'
 replace = ""
 caught_by = "tests.static.test_config_syntax"
 expect = "no-cmdline:archspeech"
@@ -2437,10 +2437,10 @@ why = "Si la sesión no exporta XAUTHORITY, preservarlo no sirve de nada: root b
 [[mutation]]
 name = "test_config_syntax: el arranque UEFI local deja de verificar airootfs.sfs"
 file = "archiso/grub/grub.cfg"
-find = "checksum=y copytoram=n cow_spacesize=2G"
-replace = "copytoram=n cow_spacesize=2G"
+find_re = '^    linux /%INSTALL_DIR%/boot/%ARCH%/\$\{churros_kernel\} archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% checksum=y copytoram=n cow_spacesize=2G \${churros_console}\n'
+replace = ""
 caught_by = "tests.static.test_config_syntax"
-expect = "boot-cfg:archiso/grub/grub.cfg:checksum:ChurrOS Live(%ARCH%, ${archiso_platform})"
+expect = "checksum=y o cms_verify=y"
 why = "Sin checksum=y, una ISO o un USB corruptos pasan al Live y el instalador copia datos dañados antes de que el usuario obtenga un diagnóstico."
 
 [[mutation]]
