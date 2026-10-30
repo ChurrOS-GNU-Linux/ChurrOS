@@ -51,7 +51,7 @@ Este repositorio contiene el perfil de la ISO, el overlay del sistema Live, la c
 |---|---|---|---|
 | Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.4) |
 | XFCE | x86_64 | XFCE | ISO publicada (1.4) |
-| Servidor | x86_64 | Ninguno en el sistema instalado | Se construye desde el repositorio; no hay ISO publicada |
+| Servidor | x86_64 | Ninguno en el sistema instalado | Se construye desde el repositorio; no hay ISO publicada (abandonado) |
 | Niri | aarch64 (UEFI) | Niri + Noctalia | Se construye desde el repositorio; no hay ISO publicada |
 | Raspberry Pi Lite (`pi`) | aarch64 | labwc + Waybar | Experimental: no se construye en la CI ni hay ISO publicada |
 | Port de 32 bits | i686 | Ninguno (Niri y Noctalia no existen en Arch Linux 32) | Experimental: sin sesión gráfica ni instalador gráfico |
