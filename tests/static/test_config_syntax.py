@@ -971,6 +971,12 @@ class BootConfigs(unittest.TestCase):
                 if not medium.search(line):
                     findings[f"medium:{name}"] = (f"la entrada {name!r} no sabe encontrar el medio "
                                                   f"(archisosearchuuid=%ARCHISO_UUID%...): {line}")
+                # Bootable local media must validate the SquashFS checksum in
+                # initramfs before mounting it. Network/PXE entries use their
+                # existing CMS signature validation instead.
+                if "checksum=y" not in line.split() and "cms_verify=y" not in line.split():
+                    findings[f"checksum:{name}"] = (f"la entrada {name!r} no verifica airootfs.sfs "
+                                                     f"(checksum=y o cms_verify=y): {line}")
             return findings
         check_each(self, "boot-cmdline", files, check)
         found = sum(1 for path in files for _ in entries(path))

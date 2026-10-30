@@ -2433,3 +2433,21 @@ replace = ""
 caught_by = "tests.static.test_editions"
 expect = "el wrapper debe exportar XAUTHORITY"
 why = "Si la sesión no exporta XAUTHORITY, preservarlo no sirve de nada: root busca /root/.Xauthority y Qt no conecta al display X11."
+
+[[mutation]]
+name = "test_config_syntax: el arranque UEFI local deja de verificar airootfs.sfs"
+file = "archiso/grub/grub.cfg"
+find = "checksum=y copytoram=n cow_spacesize=2G"
+replace = "copytoram=n cow_spacesize=2G"
+caught_by = "tests.static.test_config_syntax"
+expect = "boot-cfg:archiso/grub/grub.cfg:checksum:ChurrOS Live(%ARCH%, ${archiso_platform})"
+why = "Sin checksum=y, una ISO o un USB corruptos pasan al Live y el instalador copia datos dañados antes de que el usuario obtenga un diagnóstico."
+
+[[mutation]]
+name = "test_calamares_config: unpackfs copia el sistema Live sin validar el checksum"
+file = "installer/calamares/modules/shellprocess-boot-nocow.conf"
+find = "airootfs.sha512"
+replace = "airootfs.sfs"
+caught_by = "tests.static.test_calamares_config"
+expect = "boot-nocow debe validar airootfs.sha512 antes de unpackfs: falta airootfs.sha512"
+why = "Si el medio se corrompe después de arrancar, Calamares debe detenerse antes de copiar el squashfs dañado al disco instalado."
