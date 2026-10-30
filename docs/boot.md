@@ -82,7 +82,7 @@ La entrada principal está etiquetada como `id 'archlinux'` (mantiene el id inte
 
 El parámetro `archisobasedir=%INSTALL_DIR%` se sustituye en tiempo de compilación por `churros` (definido en `profiledef.sh` como `install_dir="churros"`).
 
-Las entradas de arranque local de GRUB y de Syslinux pasan `copytoram=n cow_spacesize=2G` (las de PXE, solo `cow_spacesize=2G`). El overlay de 256 MB por defecto no alcanza para la reserva de 500 MB de OSTree que hace Flatpak, y sin ese margen Bazaar no puede sincronizar Flathub.
+Las entradas locales de GRUB y Syslinux pasan `checksum=y`: ArchISO valida el SHA-512 de `airootfs.sfs` antes de montarlo, para detectar una ISO o USB dañada antes de iniciar la sesión Live. Calamares vuelve a comprobar ese SHA-512 justo antes de `unpackfs`, por si el medio se corrompe después del arranque; ante discrepancia aborta antes de copiar el sistema al disco. Las entradas locales también pasan `copytoram=n cow_spacesize=2G` (las de PXE usan su propia verificación CMS y solo `cow_spacesize=2G`). El overlay de 256 MB por defecto no alcanza para la reserva de 500 MB de OSTree que hace Flatpak, y sin ese margen Bazaar no puede sincronizar Flathub.
 
 La entrada de accesibilidad añade `accessibility=on` a la línea del kernel, lo que activa `livecd-alsa-unmuter.service` y `livecd-talk.service` (ver [live-services.md](live-services.md)). El lector de pantalla usa el paquete `espeakup`, que está en todas las listas (`archiso/packages.x86_64`, `archiso/packages.i686`, `archiso/packages.aarch64`, `archiso/packages.xfce.x86_64`, `archiso/packages.server.x86_64` y `archiso/packages.pi.aarch64`): `livecd-talk` arranca `espeakup.service`.
 

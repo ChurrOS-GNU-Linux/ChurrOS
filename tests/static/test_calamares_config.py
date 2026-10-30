@@ -1081,6 +1081,23 @@ class CalamaresConfigTest(unittest.TestCase):
 
     # ------------------------------------------------------------ 4. simulación
 
+    def test_live_image_checksum_before_unpackfs(self):
+        """La ISO puede corromperse tras el arranque; abortar antes de copiar el squashfs."""
+        settings = self.settings()
+        sequence = [step for phase in settings.get("sequence", [])
+                    if isinstance(phase, dict) and "exec" in phase for step in phase["exec"]]
+        boot_nocow = (self.instances().get("boot-nocow") or {}).get("config")
+        self.assertIsInstance(boot_nocow, str)
+        commands = [command for command, _ in command_entries(self.load(MODULES / boot_nocow).get("script"))
+                    if command]
+        verify = next((i for i, command in enumerate(commands) if "sha512sum" in command), None)
+        self.assertIsNotNone(verify, "boot-nocow debe validar airootfs.sha512 antes de unpackfs")
+        command = commands[verify]
+        for required in ("$(uname -m)", "airootfs.sha512", "exit 1"):
+            if required not in command:
+                self.fail(f"boot-nocow debe validar airootfs.sha512 antes de unpackfs: falta {required}")
+        self.assertLess(sequence.index("shellprocess@boot-nocow"), sequence.index("unpackfs"))
+
     def test_4_simulation(self):
         """fix-boot sobre los presets reales y limpieza de [churros] en pacman.conf."""
         testlib.require_tool(self, "bash")
