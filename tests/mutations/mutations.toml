@@ -2437,8 +2437,8 @@ why = "Si la sesión no exporta XAUTHORITY, preservarlo no sirve de nada: root b
 [[mutation]]
 name = "test_config_syntax: el arranque UEFI local deja de verificar airootfs.sfs"
 file = "archiso/grub/grub.cfg"
-find_re = '^    linux /%INSTALL_DIR%/boot/%ARCH%/\$\{churros_kernel\} archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% checksum=y copytoram=n cow_spacesize=2G \${churros_console}\n'
-replace = ""
+find_re = '^(    linux /%INSTALL_DIR%/boot/%ARCH%/\$\{churros_kernel\} archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID%) checksum=y (copytoram=n cow_spacesize=2G \${churros_console}\n)'
+replace = '\1 \2'
 caught_by = "tests.static.test_config_syntax"
 expect = "checksum=y o cms_verify=y"
 why = "Sin checksum=y, una ISO o un USB corruptos pasan al Live y el instalador copia datos dañados antes de que el usuario obtenga un diagnóstico."
