@@ -17,30 +17,45 @@ pub mod version;
 pub mod waybar_style;
 pub mod wifi;
 
+use std::ffi::CStr;
 use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// HOME del usuario efectivo; si la variable no existe, se consulta passwd
-/// (getent) en vez de asumir "/root" en cualquier caso.
+/// HOME del usuario efectivo; si la variable no existe o está vacía, se consulta
+/// la base de datos de usuarios (passwd) por el UID efectivo mediante libc::getpwuid
+/// en vez de asumir "/root" directamente.
 pub fn home_dir() -> String {
     if let Ok(h) = std::env::var("HOME") {
         if !h.is_empty() {
             return h;
         }
     }
-    if let Ok(out) = Command::new("getent")
-        .args(["passwd", &std::env::var("USER").unwrap_or_default()])
-        .output()
-    {
-        if out.status.success() {
-            let line = String::from_utf8_lossy(&out.stdout);
-            if let Some(home) = line.split(':').nth(5) {
-                let home = home.trim();
-                if !home.is_empty() {
-                    return home.to_string();
+    let uid = unsafe { libc::getuid() };
+    let pwd = unsafe { libc::getpwuid(uid) };
+    if !pwd.is_null() {
+        let dir = unsafe { CStr::from_ptr((*pwd).pw_dir) };
+        if let Ok(s) = dir.to_str() {
+            let s = s.trim();
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+    }
+    if let Ok(user) = std::env::var("USER") {
+        let user = user.trim();
+        if !user.is_empty() {
+            if let Ok(out) = Command::new("getent").args(["passwd", user]).output() {
+                if out.status.success() {
+                    let line = String::from_utf8_lossy(&out.stdout);
+                    if let Some(home) = line.split(':').nth(5) {
+                        let home = home.trim();
+                        if !home.is_empty() {
+                            return home.to_string();
+                        }
+                    }
                 }
             }
         }
@@ -329,6 +344,25 @@ mod tests {
     #[test]
     fn test_home_path_non_empty() {
         assert!(!home_path().as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_home_dir_resolves_valid_path() {
+        let home = home_dir();
+        assert!(!home.is_empty());
+        assert!(home.starts_with('/'));
+    }
+
+    #[test]
+    fn test_home_dir_getpwuid_matches_uid() {
+        let uid = unsafe { libc::getuid() };
+        let pwd = unsafe { libc::getpwuid(uid) };
+        if !pwd.is_null() {
+            let dir = unsafe { CStr::from_ptr((*pwd).pw_dir) };
+            if let Ok(s) = dir.to_str() {
+                assert!(!s.trim().is_empty());
+            }
+        }
     }
 
     #[test]
