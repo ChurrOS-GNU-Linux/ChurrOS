@@ -106,6 +106,7 @@ Cambiar el fondo con el interruptor activo regenera la paleta. Al apagarlo vuelv
 - **CursorService** — busca temas en `/usr/share/icons` y `~/.icons`; aplica `cursor-theme` / `cursor-size` y escribe `gtk-cursor-theme-*` en los `settings.ini` de GTK 3 y GTK 4.
 - **IconsService** — `icon-theme` en gsettings, `gtk-icon-theme-name` en los `settings.ini` de GTK 3 y GTK 4, y `/Net/IconThemeName` con `xfconf-query`.
 - **WallpaperService** — con Noctalia en marcha, `churros-apply-wallpaper` (que usa el IPC de Noctalia) o, si no está, `noctalia msg wallpaper-set`; nunca arranca `swaybg` encima del shell. Sin Noctalia, `churros-apply-wallpaper` y, si falla, `swaybg`. Después regenera pywal si está activo.
+- **FastfetchConfig** — lee y escribe `~/.config/fastfetch/config.jsonc` (JSONC con comentarios), importa arte ASCII o imágenes como logo en `~/.config/fastfetch/`, configura colores del logo, separador, ancho de claves y módulos activos conservando encabezados y pies personalizados.
 
 ---
 
@@ -147,6 +148,7 @@ Páginas principales del sidebar, en orden: Sistema, Actualizaciones, Fecha y ho
 | ↳ `cursor.rs` | `appearance` | | Tema y tamaño de cursor |
 | ↳ `fonts.rs` | `appearance` | | Familia, escala, vista previa |
 | ↳ `wallpaper.rs` | `appearance` | | Selector e importación de fondos |
+| ↳ `fastfetch.rs` | `appearance` | | Logo (ASCII/imagen), módulos y formato de salida |
 | ↳ `niri.rs` | `appearance` | Niri | Disposición, bordes, blur, animaciones |
 | ↳ `window_rules.rs` | `appearance` | Niri | Bloques `window-rule {}` |
 | ↳ `foot.rs` | `appearance` | Niri | `foot.ini` |
