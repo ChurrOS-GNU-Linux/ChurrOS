@@ -115,6 +115,19 @@ caught_by = "tests.static.test_service_deadline"
 expect = "[service-deadline:both-eof]"
 why = "Returning on child exit loses buffered or descendant output."
 
+# --- home_dir fallback ---
+
+[[mutation]]
+name = "services: home_dir ignores passwd and defaults to /root"
+file = "rust/services/src/lib.rs"
+find = """    let uid = unsafe { libc::getuid() };
+    let pwd = unsafe { libc::getpwuid(uid) };"""
+replace = """    let uid = unsafe { libc::getuid() };
+    let pwd = std::ptr::null_mut();"""
+caught_by = "tests.static.test_home_dir"
+expect = "[home-dir:getpwuid-fallback]"
+why = "Without HOME in headless/server environments, home_dir must resolve from passwd via getpwuid instead of assuming /root."
+
 # --- shell_perms ---
 
 [[mutation]]
