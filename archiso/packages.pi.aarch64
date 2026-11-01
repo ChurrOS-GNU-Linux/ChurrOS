@@ -97,5 +97,5 @@ espeakup
 # Módems 3G/4G: el perfil activa ModemManager.service (multi-user.target.wants)
 modemmanager
 
-# Compressed RAM swap configured in airootfs/etc/systemd/zram-generator.conf
+# Swap comprimido en RAM (etc/systemd/zram-generator.conf)
 zram-generator
