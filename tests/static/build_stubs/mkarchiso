@@ -30,6 +30,7 @@ printf '%s\0' "$@" > "$snap/argv"
 {
     printf 'cwd=%s\n' "$PWD"
     printf 'CHURROS_ARCH=%s\n' "${CHURROS_ARCH-<unset>}"
+    printf 'SOURCE_DATE_EPOCH=%s\n' "${SOURCE_DATE_EPOCH-<unset>}"
     printf 'via_sudo=%s\n' "${DRYRUN_VIA_SUDO:-0}"
 } > "$snap/env"
 

@@ -1236,7 +1236,7 @@ why = "Trap leaves the gitignored etc/churros-edition behind (invisible to plain
 [[mutation]]
 name = "test_build_dryrun: 'Simplified' mkarchiso call"
 file = "scripts/cli/build.sh"
-find = "sudo env CHURROS_ARCH=\"$TARGET_ARCH\" mkarchiso -v \\"
+find = "sudo env CHURROS_ARCH=\"$TARGET_ARCH\" SOURCE_DATE_EPOCH=\"$SOURCE_DATE_EPOCH\" mkarchiso -v \\"
 replace = "sudo mkarchiso -v \\"
 caught_by = "tests.static.test_build_dryrun"
 expect = "mkarchiso recibió CHURROS_ARCH=<unset>"
@@ -2553,3 +2553,31 @@ replace = "airootfs.sfs"
 caught_by = "tests.static.test_calamares_config"
 expect = "boot-nocow debe validar airootfs.sha512 antes de unpackfs: falta airootfs.sha512"
 why = "Si el medio se corrompe después de arrancar, Calamares debe detenerse antes de copiar el squashfs dañado al disco instalado."
+
+[[mutation]]
+name = "supply_chain: install-deps uses partial upgrade pacman -Sy"
+file = "install-deps.sh"
+find = "PM_REFRESH=(sudo pacman -Syu)"
+replace = "PM_REFRESH=(sudo pacman -Sy)"
+caught_by = "tests.static.test_supply_chain"
+expect = "[supply-chain:no-partial-upgrade]"
+why = "pacman -Sy without -u risks partial upgrades on Arch systems."
+
+[[mutation]]
+name = "supply_chain: profiledef SOURCE_DATE_EPOCH loses git commit timestamp"
+file = "archiso/profiledef.sh"
+find = '        export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct 2>/dev/null || date +%s)"'
+replace = '        export SOURCE_DATE_EPOCH="$(date +%s)"'
+caught_by = "tests.static.test_supply_chain"
+expect = "[reproducible:profiledef-git-epoch]"
+why = "Build metadata timestamps must be reproducible across commits."
+
+[[mutation]]
+name = "supply_chain: build.sh fails to pass SOURCE_DATE_EPOCH through sudo env"
+file = "scripts/cli/build.sh"
+find = 'sudo env CHURROS_ARCH="$TARGET_ARCH" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" mkarchiso -v \'
+replace = 'sudo env CHURROS_ARCH="$TARGET_ARCH" mkarchiso -v \'
+caught_by = "tests.static.test_supply_chain"
+expect = "[reproducible:build-sudo-env]"
+why = "sudo env resets the environment; SOURCE_DATE_EPOCH must be forwarded to mkarchiso."
+

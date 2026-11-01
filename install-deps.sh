@@ -85,6 +85,11 @@ case "$FAMILY" in
     arch)
         REQUIRED=(
             archiso
+            base-devel
+            dosfstools
+            mtools
+            squashfs-tools
+            libisoburn
             grub
             git
             qemu-full
@@ -103,7 +108,7 @@ case "$FAMILY" in
             virt-manager
             swtpm
         )
-        PM_REFRESH=(sudo pacman -Sy)
+        PM_REFRESH=(sudo pacman -Syu)
         PM_INSTALL=(sudo pacman -S --needed)
         if [ "$ASSUME_YES" -eq 1 ]; then PM_INSTALL+=(--noconfirm); fi
         ;;
