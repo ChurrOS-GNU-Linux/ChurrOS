@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    if [ -z "${DRYRUN_LOG:-}" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then
+        export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct 2>/dev/null || date +%s)"
+    else
+        export SOURCE_DATE_EPOCH="$(date +%s)"
+    fi
+else
+    export SOURCE_DATE_EPOCH
+fi
 
 iso_name="ChurrOS"
 iso_label="ChurrOS_$(date --date="@${SOURCE_DATE_EPOCH}" +%Y%m)"

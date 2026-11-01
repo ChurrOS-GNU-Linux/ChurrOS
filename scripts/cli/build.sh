@@ -523,7 +523,14 @@ if [ "$TARGET_ARCH" = aarch64 ]; then
     bash scripts/apply-aarch64-mkinitcpio.sh apply
     sudo bash scripts/patch-mkarchiso-grubmodules.sh /usr/bin/mkarchiso
 fi
-sudo env CHURROS_ARCH="$TARGET_ARCH" mkarchiso -v \
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    if [ -z "${DRYRUN_LOG:-}" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then
+        SOURCE_DATE_EPOCH="$(git log -1 --format=%ct 2>/dev/null || date +%s)"
+    else
+        SOURCE_DATE_EPOCH="$(date +%s)"
+    fi
+fi
+sudo env CHURROS_ARCH="$TARGET_ARCH" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" mkarchiso -v \
     -w work \
     -o out \
     archiso

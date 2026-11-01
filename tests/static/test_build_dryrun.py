@@ -233,6 +233,7 @@ class Sandbox:
             "DRYRUN_ROOT": str(self.tmp), "DRYRUN_FAKE_ROOT": str(self.fake_root),
             "DRYRUN_LOG": str(log), "DRYRUN_STUBS": str(self.bin),
             "DRYRUN_MKARCHISO": mkarchiso, "DRYRUN_PKG_ARCH": pkg_arch,
+            "SOURCE_DATE_EPOCH": "1700000000",
         }
         cargo_target = self.repo / "rust/target"
         if container:
@@ -311,6 +312,8 @@ class BuildDryRunTest(unittest.TestCase):
         if env["CHURROS_ARCH"] != item.arch:
             problems.append(f"mkarchiso recibió CHURROS_ARCH={env['CHURROS_ARCH']}, no {item.arch} "
                             "(sudo limpia el entorno: hay que pasarla con `sudo env`)")
+        if not env.get("SOURCE_DATE_EPOCH", "").isdigit():
+            problems.append(f"mkarchiso no recibió SOURCE_DATE_EPOCH numérico para reproducibilidad: {env.get('SOURCE_DATE_EPOCH')}")
         if Path(env["cwd"]) != repo:
             problems.append(f"mkarchiso corrió en {env['cwd']}, no en la raíz del repo")
         for flag, value in (("-w", "work"), ("-o", "out")):
