@@ -53,10 +53,10 @@ impl NetworkCard {
             return;
         }
 
-        if !info.wifi_connected && info.wifi_strength == 0 && info.wifi_name.is_empty() {
+        if !info.wifi_available {
             self.card.set_state(Some("Unavailable"), Some("wifi.svg"));
             self.card.set_detail(None);
-            self.card.button.set_tooltip_text(Some("Red no disponible"));
+            self.card.button.set_tooltip_text(Some("Sin adaptador Wi-Fi"));
             return;
         }
 

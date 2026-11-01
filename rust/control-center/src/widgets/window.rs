@@ -79,6 +79,7 @@ pub struct SystemInfo {
     pub ethernet_connected: bool,
     pub ethernet_name: String,
     pub ethernet_speed: Option<u32>,
+    pub wifi_available: bool,
     pub wifi_connected: bool,
     pub wifi_name: String,
     pub wifi_strength: u8,
@@ -299,7 +300,12 @@ fn collect_system_info() -> SystemInfo {
 
     thread::spawn(move || {
         let eth = ethernet::get();
-        let active_wifi = wifi::get_active();
+        let wifi_avail = wifi::available();
+        let active_wifi = if wifi_avail {
+            wifi::get_active()
+        } else {
+            ActiveWifiInfo::default()
+        };
 
         let active_dev = if eth.connected {
             eth.device.clone()
@@ -339,7 +345,7 @@ fn collect_system_info() -> SystemInfo {
             }
         }
 
-        net_tx.send((eth, active_wifi, down_rate, up_rate)).ok();
+        net_tx.send((eth, wifi_avail, active_wifi, down_rate, up_rate)).ok();
     });
 
     thread::spawn(move || {
@@ -352,7 +358,7 @@ fn collect_system_info() -> SystemInfo {
         bt_tx.send((bt_avail, bt_connected_dev)).ok();
     });
 
-    let (eth, active_wifi, down_rate, up_rate) = net_rx.recv().unwrap_or_default();
+    let (eth, wifi_avail, active_wifi, down_rate, up_rate) = net_rx.recv().unwrap_or_default();
     let (bt_avail, bt_connected_dev) = bt_rx.recv().unwrap_or((false, None));
 
     let mut info = SystemInfo::default();
@@ -362,6 +368,7 @@ fn collect_system_info() -> SystemInfo {
     info.ethernet_name = eth.connection;
     info.ethernet_speed = eth.speed;
 
+    info.wifi_available = wifi_avail;
     info.wifi_connected = active_wifi.connected;
     info.wifi_name = active_wifi.ssid;
     info.wifi_strength = active_wifi.signal;

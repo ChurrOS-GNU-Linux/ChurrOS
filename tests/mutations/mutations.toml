@@ -128,6 +128,33 @@ caught_by = "tests.static.test_home_dir"
 expect = "[home-dir:getpwuid-fallback]"
 why = "Without HOME in headless/server environments, home_dir must resolve from passwd via getpwuid instead of assuming /root."
 
+# --- control-center network wlan ---
+
+[[mutation]]
+name = "control-center: network card ignores wifi availability"
+file = "rust/control-center/src/widgets/network.rs"
+find = "if !info.wifi_available {"
+replace = "if false {"
+caught_by = "tests.static.test_control_center_network"
+expect = "[network-card:wifi-available]"
+why = "NetworkCard must check wifi_available to report absent wlan adapters correctly."
+
+[[mutation]]
+name = "services: wifi get_active assumes wlan0 unconditionally"
+file = "rust/services/src/wifi.rs"
+find = """    if wifi_device.is_empty() {
+        if !available() {
+            return ActiveWifiInfo::default();
+        }
+        wifi_device = "wlan0".to_string();
+    }"""
+replace = """    if wifi_device.is_empty() {
+        wifi_device = "wlan0".to_string();
+    }"""
+caught_by = "tests.static.test_control_center_network"
+expect = "[services-wifi:no-wlan0-fallback]"
+why = "get_active must not query iw/nmcli on non-existent wlan0 when no wireless interface exists."
+
 # --- shell_perms ---
 
 [[mutation]]
