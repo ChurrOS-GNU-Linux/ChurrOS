@@ -29,6 +29,13 @@ fn run_stdout(command: &[&str]) -> Option<(i32, String)> {
 }
 
 pub fn available() -> bool {
+    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            if entry.path().join("wireless").is_dir() {
+                return true;
+            }
+        }
+    }
     let (code, out) = run_stdout(&["nmcli", "-t", "-f", "DEVICE,TYPE", "device"])
         .unwrap_or((1, String::new()));
     if code != 0 {
@@ -46,7 +53,9 @@ pub fn enabled() -> bool {
 }
 
 pub fn scan() {
-    spawn(&["nmcli", "device", "wifi", "rescan"]);
+    if available() {
+        spawn(&["nmcli", "device", "wifi", "rescan"]);
+    }
 }
 
 /// Parsea una línea de nmcli --escape yes -t: respeta los `\:` escapados.
@@ -297,6 +306,9 @@ pub fn get_active() -> ActiveWifiInfo {
     }
 
     if wifi_device.is_empty() {
+        if !available() {
+            return ActiveWifiInfo::default();
+        }
         wifi_device = "wlan0".to_string();
     }
 
