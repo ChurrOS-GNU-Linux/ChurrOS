@@ -304,7 +304,7 @@ fn collect_system_info() -> SystemInfo {
         let active_wifi = if wifi_avail {
             wifi::get_active()
         } else {
-            ActiveWifiInfo::default()
+            wifi::ActiveWifiInfo::default()
         };
 
         let active_dev = if eth.connected {
