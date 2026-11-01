@@ -196,6 +196,17 @@ fn gtk_selection_preview_and_installation_failures() {
     install.finish(false).unwrap();
     assert!(autostart.exists());
 
+    // Restore fake terminals so yay presence would actually start the background process
+    // instead of failing early on missing terminal.
+    for terminal in &terminals {
+        std::fs::write(
+            terminal,
+            "#!/bin/sh\ncase \"$1\" in -e) shift ;; --disable-server) shift; [ \"$1\" = --execute ] || exit 99; shift ;; *) exit 98 ;; esac\nexec \"$@\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(terminal, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
     // Simulate yay startup error without falling back to a real package manager.
     // churros_services::which() looks for PATH/<bin> (it never runs `which`),
     // so fake yay has to go: with it present, start() spawns it
