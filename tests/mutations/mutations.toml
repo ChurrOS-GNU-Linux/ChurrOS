@@ -13,6 +13,108 @@
 # borres sin sustituirla.
 
 
+# --- security controls and process deadlines ---
+
+[[mutation]]
+name = "lock_screen: ring color uses an invalid short option"
+file = "rust/preferences/src/services/lock_screen.rs"
+find = '("ring_color", "--ring-color")'
+replace = '("ring_color", "-r")'
+caught_by = "tests.static.test_lock_screen"
+expect = "[lock-stock-colors]"
+why = "Stock swaylock -r is not a ring color option."
+
+[[mutation]]
+name = "lock_screen: effects option returns to the constructor"
+file = "rust/preferences/src/services/lock_screen.rs"
+find = 'let mut cmd = vec!["swaylock".to_string()];'
+replace = """let mut cmd = vec!["swaylock".to_string()];
+    cmd.push("-F".to_string());"""
+caught_by = "tests.static.test_lock_screen"
+expect = "[lock-stock-cli]"
+why = "Stock swaylock does not support the fade-in effect CLI."
+
+[[mutation]]
+name = "lock_screen: preview ignores failed exit status"
+file = "rust/preferences/src/services/lock_screen.rs"
+find = "if status.success()"
+replace = "if true"
+caught_by = "tests.static.test_lock_screen"
+expect = "[lock-preview-status]"
+why = "A failed swaylock launch must not be reported as successful."
+
+[[mutation]]
+name = "privacy: unavailable device controls become interactive"
+file = "rust/preferences/src/pages/privacy.rs"
+find = "row.widget().set_sensitive(false);"
+replace = "row.widget().set_sensitive(true);"
+caught_by = "tests.static.test_privacy_controls"
+expect = "[privacy:unavailable]"
+why = "Device permissions have no global enforcement backend and must not appear configurable."
+
+[[mutation]]
+name = "privacy: device access limitation is concealed"
+file = "rust/preferences/src/pages/privacy.rs"
+find = "ChurrOS no bloquea este dispositivo desde Ajustes."
+replace = "ChurrOS bloquea este dispositivo desde Ajustes."
+caught_by = "tests.static.test_privacy_controls"
+expect = "[privacy:honest-disclosure]"
+why = "Settings must not claim to revoke device access without enforcement."
+
+[[mutation]]
+name = "tour authentication: interactive input is discarded"
+file = "rust/churros-tour/src/installation.rs"
+find = "shift\n"
+replace = "shift\nexec </dev/null\n"
+caught_by = "tests.static.test_tour_authentication"
+expect = "tour:authentication:controlling-tty-and-stdin"
+why = "Discarding stdin prevents interactive yay operation even with a controlling terminal."
+
+[[mutation]]
+name = "tour authentication: shell replaces real terminal"
+file = "rust/churros-tour/src/installation.rs"
+find = '&["foot", "-e"]'
+replace = '&["sh", "-c"]'
+caught_by = "tests.static.test_tour_authentication"
+expect = "tour:terminal:foot"
+why = "A shell launched by GTK without a terminal cannot authenticate sudo."
+
+[[mutation]]
+name = "tour authentication: success no longer requires yay report"
+file = "rust/churros-tour/src/pages/install.rs"
+find = "result.is_ok() && waited.is_successful() && report.succeeded()"
+replace = "result.is_ok() && waited.is_successful()"
+caught_by = "tests.static.test_tour_authentication"
+expect = "tour:report:both-required"
+why = "The terminal exit status alone does not prove yay completed successfully."
+
+[[mutation]]
+name = "service deadline: capture deadline removed"
+file = "rust/services/src/lib.rs"
+find = "if remaining.is_zero() {"
+replace = "if false {"
+caught_by = "tests.static.test_service_deadline"
+expect = "[service-deadline:whole-capture]"
+why = "Descendants holding inherited pipes must not block capture beyond the deadline."
+
+[[mutation]]
+name = "service deadline: blocking pipe readers"
+file = "rust/services/src/lib.rs"
+find = "libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK)"
+replace = "libc::fcntl(fd, libc::F_SETFL, flags)"
+caught_by = "tests.static.test_service_deadline"
+expect = "[service-deadline:nonblocking]"
+why = "Blocking pipe reads can violate the shared deadline."
+
+[[mutation]]
+name = "service deadline: return before capture EOF"
+file = "rust/services/src/lib.rs"
+find = "if status.is_some() && out_eof && err_eof {"
+replace = "if status.is_some() {"
+caught_by = "tests.static.test_service_deadline"
+expect = "[service-deadline:both-eof]"
+why = "Returning on child exit loses buffered or descendant output."
+
 # --- shell_perms ---
 
 [[mutation]]

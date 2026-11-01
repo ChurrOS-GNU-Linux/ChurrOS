@@ -4,9 +4,12 @@
 // ==========================================
 
 
+use gtk::prelude::*;
+
 use crate::services::privacy::PrivacyService;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
+use crate::widgets::row::Row;
 use crate::widgets::switch_row::SwitchRow;
 
 pub fn build(navigator: gtk::Stack) -> Page {
@@ -28,21 +31,19 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some(Box::new(|v| PrivacyService::set_location(v))),
     ));
 
-    permissions.add(&SwitchRow::new(
-        "Acceso a la cámara",
-        Some("privacy.svg"),
-        Some("Permitir el uso de la cámara"),
-        PrivacyService::camera(),
-        Some(Box::new(|v| PrivacyService::set_camera(v))),
-    ));
-
-    permissions.add(&SwitchRow::new(
-        "Acceso al micrófono",
-        Some("privacy.svg"),
-        Some("Permitir el uso del micrófono"),
-        PrivacyService::microphone(),
-        Some(Box::new(|v| PrivacyService::set_microphone(v))),
-    ));
+    // Sin un backend de revocación global, no mostrar permisos ficticios.
+    for title in ["Acceso a la cámara", "Acceso al micrófono"] {
+        let row = Row::new(
+            title,
+            Some("ChurrOS no bloquea este dispositivo desde Ajustes. Gestiona los permisos en cada aplicación; para impedir todo acceso, desactiva el dispositivo físicamente."),
+            Some("privacy.svg"),
+            Some("No disponible"),
+            None,
+            None,
+        );
+        row.widget().set_sensitive(false);
+        permissions.add(&row);
+    }
 
     page.add(permissions.widget());
 

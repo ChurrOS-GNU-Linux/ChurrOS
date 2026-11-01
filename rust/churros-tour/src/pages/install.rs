@@ -1,8 +1,12 @@
 use std::cell::{Cell, RefCell};
+use std::io::Read;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::rc::Rc;
 
-use churros_tour::installation::{INSTALL_SCRIPT, InstallReport, InstallState, write_autostart};
+use churros_tour::installation::{
+    INSTALL_SCRIPT, InstallReport, InstallState, terminal_args, write_autostart,
+};
 use gio::prelude::*;
 use gtk::prelude::*;
 
@@ -22,7 +26,7 @@ pub fn build() -> InstallPage {
     let title = gtk::Label::new(Some("Instalando y Configurando"));
     title.add_css_class("page-title");
     let subtitle = gtk::Label::new(Some(
-        "Descargaremos e instalaremos las aplicaciones seleccionadas en segundo plano.",
+        "Instalaremos las aplicaciones en una terminal. Introduce tu contraseña allí si se solicita; cierra la terminal para interrumpir.",
     ));
     subtitle.add_css_class("page-subtitle");
     subtitle.set_wrap(true);
@@ -148,9 +152,18 @@ fn update_install_feedback(
         let intra = (pct / 100.0).clamp(0.0, 1.0);
         let fraction = (index as f64 + intra) / total as f64;
         page.progress.set_fraction(fraction);
-        page.progress.set_text(Some(&format!("{}/{} ({app_name} {:.0}%)", index + 1, total, pct)));
-        page.status.set_label(&format!("Descargando {app_name}... ({pct:.0}%)"));
-    } else if line.contains("Making package") || line.contains("Compilando") || line.contains("Entering fakeroot") {
+        page.progress.set_text(Some(&format!(
+            "{}/{} ({app_name} {:.0}%)",
+            index + 1,
+            total,
+            pct
+        )));
+        page.status
+            .set_label(&format!("Descargando {app_name}... ({pct:.0}%)"));
+    } else if line.contains("Making package")
+        || line.contains("Compilando")
+        || line.contains("Entering fakeroot")
+    {
         let fraction = (index as f64 + 0.6) / total as f64;
         page.progress.set_fraction(fraction);
         page.status.set_label(&format!("Compilando {app_name}..."));
@@ -163,29 +176,41 @@ fn update_install_feedback(
     }
 }
 
-fn track_output(
-    stream: gio::DataInputStream,
-    page: InstallPage,
-    app_name: String,
-    index: usize,
-    total: usize,
-    last_line: Rc<RefCell<String>>,
-) {
-    let page_clone = page.clone();
-    let app_name_clone = app_name.clone();
-    let stream_clone = stream.clone();
-    let last_line_clone = last_line.clone();
+struct InstallFeedback {
+    output: std::fs::File,
+    pending: Vec<u8>,
+    last_line: String,
+}
 
-    stream.read_line_utf8_async(glib::Priority::DEFAULT, gio::Cancellable::NONE, move |res| {
-        if let Ok(Some(line)) = res {
+impl InstallFeedback {
+    fn update(
+        &mut self,
+        page: &InstallPage,
+        app_name: &str,
+        index: usize,
+        total: usize,
+        finished: bool,
+    ) {
+        // Read only appended bytes. A regular file's EOF is temporary until foot exits.
+        let _ = self.output.read_to_end(&mut self.pending);
+        let end = if finished {
+            self.pending.len()
+        } else {
+            self.pending
+                .iter()
+                .rposition(|b| *b == b'\n' || *b == b'\r')
+                .map_or(0, |i| i + 1)
+        };
+        for line in self.pending[..end].split(|b| *b == b'\n' || *b == b'\r') {
+            let line = String::from_utf8_lossy(line);
             let trimmed = line.trim();
             if !trimmed.is_empty() {
-                *last_line_clone.borrow_mut() = trimmed.to_string();
-                update_install_feedback(&page_clone, &app_name_clone, index, total, trimmed);
+                self.last_line = trimmed.to_string();
+                update_install_feedback(page, app_name, index, total, trimmed);
             }
-            track_output(stream_clone, page_clone, app_name_clone, index, total, last_line_clone);
         }
-    });
+        self.pending.drain(..end);
+    }
 }
 
 fn install_package_step(
@@ -212,7 +237,7 @@ fn install_package_step(
     page.progress.set_show_text(true);
     page.progress.set_text(Some(&format!("{index}/{total}")));
     page.status.set_label(&format!(
-        "Instalando {app_name} ({}/{}) en segundo plano...",
+        "Instalando {app_name} ({}/{}) en la terminal...",
         index + 1,
         total
     ));
@@ -226,19 +251,30 @@ fn install_package_step(
         }
     };
 
-    let args = [
+    let output = match std::fs::File::create(report.output_path())
+        .and_then(|_| std::fs::File::open(report.output_path()))
+    {
+        Ok(output) => output,
+        Err(e) => {
+            page.failed(&format!("No se pudo preparar el seguimiento: {e}"));
+            done(false);
+            return;
+        }
+    };
+    let mut args: Vec<String> = terminal_args(&churros_services::version::edition())
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect();
+    args.extend([
         "sh".into(),
         "-c".into(),
         INSTALL_SCRIPT.into(),
         "churros-tour".into(),
         report.path().to_string_lossy().into_owned(),
         pkg.clone(),
-    ];
+    ]);
     let os_args: Vec<_> = args.iter().map(std::ffi::OsStr::new).collect();
-    let process = match gio::Subprocess::newv(
-        &os_args,
-        gio::SubprocessFlags::STDOUT_PIPE | gio::SubprocessFlags::STDERR_MERGE,
-    ) {
+    let process = match gio::Subprocess::newv(&os_args, gio::SubprocessFlags::NONE) {
         Ok(process) => process,
         Err(e) => {
             page.failed(&format!(
@@ -249,32 +285,38 @@ fn install_package_step(
         }
     };
 
-    let last_line = Rc::new(RefCell::new(String::new()));
-    if let Some(pipe) = process.stdout_pipe() {
-        let stream = gio::DataInputStream::new(&pipe);
-        track_output(
-            stream,
-            page.clone(),
-            app_name.to_string(),
-            index,
-            total,
-            last_line.clone(),
-        );
-    }
+    let feedback = Rc::new(RefCell::new(InstallFeedback {
+        output,
+        pending: Vec::new(),
+        last_line: String::new(),
+    }));
+    let feedback_clone = feedback.clone();
+    let progress_page = page.clone();
+    let progress_app = app_name.to_string();
+    let timer = glib::timeout_add_local(Duration::from_millis(100), move || {
+        feedback_clone
+            .borrow_mut()
+            .update(&progress_page, &progress_app, index, total, false);
+        glib::ControlFlow::Continue
+    });
 
     let page_clone = page.clone();
     let packages_clone = packages.clone();
     let done_clone = done.clone();
     let app_name_clone = app_name.to_string();
     let waited = process.clone();
-    let last_line_clone = last_line.clone();
 
     process.wait_async(gio::Cancellable::NONE, move |result| {
+        timer.remove();
+        feedback
+            .borrow_mut()
+            .update(&page_clone, &app_name_clone, index, total, true);
         let success = result.is_ok() && waited.is_successful() && report.succeeded();
         if success {
             install_package_step(page_clone, packages_clone, index + 1, done_clone);
         } else {
-            let err_detail = last_line_clone.borrow();
+            let feedback = feedback.borrow();
+            let err_detail = &feedback.last_line;
             let msg = if err_detail.is_empty() {
                 format!(
                     "La instalación de {app_name_clone} falló o fue interrumpida. Vuelve atrás para reintentar. El Tour seguirá disponible al iniciar."
