@@ -5,7 +5,7 @@
 
 use gtk::prelude::*;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,13 +21,7 @@ use crate::widgets::row::Row;
 use crate::widgets::slider_row::SliderRow;
 use crate::widgets::switch_row::SwitchRow;
 
-const FONTS: [&str; 5] = [
-    "JetBrains Mono",
-    "Inter",
-    "Cantarell",
-    "Hack",
-    "Monospace",
-];
+const FONTS: [&str; 5] = ["JetBrains Mono", "Inter", "Cantarell", "Hack", "Monospace"];
 
 struct LockState {
     enabled: SwitchRow,
@@ -36,9 +30,6 @@ struct LockState {
     use_current_row: Row,
     custom_path_entry: gtk::Entry,
     apply_path_row: Row,
-    screenshot: SwitchRow,
-    fade_in: SliderRow,
-    grace: SliderRow,
     font: ComboRow,
     font_size: SliderRow,
     ring: ColorPickerRow,
@@ -71,8 +62,6 @@ fn schedule(state: &LockStateRef, scheduler: &Rc<RefCell<Scheduler>>) {
         let updates = json!({
             "timeout_seconds": state.timeout.get_value() as i64,
             "indicator": state.indicator.value().unwrap_or_else(|| "auto".to_string()),
-            "fade_in": state.fade_in.get_value() as i64,
-            "grace": state.grace.get_value() as i64,
             "font": state.font.value().unwrap_or_default(),
             "font_size": state.font_size.get_value() as i64,
             "ring_color": state.ring.get_value().trim_start_matches('#').to_string(),
@@ -80,7 +69,6 @@ fn schedule(state: &LockStateRef, scheduler: &Rc<RefCell<Scheduler>>) {
             "key_hl_color": state.key_hl.get_value().trim_start_matches('#').to_string(),
             "bs_color": state.bs.get_value().trim_start_matches('#').to_string(),
             "separator_color": state.sep.get_value().trim_start_matches('#').to_string(),
-            "screenshot": state.screenshot.get_active(),
         });
 
         drop(state);
@@ -98,12 +86,6 @@ fn cb_str(state: &LockStateRef, scheduler: &Rc<RefCell<Scheduler>>) -> Box<dyn F
 }
 
 fn cb_f64(state: &LockStateRef, scheduler: &Rc<RefCell<Scheduler>>) -> Box<dyn Fn(f64)> {
-    let st = Rc::clone(state);
-    let s = Rc::clone(scheduler);
-    Box::new(move |_| schedule(&st, &s))
-}
-
-fn cb_bool(state: &LockStateRef, scheduler: &Rc<RefCell<Scheduler>>) -> Box<dyn Fn(bool)> {
     let st = Rc::clone(state);
     let s = Rc::clone(scheduler);
     Box::new(move |_| schedule(&st, &s))
@@ -143,9 +125,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
         use_current_row: Row::new("", None, Some("wallpaper.svg"), None, None, None),
         custom_path_entry: gtk::Entry::new(),
         apply_path_row: Row::new("", None, Some("lock_screen.svg"), None, None, None),
-        screenshot: SwitchRow::new("", None, None, false, None),
-        fade_in: SliderRow::new("", None, None, 0.0, 2000.0, 50.0, 200.0, None),
-        grace: SliderRow::new("", None, None, 0.0, 5000.0, 50.0, 0.0, None),
         font: ComboRow::new("", &FONTS, None, None, None, None),
         font_size: SliderRow::new("", None, None, 12.0, 64.0, 1.0, 24.0, None),
         ring: ColorPickerRow::new("", "#7aa2f7ff", None, None),
@@ -209,8 +188,26 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("lock_screen.svg"),
         None,
         None,
-        Some(Box::new(|_| {
-            LockScreenService::preview();
+        Some(Box::new(move |button| {
+            button.set_sensitive(false);
+            let button = button.clone();
+            let parent = button.root().and_downcast::<gtk::Window>();
+            glib::spawn_future_local(async move {
+                let result = gio::spawn_blocking(LockScreenService::preview).await;
+                button.set_sensitive(true);
+                let error = match result {
+                    Ok(Ok(())) => return,
+                    Ok(Err(error)) => error,
+                    Err(error) => format!("No se pudo ejecutar la vista previa: {error:?}"),
+                };
+                eprintln!("[lock-screen] {error}");
+                gtk::AlertDialog::builder()
+                    .message("No se pudo bloquear la pantalla")
+                    .detail(&error)
+                    .modal(true)
+                    .build()
+                    .show(parent.as_ref());
+            });
         })),
     ));
 
@@ -225,7 +222,11 @@ pub fn build(navigator: gtk::Stack) -> Page {
         st.indicator = ComboRow::new(
             "Tipo de indicador",
             &indicators,
-            Some(get("indicator", json!("auto")).as_str().unwrap_or("auto")),
+            Some(if get("indicator", json!("auto")) == json!("none") {
+                "none"
+            } else {
+                "auto"
+            }),
             Some("Como se muestra el estado al escribir"),
             None,
             Some(cb_str(&state, &scheduler)),
@@ -265,7 +266,8 @@ pub fn build(navigator: gtk::Stack) -> Page {
         );
 
         st.custom_path_entry = gtk::Entry::new();
-        st.custom_path_entry.set_placeholder_text(Some("Ruta a una imagen personalizada"));
+        st.custom_path_entry
+            .set_placeholder_text(Some("Ruta a una imagen personalizada"));
         st.custom_path_entry.set_margin_start(14);
         st.custom_path_entry.set_margin_end(14);
         st.custom_path_entry.set_margin_top(8);
@@ -278,14 +280,6 @@ pub fn build(navigator: gtk::Stack) -> Page {
             None,
             None,
             None,
-        );
-
-        st.screenshot = SwitchRow::new(
-            "Captura con blur",
-            None,
-            Some("swaylock captura el escritorio y difumina el fondo"),
-            get("screenshot", json!(false)).as_bool().unwrap_or(false),
-            Some(cb_bool(&state, &scheduler)),
         );
     }
 
@@ -306,44 +300,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
         bg_group.add(&st.use_current_row);
         bg_group.add(st.custom_path_entry.upcast_ref::<gtk::Widget>());
         bg_group.add(&st.apply_path_row);
-        bg_group.add(&st.screenshot);
     }
 
     page.add(bg_group.widget());
-
-    // ---------- Animacion ----------
-    let mut anim_group = Group::new("Animacion");
-
-    {
-        let mut st = state.borrow_mut();
-        st.fade_in = SliderRow::new(
-            "Fade-in",
-            None,
-            Some("Milisegundos hasta que aparezca el fondo"),
-            0.0,
-            2000.0,
-            50.0,
-            get("fade_in", json!(200)).as_f64().unwrap_or(200.0),
-            Some(cb_f64(&state, &scheduler)),
-        );
-        st.grace = SliderRow::new(
-            "Grace",
-            None,
-            Some("Milisegundos antes de empezar a autenticar"),
-            0.0,
-            5000.0,
-            50.0,
-            get("grace", json!(0)).as_f64().unwrap_or(0.0),
-            Some(cb_f64(&state, &scheduler)),
-        );
-    }
-    {
-        let st = state.borrow();
-        anim_group.add(&st.fade_in);
-        anim_group.add(&st.grace);
-    }
-
-    page.add(anim_group.widget());
 
     // ---------- Tipografia ----------
     let mut font_group = Group::new("Tipografia");
@@ -388,31 +347,56 @@ pub fn build(navigator: gtk::Stack) -> Page {
         let mut st = state.borrow_mut();
         st.ring = ColorPickerRow::new(
             "Anillo",
-            &format!("#{}", get("ring_color", json!("7aa2f7ff")).as_str().unwrap_or("7aa2f7ff")),
+            &format!(
+                "#{}",
+                get("ring_color", json!("7aa2f7ff"))
+                    .as_str()
+                    .unwrap_or("7aa2f7ff")
+            ),
             Some(cb_str(&state, &scheduler)),
             Some("Color del indicador"),
         );
         st.inside = ColorPickerRow::new(
             "Interior",
-            &format!("#{}", get("inside_color", json!("00000088")).as_str().unwrap_or("00000088")),
+            &format!(
+                "#{}",
+                get("inside_color", json!("00000088"))
+                    .as_str()
+                    .unwrap_or("00000088")
+            ),
             Some(cb_str(&state, &scheduler)),
             Some("Color dentro del indicador"),
         );
         st.key_hl = ColorPickerRow::new(
             "Tecla resaltada",
-            &format!("#{}", get("key_hl_color", json!("bb9af7ff")).as_str().unwrap_or("bb9af7ff")),
+            &format!(
+                "#{}",
+                get("key_hl_color", json!("bb9af7ff"))
+                    .as_str()
+                    .unwrap_or("bb9af7ff")
+            ),
             Some(cb_str(&state, &scheduler)),
             Some("Color al pulsar una tecla correcta"),
         );
         st.bs = ColorPickerRow::new(
             "Backspace",
-            &format!("#{}", get("bs_color", json!("f7768eff")).as_str().unwrap_or("f7768eff")),
+            &format!(
+                "#{}",
+                get("bs_color", json!("f7768eff"))
+                    .as_str()
+                    .unwrap_or("f7768eff")
+            ),
             Some(cb_str(&state, &scheduler)),
             Some("Color al pulsar backspace"),
         );
         st.sep = ColorPickerRow::new(
             "Separador",
-            &format!("#{}", get("separator_color", json!("00000000")).as_str().unwrap_or("00000000")),
+            &format!(
+                "#{}",
+                get("separator_color", json!("00000000"))
+                    .as_str()
+                    .unwrap_or("00000000")
+            ),
             Some(cb_str(&state, &scheduler)),
             Some("Borde del indicador"),
         );

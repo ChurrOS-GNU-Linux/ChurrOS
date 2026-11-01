@@ -9,8 +9,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const INSTALL_SCRIPT: &str = r#"
 report=$1
 shift
-exec </dev/null
 
+# The terminal supplies stdin and /dev/tty, including sudo's password prompt.
+# Only output is copied: do not pipe or redirect the installer's input.
+(
 if [ ! -f /var/lib/pacman/sync/core.db ] || [ ! -f /var/lib/pacman/sync/extra.db ]; then
     sudo -n pacman -Sy --noconfirm >/dev/null 2>&1 || true
 fi
@@ -28,7 +30,20 @@ yay -S --needed --noconfirm --mflags "--skippgpcheck" --answerclean None --answe
 status=$?
 printf '%s\n' "$status" > "$report" || exit 125
 exit "$status"
+) 2>&1 | tee "$report.output"
+# A pipeline returns tee's status, not yay's. The private report is authoritative.
+read -r status < "$report" || exit 125
+exit "$status"
 "#;
+
+pub fn terminal_args(edition: &str) -> &'static [&'static str] {
+    if edition == "xfce" {
+        // Do not delegate to an existing server: we must wait for this installation.
+        &["xfce4-terminal", "--disable-server", "--execute"]
+    } else {
+        &["foot", "-e"]
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum InstallState {
@@ -82,6 +97,10 @@ impl InstallReport {
         self.directory.join("status")
     }
 
+    pub fn output_path(&self) -> PathBuf {
+        self.directory.join("status.output")
+    }
+
     pub fn succeeded(&self) -> bool {
         std::fs::read_to_string(self.path())
             .ok()
@@ -93,6 +112,7 @@ impl InstallReport {
 impl Drop for InstallReport {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(self.path());
+        let _ = std::fs::remove_file(self.output_path());
         let _ = std::fs::remove_dir(&self.directory);
     }
 }
@@ -125,6 +145,7 @@ mod tests {
         let sandbox = InstallReport::new().unwrap();
         let yay = sandbox.directory.join("yay");
         let args_file = sandbox.directory.join("args");
+        std::os::unix::fs::symlink("/usr/bin/tee", sandbox.directory.join("tee")).unwrap();
         std::fs::write(
             &yay,
             "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TOUR_TEST_ARGS\"\nexit \"$TOUR_TEST_EXIT\"\n",
@@ -151,11 +172,14 @@ mod tests {
                 .unwrap();
             assert_eq!(status.code(), Some(code));
             assert_eq!(report.succeeded(), code == 0);
+            assert_eq!(std::fs::read_to_string(report.path()).unwrap(), format!("{code}\n"));
+            assert!(report.output_path().is_file());
             assert_eq!(
                 std::fs::read_to_string(&args_file).unwrap(),
                 "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\nobs-studio\n"
             );
         }
+        std::fs::remove_file(sandbox.directory.join("tee")).unwrap();
         std::fs::remove_file(yay).unwrap();
         std::fs::remove_file(args_file).unwrap();
     }

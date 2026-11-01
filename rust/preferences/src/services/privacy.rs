@@ -23,21 +23,6 @@ impl PrivacyService {
         settings::set("privacy.location", json!(value));
     }
 
-    pub fn camera() -> bool {
-        settings::get_bool("privacy.camera", true)
-    }
-
-    pub fn set_camera(value: bool) {
-        settings::set("privacy.camera", json!(value));
-    }
-
-    pub fn microphone() -> bool {
-        settings::get_bool("privacy.microphone", true)
-    }
-
-    pub fn set_microphone(value: bool) {
-        settings::set("privacy.microphone", json!(value));
-    }
 
     pub fn telemetry() -> bool {
         settings::get_bool("privacy.telemetry", false)
