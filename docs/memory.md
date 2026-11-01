@@ -1,10 +1,10 @@
-# Memory and zram
+# Memoria y zram
 
-ChurrOS uses `zram-generator` to provide compressed swap. This adds headroom during memory pressure; it does not by itself reduce the desktop's resident memory. Every edition packages `zram-generator` alongside the shared `archiso/airootfs/etc/systemd/zram-generator.conf` configuration.
+ChurrOS usa `zram-generator` para tener swap comprimido en RAM. Da margen cuando la memoria se llena, pero por sí solo no reduce la memoria residente del escritorio. Todas las ediciones incluyen el paquete `zram-generator` junto a la configuración común `archiso/airootfs/etc/systemd/zram-generator.conf`.
 
-## Inspect a Live session or installation
+## Revisar una sesión Live o una instalación
 
-After login, run:
+Después de iniciar sesión, ejecuta:
 
 ```sh
 free -h
@@ -14,18 +14,18 @@ ps -eo pid,comm,rss --sort=-rss | head -20
 systemd-cgtop --batch --iterations=1 --depth=3
 ```
 
-`MemAvailable` is more useful than adding free memory and caches. RSS is resident memory per process and can count shared pages more than once, so do not treat its sum as exclusive physical use. `zramctl`'s `DATA`, `COMPR`, and `TOTAL` help distinguish compressed data from physical memory occupied.
+`MemAvailable` es más útil que sumar la memoria libre y las cachés. RSS es la memoria residente de cada proceso y puede contar más de una vez las páginas compartidas, así que su suma no es el uso físico exclusivo. Las columnas `DATA`, `COMPR` y `TOTAL` de `zramctl` ayudan a distinguir los datos comprimidos de la memoria física que ocupan.
 
-## Repeatable QEMU profile
+## Perfil repetible en QEMU
 
-`tests/vm/boot_smoke.py` starts the ISO with 4096 MiB by default, waits for the system and Live session, then records `/proc/meminfo`, active swap, zram statistics, and the 20 processes with the highest RSS in `report.json`. The report includes edition and VM memory. The smoke test also checks that `/dev/zram0` is active.
+`tests/vm/boot_smoke.py` arranca la ISO con 4096 MiB por defecto, espera al sistema y a la sesión Live y guarda en `report.json` `/proc/meminfo`, el swap activo, las estadísticas de zram y los 20 procesos con más RSS. El informe incluye la edición y la memoria de la VM. La prueba de humo también comprueba que `/dev/zram0` está activo.
 
-To test a different capacity, pass `--memory MIB`, for example `--memory 2048`. Compare Niri and XFCE with the same architecture, ISO/base, VM memory, firmware, QEMU acceleration, and post-login state. Keep the `server` profile separate because it has no desktop. ISO workflows upload boot reports as artifacts; static tests alone do not produce measurements.
+Para probar otra capacidad, pasa `--memory MIB`, por ejemplo `--memory 2048`. Compara Niri y XFCE con la misma arquitectura, la misma ISO o base, la misma memoria de la VM, el mismo firmware, la misma aceleración de QEMU y el mismo estado tras el inicio de sesión. Mantén aparte el perfil `server`, que no tiene escritorio. Los workflows de ISO suben los informes de arranque como artefactos; las pruebas estáticas por sí solas no producen mediciones.
 
-QEMU profiles allow comparisons under the same virtual environment; they do not predict exact physical-hardware usage or justify removing services. Do not disable the compositor, portal, Polkit, session manager, networking, or startup apps based on their names: collect before/after data and test related functions first. Issue #288 tracks potential desktop optimizations that require real comparison.
+Los perfiles de QEMU sirven para comparar dentro del mismo entorno virtual; no predicen el uso exacto en hardware físico ni justifican quitar servicios. No desactives el compositor, el portal, Polkit, el gestor de sesión, la red ni las apps de inicio por su nombre: toma datos de antes y después y prueba primero las funciones relacionadas. El issue #288 recoge las posibles optimizaciones del escritorio que necesitan una comparación real.
 
-## Baseline captured in CI (2026-11-01)
+## Referencia inicial
 
-The Niri and XFCE ISO workflows on commit `608670ddc8c16c0e2a1b6aac7981c7c194fd59df` both completed UEFI and BIOS QEMU boots with KVM/virgl and 4096 MiB assigned. In the UEFI profiles, Niri reported 3122.0 MiB `MemAvailable` and 217.6 MiB `AnonPages`; XFCE reported 2989.1 MiB `MemAvailable` and 335.3 MiB `AnonPages`. Both reported active `/dev/zram0` with zero swap used. BIOS profiles were similar. The Niri snapshot was collected after the normal smoke-test login while its welcome window was open; XFCE was captured at the same post-login stage.
+Primera medición en la CI (2026-11-01, commit `608670d`), con KVM/virgl y 4096 MiB, arranques UEFI y BIOS de Niri y XFCE. En UEFI, Niri dio unos 3122 MiB de `MemAvailable` y 218 MiB de `AnonPages`; XFCE, unos 2989 MiB y 335 MiB. En las dos, `/dev/zram0` estaba activo y sin swap usado, y BIOS dio cifras parecidas. Las dos se tomaron en el mismo punto, tras el inicio de sesión de la prueba de humo (en Niri, con la ventana de bienvenida abierta).
 
-These are indicative CI snapshots, not a controlled benchmark: the ISO builds use rolling package repositories and the QEMU reports do not predict physical hardware. `AnonPages` is a system-wide memory category, not a sum of process RSS. No service or user-facing feature was removed based on this single comparison; it does not provide enough before/after evidence to justify such a tradeoff. The workflows and their downloadable reports are [XFCE run 41335132856](https://github.com/ChurrOS-GNU-Linux/ChurrOS/actions/runs/41335132856) and [Niri run 41335132755](https://github.com/ChurrOS-GNU-Linux/ChurrOS/actions/runs/41335132755).
+Son fotos orientativas, no un benchmark controlado: las ISO se construyen con repositorios rolling y QEMU no predice el hardware físico. `AnonPages` es una categoría de memoria de todo el sistema, no la suma del RSS de los procesos. Con una sola comparación no se quitó ningún servicio ni función.
