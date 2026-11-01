@@ -35,7 +35,8 @@ fn gtk_ini(dir: &str) -> PathBuf {
 }
 
 /// Actualiza una clave del ini preservando el resto (cursor, fuente, …).
-fn update_ini_key(ini: &Path, key: &str, value: &str) {
+/// Realiza escritura atómica para evitar condiciones de carrera o lecturas parciales.
+pub(crate) fn update_ini_key(ini: &Path, key: &str, value: &str) {
     if let Some(parent) = ini.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -59,7 +60,11 @@ fn update_ini_key(ini: &Path, key: &str, value: &str) {
     } else {
         format!("[Settings]\n{joined}")
     };
-    let _ = fs::write(ini, content + "\n");
+    let content = content + "\n";
+    let tmp = ini.with_extension(format!("tmp.{}", std::process::id()));
+    if fs::write(&tmp, content).is_ok() {
+        let _ = fs::rename(&tmp, ini);
+    }
 }
 
 fn migrate_adwaita_dark_ini(ini: &Path) {
@@ -303,6 +308,19 @@ mod tests {
         assert!(content.contains("gtk-theme-name=Adwaita\n"));
         assert!(!content.contains("Adwaita-dark"));
         assert!(content.contains("gtk-font-name=Inter 11"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_ini_key_is_atomic_and_preserves_other_keys() {
+        let dir = std::env::temp_dir().join(format!("churros-ini-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let ini = dir.join("settings.ini");
+        fs::write(&ini, "[Settings]\ngtk-font-name=Inter 11\n").unwrap();
+        update_ini_key(&ini, "gtk-cursor-theme-name", "Bibata-Modern-Classic");
+        let content = fs::read_to_string(&ini).unwrap();
+        assert!(content.contains("gtk-font-name=Inter 11"));
+        assert!(content.contains("gtk-cursor-theme-name=Bibata-Modern-Classic"));
         let _ = fs::remove_dir_all(dir);
     }
 }

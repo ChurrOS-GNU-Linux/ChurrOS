@@ -155,6 +155,26 @@ caught_by = "tests.static.test_control_center_network"
 expect = "[services-wifi:no-wlan0-fallback]"
 why = "get_active must not query iw/nmcli on non-existent wlan0 when no wireless interface exists."
 
+# --- gtk settings isolation ---
+
+[[mutation]]
+name = "cursor: write_gtk_ini touches gtk-4.0 at runtime"
+file = "rust/preferences/src/services/cursor.rs"
+find = 'let ini = PathBuf::from(home()).join(".config/gtk-3.0/settings.ini");'
+replace = 'let ini = PathBuf::from(home()).join(".config/gtk-4.0/settings.ini");'
+caught_by = "tests.static.test_gtk_settings_isolation"
+expect = "[gtk-isolation:cursor-no-gtk4]"
+why = "Modifying gtk-4.0/settings.ini at runtime triggers inotify CSS reload in GTK4 and crashes settings."
+
+[[mutation]]
+name = "theme: update_ini_key removes atomic rename"
+file = "rust/preferences/src/services/theme.rs"
+find = "let _ = fs::rename(&tmp, ini);"
+replace = "let _ = fs::copy(&tmp, ini);"
+caught_by = "tests.static.test_gtk_settings_isolation"
+expect = "[gtk-isolation:atomic-rename]"
+why = "update_ini_key must use atomic rename to prevent race conditions and partial reads."
+
 # --- shell_perms ---
 
 [[mutation]]

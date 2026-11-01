@@ -47,35 +47,13 @@ fn niri_config_path() -> PathBuf {
     PathBuf::from(home()).join(".config").join("niri").join("config.kdl")
 }
 
-/// Escribe/actualiza una clave en ~/.config/gtk-{3.0,4.0}/settings.ini
-/// (equivalente a CursorService._write_gtk del Python)
+/// Escribe/actualiza una clave en ~/.config/gtk-3.0/settings.ini.
+/// NO modifica ~/.config/gtk-4.0/settings.ini en caliente: cualquier cambio a
+/// runtime en gtk-4.0 dispara recarga inotify de hojas de estilo en GTK4 y
+/// cierra las ventanas de la aplicación (igual que en ThemeService).
 fn write_gtk_ini(key: &str, value: &str) {
-    for ver in ["3.0", "4.0"] {
-        let dir = PathBuf::from(home()).join(".config").join(format!("gtk-{ver}"));
-        let _ = fs::create_dir_all(&dir);
-        let ini = dir.join("settings.ini");
-
-        let existing = fs::read_to_string(&ini).unwrap_or_default();
-        let mut lines: Vec<String> = existing.lines().map(|s| s.to_string()).collect();
-
-        let mut seen = false;
-        for line in lines.iter_mut() {
-            if line.trim_start().starts_with(&format!("{key}=")) {
-                *line = format!("{key}={value}");
-                seen = true;
-            }
-        }
-        if !seen {
-            lines.push(format!("{key}={value}"));
-        }
-
-        let joined = lines.join("\n");
-        if !joined.contains("[Settings]") {
-            lines.insert(0, "[Settings]".to_string());
-        }
-
-        let _ = fs::write(ini, lines.join("\n") + "\n");
-    }
+    let ini = PathBuf::from(home()).join(".config/gtk-3.0/settings.ini");
+    crate::services::theme::update_ini_key(&ini, key, value);
 }
 
 /// Señales en vivo a gnome-shell + gsettings cursor-theme/cursor-size
