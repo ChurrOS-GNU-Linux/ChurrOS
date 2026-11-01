@@ -43,7 +43,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Preferences](preferences.md) | App de ajustes `churros-settings`. |
 | [Popups](popups.md) | Binario `churros-popup` y sus popups. |
 | [Services](services.md) | Crate `churros-services`, la capa común sobre las herramientas del sistema. |
-| [Memory and zram](memory.md) | Compressed swap, diagnostic commands, and QEMU memory profiles. |
+| [Memoria y zram](memory.md) | Swap comprimido, comandos de diagnóstico y perfiles de memoria en QEMU. |
 | [ChurrOS Tour](churros-tour.md) | Recorrido guiado de primer inicio y su catálogo de apps. |
 | [Branding](branding.md) | Dónde vive cada elemento de identidad visual y cómo llega a la ISO. |
 
