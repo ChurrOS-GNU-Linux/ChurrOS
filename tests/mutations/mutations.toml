@@ -2659,3 +2659,50 @@ caught_by = "tests.static.test_supply_chain"
 expect = "[reproducible:build-sudo-env]"
 why = "sudo env resets the environment; SOURCE_DATE_EPOCH must be forwarded to mkarchiso."
 
+[[mutation]]
+name = "visual qa: a flat frame counts as a bar"
+file = "scripts/qa/visual/bootframes.py"
+find = """    if distance < BAR_CONTRAST2:
+        return False"""
+replace = """    if distance < BAR_CONTRAST2:
+        return True"""
+caught_by = "tests.static.test_visual_capture"
+expect = "has_bar:flat-grey"
+why = "Inverting the contrast gate treats niri grey #404040 as a bar and marks the desktop ready too early."
+
+[[mutation]]
+name = "visual qa: missing xdotool is ignored"
+file = "scripts/qa/visual/vmctl.py"
+find = 'raise QmpError("falta xdotool: SDL_VIDEO_WINDOW_POS no basta y la ventana de QEMU no queda en 0,0")'
+replace = "return"
+caught_by = "tests.static.test_visual_capture"
+expect = "xdotool:required"
+why = "SDL_VIDEO_WINDOW_POS leaves the window at 960,560. Without xdotool the grab must fail instead of saving a clipped frame."
+
+[[mutation]]
+name = "visual qa: desktop base lands in the report directory"
+file = "scripts/qa/visual/capture.sh"
+find = 'base="$workdir/_desktop-base.png"'
+replace = 'base="$out/_desktop-base.png"'
+caught_by = "tests.static.test_visual_capture"
+expect = "desktop-base:workdir"
+why = "The report treats every PNG in out/ as a screen. The desktop base is an internal frame."
+
+[[mutation]]
+name = "visual qa: opencode no longer captures diff screens"
+file = "scripts/qa/visual/capture.sh"
+find = 'timeout 600 opencode run --model "$model"'
+replace = 'timeout 600 opencode skip --model "$model"'
+caught_by = "tests.static.test_visual_capture"
+expect = "opencode:diff-screens"
+why = "OpenCode still has to open the screens the diff touched after the deterministic base captures."
+
+[[mutation]]
+name = "visual qa: a missing key is not recorded as not-run"
+file = "scripts/qa/visual/capture.sh"
+find = 'agent_reason="no-key"'
+replace = 'agent_reason="skipped"'
+caught_by = "tests.static.test_visual_capture"
+expect = "agent:no-key"
+why = "agent=not-run is only honest when the manifest says whether the key or the diff screens were missing."
+

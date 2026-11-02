@@ -78,6 +78,7 @@ class CaptureDryRun(unittest.TestCase):
             self.assertEqual(data["status"], "dry-run")
             self.assertEqual(data["role"], "before")
             self.assertEqual(data["screens"], ["desktop", "bar"])
+            self.assertEqual(data["agent"], {"tool": "opencode", "status": "dry-run", "reason": "dry-run"})
             self.assertIn(data["accel"], ("kvm", "tcg"))
             self.assertIn(data["gpu"], ("plain", "virgl"))
 
@@ -90,6 +91,8 @@ class CaptureDryRun(unittest.TestCase):
             data = json.loads((missing / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(data["status"], "iso-missing")
             self.assertEqual(data["role"], "after")
+            self.assertEqual(data["agent"]["status"], "not-run")
+            self.assertEqual(data["agent"]["reason"], "iso-missing")
 
     def test_wait_isos_times_out_without_credentials(self):
         script = ROOT / "scripts/qa/visual/wait-isos.sh"
@@ -193,6 +196,57 @@ class DesktopReady(unittest.TestCase):
             bar[x * 3:x * 3 + 3] = bytes((0xF9, 0x73, 0x16))
         self.assertTrue(self.frames.has_bar(width, height, bytes(bar)))
 
+    def test_flat_grey_is_not_a_bar(self):
+        niri = bytes((0x40, 0x40, 0x40)) * (32 * 16)
+        lighter = bytes((0x80, 0x80, 0x80)) * (32 * 16)
+        self.assertFalse(self.frames.has_bar(32, 16, niri), "has_bar:flat-grey")
+        self.assertFalse(self.frames.has_bar(32, 16, lighter), "has_bar:flat-grey")
+        ok, reason = self.frames.assess_image(32, 16, niri, 32, 16, require_bar=True)
+        self.assertFalse(ok, "has_bar:flat-grey")
+        self.assertEqual(reason, "no-bar")
+
+    def test_panel_strip_on_niri_grey_is_a_bar(self):
+        width, height = 32, 16
+        frame = bytearray((0x40, 0x40, 0x40) * (width * height))
+        for y in range(2):
+            for x in range(width):
+                index = (y * width + x) * 3
+                frame[index:index + 3] = bytes((0x2A, 0x2A, 0x2A))
+        self.assertTrue(self.frames.has_bar(width, height, bytes(frame)))
+
+    def test_pin_requires_xdotool(self):
+        original = self.vmctl.shutil.which
+        self.vmctl.shutil.which = lambda name: None if name == "xdotool" else original(name)
+        try:
+            try:
+                self.vmctl.pin_qemu_window(":99")
+            except self.vmctl.QmpError as error:
+                self.assertIn("xdotool", str(error))
+            else:
+                self.fail("xdotool:required")
+        finally:
+            self.vmctl.shutil.which = original
+
+    def test_pin_fails_when_the_window_cannot_be_moved(self):
+        original_which = self.vmctl.shutil.which
+        original_run = self.vmctl.subprocess.run
+        self.vmctl.shutil.which = lambda name: "/usr/bin/xdotool" if name == "xdotool" else original_which(name)
+
+        def refuse(*_args, **_kwargs):
+            class Result:
+                returncode = 1
+                stdout = b""
+                stderr = b""
+            return Result()
+
+        self.vmctl.subprocess.run = refuse
+        try:
+            with self.assertRaises(self.vmctl.QmpError):
+                self.vmctl.pin_qemu_window(":99")
+        finally:
+            self.vmctl.shutil.which = original_which
+            self.vmctl.subprocess.run = original_run
+
     def test_unchanged_frame_is_not_wlogout(self):
         rgb = bytes((0x11, 0x18, 0x27)) * 16
         ok, reason = self.frames.session_menu_visible(rgb, rgb, 4, 4)
@@ -292,6 +346,17 @@ class QemuDeath(unittest.TestCase):
             self.assertNotIn("-vnc", lines[0])
             self.assertIn("-vnc", lines[1])
             self.assertNotIn("virtio-vga-gl", lines[1])
+
+
+class CaptureContract(unittest.TestCase):
+    def test_base_shot_stays_out_of_the_report_dir_and_opencode_keeps_the_diff(self):
+        script = (ROOT / "scripts/qa/visual/capture.sh").read_text(encoding="utf-8")
+        self.assertIn('base="$workdir/_desktop-base.png"', script, "desktop-base:workdir")
+        self.assertNotIn('base="$out/_desktop-base.png"', script, "desktop-base:out")
+        self.assertEqual(script.count("opencode run"), 2, "opencode:diff-screens")
+        self.assertIn('agent_reason="no-diff-screens"', script, "agent:no-diff-screens")
+        self.assertIn('agent_reason="no-key"', script, "agent:no-key")
+        self.assertIn('agent_status="not-run"', script)
 
 
 class CaptureWorkflow(unittest.TestCase):

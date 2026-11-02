@@ -122,28 +122,163 @@ def near_identical(previous: tuple | None, current: tuple | None, tolerance: int
     return total / len(previous) <= tolerance
 
 
+# Distancia mínima entre la franja y el fondo dominante. Un gris plano
+# (#404040 de niri, o cualquier gris uniforme) queda por debajo.
+BAR_CONTRAST = 24
+BAR_CONTRAST2 = BAR_CONTRAST * BAR_CONTRAST
+BAR_EDGE = 0.05
+BAR_EDGE2 = 30 * 30
+# #404040 contra el panel #2A2A2A son ~38: no debe colar como color de barra.
+BAR_NEAR2 = 28 * 28
+BAR_ROLES = {"panel", "background", "primary", "secondary"}
+FALLBACK_BAR_COLORS = (
+    (0xF9, 0x73, 0x16),
+    (0x2A, 0x2A, 0x2A),
+    (0x1F, 0x29, 0x37),
+    (0x11, 0x18, 0x27),
+)
+_BAR_COLORS: tuple[tuple[int, int, int], ...] | None = None
+
+
+def _dist2(left: tuple[int, int, int], right: tuple[int, int, int]) -> int:
+    return (left[0] - right[0]) ** 2 + (left[1] - right[1]) ** 2 + (left[2] - right[2]) ** 2
+
+
+def bar_palette() -> tuple[tuple[int, int, int], ...]:
+    """Colores de barra: design-tokens.json si está junto al script; si no, la paleta fija."""
+    global _BAR_COLORS
+    if _BAR_COLORS is not None:
+        return _BAR_COLORS
+    found: list[tuple[int, int, int]] = []
+    path = Path(__file__).resolve().parent / "design-tokens.json"
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            data = {}
+        if isinstance(data, dict):
+            for item in data.get("colors") or []:
+                if not isinstance(item, dict) or item.get("role") not in BAR_ROLES:
+                    continue
+                text = str(item.get("hex") or "")
+                if len(text) != 7 or text[0] != "#":
+                    continue
+                try:
+                    color = (int(text[1:3], 16), int(text[3:5], 16), int(text[5:7], 16))
+                except ValueError:
+                    continue
+                if color not in found:
+                    found.append(color)
+    _BAR_COLORS = tuple(found) if found else FALLBACK_BAR_COLORS
+    return _BAR_COLORS
+
+
+def _near_bar_color(color: tuple[int, int, int]) -> bool:
+    return any(_dist2(color, token) <= BAR_NEAR2 for token in bar_palette())
+
+
+def _region_mean(rgb: bytes, width: int, y0: int, y1: int) -> tuple[int, int, int]:
+    total = red = green = blue = 0
+    span = max(1, y1 - y0)
+    stride = 1 if width * span <= 4096 else 2
+    for y in range(y0, y1, stride):
+        row = y * width * 3
+        for x in range(0, width, stride):
+            index = row + x * 3
+            red += rgb[index]
+            green += rgb[index + 1]
+            blue += rgb[index + 2]
+            total += 1
+    if total == 0:
+        return (0, 0, 0)
+    return (red // total, green // total, blue // total)
+
+
+def _dominant_background(rgb: bytes, width: int, height: int, band: int) -> tuple[int, int, int]:
+    y0, y1 = band, height - band
+    if y1 <= y0:
+        y0, y1 = 0, height
+    buckets: dict[tuple[int, int, int], list[int]] = {}
+    span = max(1, y1 - y0)
+    stride = 1 if width * span <= 4096 else 4
+    for y in range(y0, y1, stride):
+        row = y * width * 3
+        for x in range(0, width, stride):
+            index = row + x * 3
+            pixel = (rgb[index], rgb[index + 1], rgb[index + 2])
+            key = (pixel[0] // 16, pixel[1] // 16, pixel[2] // 16)
+            bucket = buckets.get(key)
+            if bucket is None:
+                buckets[key] = [1, pixel[0], pixel[1], pixel[2]]
+            else:
+                bucket[0] += 1
+                bucket[1] += pixel[0]
+                bucket[2] += pixel[1]
+                bucket[3] += pixel[2]
+    if not buckets:
+        return (0, 0, 0)
+    best = max(buckets.values(), key=lambda item: item[0])
+    count = best[0]
+    return (best[1] // count, best[2] // count, best[3] // count)
+
+
+def _edge_density(rgb: bytes, width: int, height: int, y0: int, y1: int) -> float:
+    edges = 0
+    checks = 0
+    span = max(1, y1 - y0)
+    stride = 1 if width * span <= 4096 else 2
+    outside = y1 if y0 == 0 else y0 - 1
+
+    def consider(a: int, b: int) -> None:
+        nonlocal edges, checks
+        checks += 1
+        left = (rgb[a], rgb[a + 1], rgb[a + 2])
+        right = (rgb[b], rgb[b + 1], rgb[b + 2])
+        if _dist2(left, right) >= BAR_EDGE2:
+            edges += 1
+
+    for y in range(y0, y1, stride):
+        row = y * width * 3
+        for x in range(0, width - stride, stride):
+            consider(row + x * 3, row + (x + stride) * 3)
+        below = y + stride
+        if below < y1:
+            other = below * width * 3
+            for x in range(0, width, stride):
+                consider(row + x * 3, other + x * 3)
+    if 0 <= outside < height and not y0 <= outside < y1:
+        edge_y = y0 if y0 == 0 else y1 - 1
+        row = edge_y * width * 3
+        other = outside * width * 3
+        for x in range(0, width, stride):
+            consider(row + x * 3, other + x * 3)
+    if checks == 0:
+        return 0.0
+    return edges / checks
+
+
+def _band_is_bar(mean: tuple[int, int, int], background: tuple[int, int, int], edge: float) -> bool:
+    distance = _dist2(mean, background)
+    if distance < BAR_CONTRAST2:
+        return False
+    return edge >= BAR_EDGE or _near_bar_color(mean)
+
+
 def has_bar(width: int, height: int, rgb: bytes) -> bool:
-    """Franja superior o inferior ocupada a lo ancho. El overlay de niri queda al centro."""
-    if width < 4 or height < 4:
+    """Franja superior o inferior distinta del fondo. Un gris plano no cuenta.
+
+    El fondo es el color dominante del centro. La franja tiene que contrastar
+    con él y, además, tener borde o acercarse a un color de barra.
+    """
+    if width < 4 or height < 4 or len(rgb) < width * height * 3:
         return False
     band = max(1, min(height // 8, 48))
-
-    def coverage(y0: int, y1: int) -> float:
-        hit = 0
-        for x in range(width):
-            for y in range(y0, y1):
-                index = (y * width + x) * 3
-                level = rgb[index]
-                if rgb[index + 1] > level:
-                    level = rgb[index + 1]
-                if rgb[index + 2] > level:
-                    level = rgb[index + 2]
-                if level > 30:
-                    hit += 1
-                    break
-        return hit / width
-
-    return coverage(0, band) >= 0.75 or coverage(height - band, height) >= 0.75
+    background = _dominant_background(rgb, width, height, band)
+    for y0, y1 in ((0, band), (height - band, height)):
+        mean = _region_mean(rgb, width, y0, y1)
+        if _band_is_bar(mean, background, _edge_density(rgb, width, height, y0, y1)):
+            return True
+    return False
 
 
 def change_ratio(before: bytes, after: bytes) -> float:
