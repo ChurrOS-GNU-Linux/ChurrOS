@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Empareja las capturas de main y del PR y escribe el informe.
 
-HTML y Markdown con la pareja, el diff de píxeles y una lista sacada de
-scripts/qa/visual/design-tokens.json. Una pareja se marca como desviación
-si falta un lado, si el tamaño no coincide o si la fracción de píxeles
-distintos supera el umbral (por defecto 0.01). Los conflictos entre guías
-se listan aparte: ya estaban en la documentación y no son un fallo de esta
-pull request.
+HTML y Markdown con la pareja, el diff de píxeles y una imagen lado a
+lado por pantalla. Los píxeles se comparan con la paleta de
+scripts/qa/visual/design-tokens.json: si el naranja o un fondo de marca
+no aparecen, la lista lo marca. Una pareja también se marca si falta un
+lado, si el tamaño no coincide o si la fracción de píxeles distintos
+supera el umbral (por defecto 0.01). Los conflictos entre guías se listan
+aparte: ya estaban en la documentación.
 
 Sale 0 aunque haya desviaciones. El comentario del PR es el resumen, no
 un check que impida fusionar.
@@ -25,6 +26,12 @@ from imageutil import read_png, write_png  # noqa: E402
 
 MARKER = "<!-- visual-qa-report -->"
 DEFAULT_THRESHOLD = 0.01
+PALETTE_DISTANCE = 72
+PALETTE_ROLES = {
+    "primary", "background", "text", "secondary", "hover", "panel",
+    "installer-background", "success", "warning", "error",
+}
+BRANDED_SCREENS = {"desktop", "bar", "launcher", "session-menu", "installer", "grub", "plymouth"}
 
 
 def read_threshold(value: str | None) -> float:
@@ -81,8 +88,105 @@ def compare_pair(before: Path | None, after: Path | None, diff_path: Path, thres
     }
 
 
-def checklist(tokens: dict) -> list[dict]:
-    items = []
+def parse_hex(value: str) -> tuple[int, int, int]:
+    text = value.removeprefix("#")
+    return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+
+
+def palette_entries(tokens: dict) -> list[dict]:
+    found = []
+    seen = set()
+    for color in tokens.get("colors", []):
+        if color.get("role") not in PALETTE_ROLES:
+            continue
+        key = (str(color.get("hex", "")).upper(), color.get("role"))
+        if key in seen or len(key[0]) != 7:
+            continue
+        seen.add(key)
+        found.append(color)
+    return found
+
+
+def sample_pixels(rgb: bytes, width: int, height: int) -> list[tuple[int, int, int]]:
+    total = width * height
+    step = 1 if total <= 4096 else max(1, int((total / 4000) ** 0.5))
+    pixels = []
+    for y in range(0, height, step):
+        row = y * width * 3
+        for x in range(0, width, step):
+            index = row + x * 3
+            pixels.append((rgb[index], rgb[index + 1], rgb[index + 2]))
+    return pixels
+
+
+def color_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> float:
+    return ((left[0] - right[0]) ** 2 + (left[1] - right[1]) ** 2 + (left[2] - right[2]) ** 2) ** 0.5
+
+
+def nearest_distance(pixels: list[tuple[int, int, int]], target: tuple[int, int, int]) -> float:
+    if not pixels:
+        return 999.0
+    return min(color_distance(pixel, target) for pixel in pixels)
+
+
+def palette_findings(name: str, images: list[tuple[str, bytes, int, int]], tokens: dict, limit: float = PALETTE_DISTANCE) -> list[dict]:
+    """Compara píxeles muestreados con la paleta. Vacío si no hay captura."""
+    screen = Path(name).stem
+    if screen not in BRANDED_SCREENS:
+        return []
+    palette = palette_entries(tokens)
+    primaries = [parse_hex(item["hex"]) for item in palette if item["role"] == "primary"]
+    backgrounds = [parse_hex(item["hex"]) for item in palette if item["role"] in {"background", "installer-background"}]
+    findings = []
+    for label, rgb, width, height in images:
+        pixels = sample_pixels(rgb, width, height)
+        if primaries and screen in {"desktop", "bar", "launcher", "session-menu", "installer"}:
+            distance = min(nearest_distance(pixels, color) for color in primaries)
+            if distance > limit:
+                findings.append({
+                    "status": "deviation",
+                    "text": f"{name} ({label}): el naranja de marca no aparece (distancia {distance:.0f}).",
+                })
+        if backgrounds:
+            distance = min(nearest_distance(pixels, color) for color in backgrounds)
+            if distance > limit:
+                findings.append({
+                    "status": "deviation",
+                    "text": f"{name} ({label}): ningún fondo de la paleta está cerca (distancia {distance:.0f}).",
+                })
+    return findings
+
+
+def side_by_side(panels: list[tuple[int, int, bytes]], gap: int = 4) -> tuple[int, int, bytes]:
+    """Antes, después y diff en una sola imagen, separados por una franja negra."""
+    if not panels:
+        return 1, 1, b"\x00\x00\x00"
+    height = max(panel_h for _panel_w, panel_h, _rgb in panels)
+    width = sum(panel_w for panel_w, _panel_h, _rgb in panels) + gap * (len(panels) - 1)
+    canvas = bytearray(width * height * 3)
+    origin = 0
+    for panel_w, panel_h, rgb in panels:
+        for y in range(panel_h):
+            src = y * panel_w * 3
+            dest = (y * width + origin) * 3
+            canvas[dest:dest + panel_w * 3] = rgb[src:src + panel_w * 3]
+        origin += panel_w + gap
+    return width, height, bytes(canvas)
+
+
+def load_panel(path: Path | None, fallback_w: int, fallback_h: int) -> tuple[int, int, bytes]:
+    if path is not None and path.is_file():
+        try:
+            return read_png(path)
+        except (OSError, ValueError):
+            pass
+    width = fallback_w or 1
+    height = fallback_h or 1
+    return width, height, bytes(width * height * 3)
+
+
+def checklist(tokens: dict, palette_items: list[dict] | None = None) -> list[dict]:
+    items = list(palette_items or [])
     for color in tokens.get("colors", []):
         items.append({
             "status": "info",
@@ -145,6 +249,7 @@ def render_html(report: dict) -> str:
         rows.append(
             "<tr>"
             f"<th>{html.escape(pair['name'])}</th>"
+            f"{cell(pair.get('side_src'))}"
             f"{cell(pair.get('before_src'))}{cell(pair.get('after_src'))}{cell(pair.get('diff_src'))}"
             f"<td>{ratio}</td><td>{html.escape(mark)} ({html.escape(pair['reason'])})</td>"
             "</tr>"
@@ -171,7 +276,7 @@ code {{ color: #F97316; }}
 <p>{report['pairs_total']} pares, {report['deviations']} desviaciones.
 Umbral {report['threshold']}.</p>
 <table>
-<thead><tr><th>Pantalla</th><th>Antes</th><th>Después</th><th>Diff</th><th>Píxeles</th><th>Estado</th></tr></thead>
+<thead><tr><th>Pantalla</th><th>Lado a lado</th><th>Antes</th><th>Después</th><th>Diff</th><th>Píxeles</th><th>Estado</th></tr></thead>
 <tbody>
 {''.join(rows)}
 </tbody>
@@ -199,6 +304,11 @@ def render_summary(report: dict) -> str:
         body += " Las guías dejan 1 conflicto conocido, aparte de las capturas."
     elif conflicts:
         body += f" Las guías dejan {conflicts} conflictos conocidos, aparte de las capturas."
+    palette = sum(1 for item in report["checklist"] if item["status"] == "deviation")
+    if palette == 1:
+        body += " La paleta marca 1 desvío de color."
+    elif palette:
+        body += f" La paleta marca {palette} desvíos de color."
     body += " El HTML está en el artefacto visual-qa-report."
     return MARKER + "\n" + body + "\n"
 
@@ -211,19 +321,41 @@ def build_report(before: Path, after: Path, out: Path, tokens: dict, threshold: 
         after_path = after / name if (after / name).is_file() else None
         diff_path = out / "diff" / name
         result = compare_pair(before_path, after_path, diff_path, threshold)
+        before_panel = load_panel(before_path, 1, 1)
+        after_panel = load_panel(after_path, before_panel[0], before_panel[1])
+        diff_panel = load_panel(diff_path if diff_path.is_file() else None, before_panel[0], before_panel[1])
+        side_path = out / "side-by-side" / name
+        side_path.parent.mkdir(parents=True, exist_ok=True)
+        write_png(side_path, *side_by_side([before_panel, after_panel, diff_panel]))
         result.update({
             "name": name,
             "before_src": rel(before_path, out),
             "after_src": rel(after_path, out),
             "diff_src": rel(diff_path, out) if diff_path.is_file() else None,
+            "side_src": rel(side_path, out),
         })
+        shots = []
+        if before_path is not None and before_path.is_file():
+            try:
+                width, height, rgb = read_png(before_path)
+                shots.append(("antes", rgb, width, height))
+            except (OSError, ValueError):
+                pass
+        if after_path is not None and after_path.is_file():
+            try:
+                width, height, rgb = read_png(after_path)
+                shots.append(("después", rgb, width, height))
+            except (OSError, ValueError):
+                pass
+        result["palette"] = palette_findings(name, shots, tokens)
         pairs.append(result)
+    palette_items = [item for pair in pairs for item in pair.get("palette", [])]
     payload = {
         "threshold": threshold,
         "pairs_total": len(pairs),
         "deviations": sum(1 for pair in pairs if pair["deviation"]),
         "pairs": pairs,
-        "checklist": checklist(tokens),
+        "checklist": checklist(tokens, palette_items),
     }
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

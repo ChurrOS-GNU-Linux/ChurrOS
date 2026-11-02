@@ -89,6 +89,29 @@ class PixelReport(unittest.TestCase):
             self.assertTrue(summary.startswith("<!-- visual-qa-report -->"))
             self.assertIn("2 desviaciones", summary)
             self.assertIn("1 conflicto conocido", summary)
+            side = imageutil.read_png(root / "report" / "side-by-side" / "desktop.png")
+            self.assertEqual(side[0], 2 + 4 + 2 + 4 + 2)
+            self.assertEqual(side[1], 2)
+            self.assertIn("lado a lado", html_text.lower())
+
+    def test_palette_distance_flags_a_foreign_color(self):
+        orange = bytes((0xF9, 0x73, 0x16))
+        night = bytes((0x11, 0x18, 0x27))
+        branded = orange + orange + night + night
+        foreign = bytes((0x00, 0xFF, 0x00)) * 4
+        tokens = {
+            "colors": [
+                {"hex": "#F97316", "name": "Naranja", "role": "primary", "source": "branding/colors.md"},
+                {"hex": "#111827", "name": "Midnight", "role": "background", "source": "branding/colors.md"},
+            ],
+            "fonts": [],
+            "metrics": {},
+            "conflicts": [],
+        }
+        self.assertEqual(report.palette_findings("desktop.png", [("antes", branded, 2, 2)], tokens), [])
+        foreign_findings = report.palette_findings("bar.png", [("antes", foreign, 2, 2)], tokens)
+        self.assertTrue(any(item["status"] == "deviation" for item in foreign_findings))
+        self.assertTrue(any("naranja" in item["text"] for item in foreign_findings))
 
 
 class CommentScript(unittest.TestCase):

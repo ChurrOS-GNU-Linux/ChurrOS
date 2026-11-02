@@ -154,10 +154,14 @@ scripts/qa/visual/capture.sh --iso out/qa-visual/pr/*.iso --plan plan.json --out
 `visual-qa-after-<sha>` y ejecuta `scripts/qa/visual/report.py`.
 
 El informe (HTML, Markdown y `report.json`) empareja los PNG por nombre.
-Pinta el diff en rojo y marca desviación si falta un lado, si el tamaño
-no coincide o si la fracción de píxeles distintos pasa el umbral
-(`VISUAL_QA_DIFF_RATIO`, por defecto `0.01`). Sube el artefacto
-`visual-qa-report-<sha>`.
+Pinta el diff en rojo y escribe `side-by-side/<pantalla>.png` con el
+antes, el después y el diff en una sola imagen. Marca desviación si falta
+un lado, si el tamaño no coincide o si la fracción de píxeles distintos
+pasa el umbral (`VISUAL_QA_DIFF_RATIO`, por defecto `0.01`). Además
+muestrea los píxeles y los compara con la paleta de
+`design-tokens.json`: si el naranja principal o un fondo de marca no
+aparecen en la pantalla, la lista lo marca como desviación. Sube el
+artefacto `visual-qa-report-<sha>`.
 
 La lista sale de `scripts/qa/visual/design-tokens.json`, generado desde
 `branding/colors.md`, `branding/typography.md`, `branding/ui-guidelines.md`,
