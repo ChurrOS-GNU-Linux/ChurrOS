@@ -216,7 +216,7 @@ en [qa-visual.md](qa-visual.md).
 
 ## Instalación completa en QEMU
 
-El smoke test de arranque valida el Live, no la instalación. La prueba de instalación completa aún debe implementarse: `tests/vm/install_smoke.py` deberá iniciar la ISO con un disco virtual vacío, conducir Calamares con elecciones de prueba explícitas, esperar a que la instalación termine, apagar el Live, arrancar **solo desde el disco** y validar el sistema instalado. El job debe conservar el log de QEMU, eventos de instalador, journal del sistema instalado, tabla de particiones y un informe JSON, incluso cuando falle.
+El smoke test de arranque valida el Live, no la instalación. La prueba automatizada de instalación completa aún debe implementarse. Deberá iniciar la ISO con un disco virtual vacío, conducir Calamares con elecciones de prueba explícitas, esperar a que la instalación termine, apagar el Live, arrancar **solo desde el disco** y validar el sistema instalado. El job debe conservar el log de QEMU, eventos de instalador, journal del sistema instalado, tabla de particiones y un informe JSON, incluso cuando falle.
 
 La prueba no debe confirmar un particionado que apunte al disco del runner ni omitir un diálogo de borrado: el único destino debe ser un QCOW2 temporal creado por el job. Las credenciales de prueba y el autologin del Live no se deben trasladar al sistema instalado. La cobertura esperada para Niri y XFCE x86_64 UEFI incluye:
 
