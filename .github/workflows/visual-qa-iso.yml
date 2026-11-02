@@ -1,0 +1,126 @@
+name: Visual QA ISO
+
+# Construye la ISO del PR y la de main cuando el clasificador dice
+# visual=true. Reutiliza la de main por SHA (artefacto visual-qa-main-*).
+# No es un check requerido: continue-on-error para no impedir el merge.
+# Si el runner gratuito se queda sin disco o sin tiempo, el mismo trabajo
+# lo hace scripts/qa/visual/build-local.sh en otra máquina (docs/qa-visual.md).
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      edition:
+        description: Edición
+        type: choice
+        options: [niri, xfce, server]
+        default: niri
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: visual-qa-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    outputs:
+      visual: ${{ steps.gate.outputs.visual }}
+      main_sha: ${{ steps.gate.outputs.main_sha }}
+      edition: ${{ steps.gate.outputs.edition }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether to build
+        id: gate
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VISUAL_QA_JEV_MODEL: ${{ vars.VISUAL_QA_JEV_MODEL }}
+          VISUAL_QA_JEV_THRESHOLD: ${{ vars.VISUAL_QA_JEV_THRESHOLD }}
+          VISUAL_QA_MODEL: ${{ vars.VISUAL_QA_MODEL }}
+          EVENT: ${{ github.event_name }}
+          INPUT_EDITION: ${{ inputs.edition }}
+        run: |
+          set -euo pipefail
+          edition="${INPUT_EDITION:-niri}"
+          case "$edition" in
+            niri|xfce|server) ;;
+            *) edition="niri" ;;
+          esac
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+            git fetch --depth=1 origin main
+            echo "main_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            git diff --unified=1 HEAD^1 HEAD > "$RUNNER_TEMP/diff.txt"
+            python3 scripts/qa/visual/classify.py \
+              --paths-file "$RUNNER_TEMP/changed.txt" \
+              --diff-file "$RUNNER_TEMP/diff.txt" \
+              --github-output "$GITHUB_OUTPUT"
+            echo "main_sha=$(git rev-parse 'HEAD^1')" >> "$GITHUB_OUTPUT"
+          fi
+          echo "edition=${edition}" >> "$GITHUB_OUTPUT"
+
+  iso:
+    name: Build PR and main ISOs
+    needs: gate
+    if: needs.gate.outputs.visual == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    continue-on-error: true
+    env:
+      EDITION: ${{ needs.gate.outputs.edition }}
+      VISUAL_QA_BASE: ${{ needs.gate.outputs.main_sha }}
+      CHURROS_CONTAINER_ENGINE: docker
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Build PR ISO
+        run: scripts/qa/visual/build-local.sh --container --edition "$EDITION" --role pr --base "$VISUAL_QA_BASE"
+
+      - name: Upload PR ISO
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-qa-pr-${{ github.sha }}-${{ needs.gate.outputs.edition }}
+          path: |
+            out/qa-visual/pr/*.iso
+            out/qa-visual/pr/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Build main ISO
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/qa/visual/build-local.sh --container --edition "$EDITION" --role main --base "$VISUAL_QA_BASE"
+
+      - name: Upload main ISO
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-qa-main-${{ needs.gate.outputs.main_sha }}-${{ needs.gate.outputs.edition }}
+          path: |
+            out/qa-visual/main/*.iso
+            out/qa-visual/main/SHA256SUMS
+            out/qa-visual/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

@@ -60,7 +60,7 @@ Full guide: `docs/testing.md`. Layers, cheapest first (each catches what the pre
 
 `ci.yml` also runs `cargo test -p churros-services` on the GitHub runner (that crate does not need the Arch container). The rest of `rust/` is `./churros rust` in `rust.yml`.
 
-`.github/workflows/visual-qa-classify.yml` classifies a pull request diff and sets the `visual-qa` label. Path rules decide first; ambiguous diffs go to Jev and, if its top probability is under the threshold or the call fails, to Claude Haiku. It does not run `./churros test` and it is not a required check. See `docs/qa-visual.md`.
+`.github/workflows/visual-qa-classify.yml` classifies a pull request diff and sets the `visual-qa` label. Path rules decide first; ambiguous diffs go to Jev and, if its top probability is under the threshold or the call fails, to Claude Haiku. It does not run `./churros test` and it is not a required check. When the result is visual, `.github/workflows/visual-qa-iso.yml` builds the PR ISO and the main ISO (`scripts/qa/visual/build-local.sh --container`) and uploads both with `SHA256SUMS`. That workflow is not a required check either. See `docs/qa-visual.md`.
 
 Rules (most contributions are AI-assisted; these keep the net intact):
 - Never delete, skip or weaken a test, a `check.sh` section or a CI step to get green. If a test fails, fix the change or explain the test bug in the PR.
