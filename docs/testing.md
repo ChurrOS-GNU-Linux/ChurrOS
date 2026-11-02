@@ -214,6 +214,20 @@ en [qa-visual.md](qa-visual.md).
 - `AGENTS.md` describe el sistema tal como es: `test_repo_wiring.py` falla si
   afirma cosas que el repo contradice.
 
+## Instalación completa en QEMU
+
+El smoke test de arranque valida el Live, no la instalación. La prueba de instalación completa aún debe implementarse: `tests/vm/install_smoke.py` deberá iniciar la ISO con un disco virtual vacío, conducir Calamares con elecciones de prueba explícitas, esperar a que la instalación termine, apagar el Live, arrancar **solo desde el disco** y validar el sistema instalado. El job debe conservar el log de QEMU, eventos de instalador, journal del sistema instalado, tabla de particiones y un informe JSON, incluso cuando falle.
+
+La prueba no debe confirmar un particionado que apunte al disco del runner ni omitir un diálogo de borrado: el único destino debe ser un QCOW2 temporal creado por el job. Las credenciales de prueba y el autologin del Live no se deben trasladar al sistema instalado. La cobertura esperada para Niri y XFCE x86_64 UEFI incluye:
+
+- Calamares llega al final sin error y el informe confirma el disco QCOW2 de prueba como destino.
+- El disco virtual arranca sin ISO; GRUB, kernel e initramfs están presentes y se detecta la raíz instalada.
+- Se muestra ReGreet sin autologin; una cuenta de prueba creada por el instalador puede iniciar sesión.
+- `verify-install` no reporta residuos críticos del Live; la edición, red y servicios esperados coinciden con la configuración instalada.
+- El log distingue claramente una ejecución completa de una instalación o primer arranque parciales; ninguna prueba de contenido de ISO se presenta como instalación.
+
+La automatización de la interfaz debe usar el camino real de Calamares y comprobar cada transición y resultado; una secuencia que simula éxito o modifica directamente el sistema instalado no satisface este criterio. Hasta que la prueba y el workflow estén implementados y pasen, las instalaciones y el primer arranque siguen siendo comprobaciones manuales.
+
 ## Lo que todavía se prueba a mano
 
 - La instalación con Calamares hasta el disco y el primer arranque del

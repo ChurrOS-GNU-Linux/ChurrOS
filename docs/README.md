@@ -10,6 +10,8 @@ Todavía no hay un manual de usuario completo (está en el [roadmap](roadmap.md)
 
 | Documento | Para qué sirve |
 |-----------|----------------|
+| [Guía de uso](user-guide.md) | Probar e instalar ChurrOS, actualizar y recuperar el sistema. |
+| [Pruebas de instalación](testing.md#instalación-completa-en-qemu) | Alcance requerido y límites de la futura prueba end-to-end de Calamares en QEMU. |
 | [Rollback](rollback.md) | Recuperar el sistema con los snapshots Btrfs cuando una actualización falla. |
 | [Server](server.md) | Qué instala y qué activa la edición servidor, y qué tienes que configurar tú. |
 | [Login Greeter](login-greeter.md) | Pantalla de inicio de sesión (greetd + ReGreet): qué sesión arranca cada edición y dónde se configura. |
@@ -35,6 +37,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Arquitectura](../ARCHITECTURE.md) | Visión general: cómo encajan build, Live, instalación y apps. |
 | [Project Structure](project-structure.md) | Mapa de carpetas y ficheros del repositorio. |
 | [Build System](build-system.md) | Cómo se construye la ISO: ediciones, arquitecturas, contenedor y paquetes locales. |
+| [Migración de ArchISO](archiso-migration.md) | Plan de retirada segura de `customize_airootfs.sh`, actualmente obsoleto en upstream. |
 | [Boot](boot.md) | Arranque de la ISO (GRUB UEFI y Syslinux BIOS). |
 | [Installer](installer.md) | Calamares: configuración, secuencia y pasos propios de post-instalación. |
 | [Privileged Execution](privileged-execution.md) | Reglas polkit, `churros-pkexec` y los helpers que se ejecutan como root. |

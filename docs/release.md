@@ -74,7 +74,7 @@ sha256sum -c SHA256SUMS
 cd ../..
 ```
 
-Opcional: firmarlo (`gpg --armor --detach-sign SHA256SUMS` genera `SHA256SUMS.asc`). Falta decidir con qué clave y dónde se publica la clave pública.
+**Estado actual: pendiente.** La firma es opcional en el procedimiento existente, no hay una clave pública de releases cuya huella se publique por un canal independiente y no se debe anunciar autenticidad verificada hasta completar y probar esa cadena de confianza. Una suma SHA-256 descargada del mismo servidor detecta corrupción accidental, pero no protege contra la sustitución coordinada de ISO y suma. Antes de una publicación estable, custodiar una clave de firma offline o en un servicio de firma aprobado, registrar su huella en un canal independiente, firmar el manifiesto de sumas y verificar la firma desde otra instalación antes de publicar. Nunca añadir una clave privada al repositorio, a la ISO o al CI como texto plano.
 
 ### 5. Subir las ISO
 
@@ -134,7 +134,7 @@ El bundle lleva los binarios Rust con `deploy = true`, los scripts `churros-*` d
 Los sistemas instalados lo ven al buscar actualizaciones en Ajustes; el cliente elige el fichero de su edición y, si no la encuentra, el de `niri`. Limitaciones conocidas:
 
 - Solo x86_64: Ajustes y `churros-update-utils` leen siempre `/churros/updates.json`, que es el manifiesto x86_64. Un sistema aarch64 o i686 recibiría binarios x86_64.
-- El manifiesto no está firmado: no hay clave minisign publicada y el cliente solo comprueba el sha256 que viene del mismo servidor ([#139](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/139), [#141](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/141)).
+- El manifiesto sigue sin una firma obligatoria: el cliente aún permite continuar cuando falta la clave pública y verifica la firma solo cuando esa clave existe. Tampoco hay un repositorio pacman remoto firmado para el sistema instalado. Por ello se reabrieron [#139](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/139) y [#141](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/141); no considerar seguro un SHA servido por el mismo origen.
 - La instalación automática desde el timer de usuario falla porque pkexec pide contraseña ([#142](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/142)).
 
 Después de subirlo, comprueba la actualización desde un sistema instalado con la versión anterior.
