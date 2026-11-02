@@ -76,8 +76,8 @@ Instalador gráfico de ChurrOS, basado en Calamares.
 
 Herramientas propias y paquetes.
 
-- [ ] Repositorio pacman `[churros]` firmado, en lugar de paquetes sueltos y del bundle de utilidades (#141).
-- [ ] Firma obligatoria de las actualizaciones de utilidades (#139).
+- [ ] Repositorio pacman `[churros]` remoto y firmado para instalaciones (#141; reabierto: el repo local de build no ofrece actualización remota).
+- [ ] Firma obligatoria de las actualizaciones de utilidades (#139; reabierto: sigue habiendo fallback si falta la clave pública).
 - [ ] Paquetes propios publicados. Hoy Calamares, Bazaar, yay, wlogout y python-pywal se compilan en local durante el build y no hay repositorio remoto.
 - [x] ChurrOS CLI.
 - [x] Actualizador (pacman, Flatpak y utilidades de ChurrOS).
@@ -90,12 +90,26 @@ Herramientas propias y paquetes.
 
 ---
 
+### Criterios propuestos para la primera versión estable
+
+No se declarará una versión estable solo por el número de versión o porque la ISO se construya. Antes de anunciarla, una publicación debe cumplir y documentar:
+
+- Niri y XFCE x86_64 construyen desde un commit etiquetado, pasan la auditoría de ISO, arrancan en QEMU en UEFI y BIOS, y una instalación de cada edición completa Calamares y arranca desde el disco en QEMU UEFI.
+- No quedan fallos críticos o altos de seguridad abiertos que afecten a instalación, arranque, actualización o autenticidad de paquetes; los problemas conocidos restantes tienen impacto, alcance y mitigación documentados.
+- Las actualizaciones de sistema y de componentes propios tienen origen y firma de confianza verificables antes de instalar; una suma publicada sin firma no se presenta como autenticación.
+- Cada ISO publicada tiene SHA-256 calculado sobre el artefacto final y firmado con una clave de release cuya huella y método de verificación están publicados por un canal independiente de descarga.
+- Se publica una matriz de hardware probado, versiones soportadas, procedimiento de actualización, instalación, respaldo y recuperación; el soporte declarado se limita a lo efectivamente probado.
+- La persona responsable de cada componente crítico está identificada en `MAINTAINERS`, y existe un procedimiento para retirar o corregir una publicación defectuosa.
+- Los artefactos, fuentes y notas de la versión corresponden al mismo tag inmutable y los resultados de CI se vinculan a ese tag.
+
+Estos criterios son una propuesta operativa que se debe revisar como parte de la política de release; no declaran estable ninguna versión existente.
+
 ## Fase 6 — Publicación y comunidad
 
 Publicar versiones de forma periódica y abrir el proyecto a más gente.
 
 - [x] Versiones públicas periódicas (la actual está en [`VERSION`](../VERSION)).
-- [ ] Primera versión estable. Falta definir qué criterios la marcan.
+- [ ] Primera versión estable. Criterios propuestos más arriba; requieren revisión del proceso de release antes de usarse como política oficial.
 - [x] Sitio web: [churroslinux.org](https://www.churroslinux.org/). Falta actualizar sus enlaces al repositorio de la organización ChurrOS-GNU-Linux.
 - [x] Descargas en download.churroslinux.org. GitHub Releases solo tiene las ISO de v0.1.1 y v0.6 y el bundle de utilidades de v1.0.
 - [ ] Sumas SHA-256 (y firma) publicadas junto a cada ISO.
