@@ -478,7 +478,7 @@ def _default_visual(write, *, detail, reason, jev_probability=None, jev_choice=N
     """Diff ambiguo sin una decisión fiable: se trata como visual."""
     write(f"visual-qa: {detail}; decider=unresolved-default-visual visual=true")
     return Decision(
-        True, "unresolved-default-visual", None, "", reason=reason,
+        True, "unresolved-default-visual", None, "none", reason=reason,
         jev_probability=jev_probability, jev_choice=jev_choice, jev_model=jev_model,
     )
 
