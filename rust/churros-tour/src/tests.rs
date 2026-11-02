@@ -152,9 +152,9 @@ fn gtk_selection_preview_and_installation_failures() {
         install.finish(false).unwrap();
         assert_eq!(autostart.exists(), code != 0);
         let expected_args = if code == 0 {
-            "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nobs-studio\n"
+            "-S\n--needed\n--noconfirm\n--answerclean\nNone\n--answerdiff\nNone\n--\nobs-studio\n"
         } else {
-            "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\n"
+            "-S\n--needed\n--noconfirm\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\n"
         };
         assert_eq!(
             std::fs::read_to_string(&args_file).unwrap(),

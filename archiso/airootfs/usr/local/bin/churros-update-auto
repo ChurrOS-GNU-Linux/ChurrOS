@@ -9,7 +9,10 @@
 # estos pasos fallan; ver #142 (comprobar y notificar en vez de instalar).
 #
 
-LOG=/tmp/churros-update.log
+# El timer corre churros-update.service como root: el log no puede estar en
+# /tmp (enlace simbólico de otro usuario); journald ya guarda la salida, y
+# aquí se conserva una copia en /var/log.
+LOG=/var/log/churros-update.log
 
 {
     echo "=== $(date) ==="

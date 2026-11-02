@@ -112,13 +112,13 @@ falle una no impide la otra; en `rust.yml` son dos pasos):
 - `scripts/test-gui-smoke.py`: compila el workspace en release (el perfil de
   la ISO, con `panic = "abort"`) y arranca cada binario desplegado
   (`deploy = true`) y `churros-popup` con cada nombre de `POPUPS`, dentro de
-  `dbus-run-session`, con HOME (copia del skel) y `/tmp/churros` propios.
+  `dbus-run-session`, con HOME (copia del skel) y $XDG_RUNTIME_DIR propios.
   Cada arranque se hace dos veces: tal cual (en el contenedor faltan nmcli,
   wpctl, upower, niri...) y `[herramientas fallan]`, con cada programa que
   lanzan las apps (el escaneo de `test_references.py`) sustituido por uno que
   escribe un error y sale con 1, como `wpctl` antes de que arranque PipeWire.
   Falla si la app termina antes de 5 s (con cualquier código o señal) o si su
-  salida o su log de `/tmp/churros` contiene `panicked at`; un `Gtk-CRITICAL`
+  salida o su log de `$XDG_RUNTIME_DIR/churros` contiene `panicked at`; un `Gtk-CRITICAL`
   solo se avisa. `-k <texto>` arranca solo los que lo contienen
   (`python3 scripts/test-gui-smoke.py -k churros-settings`).
 

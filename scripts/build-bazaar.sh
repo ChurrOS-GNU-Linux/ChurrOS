@@ -68,7 +68,7 @@ ensure_libdex() {
         libdex_dir="$WORK_DIR/libdex"
         rm -rf "$libdex_dir"
         mkdir -p "$libdex_dir"
-        curl -fsSL "https://gitlab.archlinux.org/archlinux/packaging/packages/libdex/-/raw/main/PKGBUILD" \
+        curl -fsSL "https://gitlab.archlinux.org/archlinux/packaging/packages/libdex/-/raw/223f6c658c3ff6ae8ea64ca9003eaf7d7802a75f/PKGBUILD" \
             -o "$libdex_dir/PKGBUILD"
         python3 - "$libdex_dir/PKGBUILD" <<'PY'
 import re
@@ -113,7 +113,7 @@ PY
         churros_pkgbuild_allow_arch "$libdex_dir/PKGBUILD"
         (
             cd "$libdex_dir"
-            makepkg -sf --noconfirm --skippgpcheck --nocheck
+            makepkg -sf --noconfirm --nocheck
         )
         churros_copy_pkgs "$libdex_dir" "$PACKAGE_DIR" 'libdex-*'
         churros_remove_pkgs "$PACKAGE_DIR" 'libdex-debug-*'
@@ -148,7 +148,7 @@ mkdir -p "$WORK_DIR"
 
 echo "[1/4] Fetching Arch PKGBUILD for bazaar..."
 for f in PKGBUILD bazaar.install; do
-    curl -fsSL "https://gitlab.archlinux.org/archlinux/packaging/packages/bazaar/-/raw/main/$f" \
+    curl -fsSL "https://gitlab.archlinux.org/archlinux/packaging/packages/bazaar/-/raw/7f7069be70d66c263f83c8b729fc988f62de4ea4/$f" \
         -o "$WORK_DIR/$f" 2>/dev/null || true
 done
 
@@ -184,7 +184,7 @@ echo "[3/4] Building bazaar (this may take a while)..."
 
 (
     cd "$WORK_DIR"
-    makepkg -sf --noconfirm --skippgpcheck
+    makepkg -sf --noconfirm
 )
 
 echo "[4/4] Installing package to local repo..."

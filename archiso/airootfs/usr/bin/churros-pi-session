@@ -10,7 +10,7 @@ export GDK_BACKEND=wayland,x11
 export XCURSOR_THEME=Adwaita
 export XCURSOR_SIZE=24
 
-# Iniciar waybar con configuración específica de Pi en segundo plano
-waybar --config /usr/share/churros/pi/waybar/config.jsonc --style /usr/share/churros/pi/waybar/style.css &
+# Waybar lo arranca /etc/xdg/labwc/autostart después de que labwc cree el
+# socket Wayland; aquí no existe todavía y waybar moriría o se colgaría.
 
 exec /usr/bin/labwc "$@"

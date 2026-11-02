@@ -30,10 +30,20 @@ case "$boot_fstype" in
 esac
 
 if [ -d /boot ]; then
-    chattr +C /boot >/dev/null 2>&1 || true
-    if command -v btrfs >/dev/null 2>&1; then
-        btrfs property set /boot compression none >/dev/null 2>&1 || true
-    fi
+    command -v btrfs >/dev/null 2>&1 || {
+        echo "make-boot-grub-readable: falta btrfs para proteger /boot" >&2
+        exit 1
+    }
+    chattr +C /boot
+    btrfs property set /boot compression none
+    lsattr -d /boot | awk '{print $1}' | grep -q C || {
+        echo "make-boot-grub-readable: /boot no tiene el atributo No_COW" >&2
+        exit 1
+    }
+    btrfs property get /boot compression | grep -Eq 'compression[= ]+none' || {
+        echo "make-boot-grub-readable: la compresión de /boot sigue activa" >&2
+        exit 1
+    }
 fi
 
 # chattr +C only applies to a newly created empty file. Write into that
@@ -44,11 +54,15 @@ rewrite_for_grub() {
 
     rm -f -- "$tmp"
     touch -- "$tmp"
-    chattr +C -- "$tmp" >/dev/null 2>&1 || true
+    chattr +C -- "$tmp"
     dd if="$f" of="$tmp" bs=8M status=none conv=fsync
     chmod --reference="$f" "$tmp"
     chown --reference="$f" "$tmp"
     mv -f -- "$tmp" "$f"
+    lsattr -d -- "$f" | awk '{print $1}' | grep -q C || {
+        echo "make-boot-grub-readable: $f no tiene el atributo No_COW" >&2
+        return 1
+    }
 }
 
 shopt -s nullglob

@@ -541,11 +541,38 @@ class PacmanConfTest(unittest.TestCase):
                 levels = " ".join(keys.get("SigLevel", [])).split()
                 self.assertTrue({"Optional", "Never", "PackageOptional", "PackageNever"} & set(levels),
                                 f"{path.name}: los paquetes de [churros] no van firmados; SigLevel tiene que admitirlo")
+                for repo, repo_keys in repos[1:]:
+                    if not any(server.startswith("https://") for server in repo_keys.get("Server", [])):
+                        continue
+                    remote_levels = set(" ".join(repo_keys.get("SigLevel", [])).split())
+                    self.assertFalse({"TrustAll", "Optional", "PackageOptional"} & remote_levels,
+                                     f"{path.name}: el repositorio remoto [{repo}] acepta paquetes sin firma")
                 lib32 = sorted({pkg for item in testlib.EDITIONS if item.arch == arch
                                 for pkg in testlib.packages(item) if pkg.startswith("lib32-")})
                 if lib32:
                     self.assertIn("multilib", [repo for repo, _ in repos],
                                   f"{path.name} sin [multilib] y las listas piden {lib32}")
+
+    def test_live_coredumps_do_not_consume_the_ram_overlay(self):
+        policy = testlib.read_text(testlib.AIROOTFS / "etc/systemd/coredump.conf.d/churros-live.conf")
+        self.assertRegex(policy, r"(?m)^Storage=none$")
+        self.assertRegex(policy, r"(?m)^ProcessSizeMax=0$")
+        cleanup = testlib.read_text(ROOT / "installer/calamares/modules/shellprocess-cleanup.conf")
+        self.assertIn("rm -f /etc/systemd/coredump.conf.d/churros-live.conf", cleanup,
+                      "la política sin cores de la Live no debe heredarse en el sistema instalado")
+
+    def test_desktop_metadata_and_greeter_are_locale_neutral(self):
+        applications = testlib.AIROOTFS / "usr/share/applications"
+        icons = testlib.AIROOTFS / "usr/share/icons/hicolor"
+        for name in ("churros-settings", "churros-welcome", "churros-tour", "churros-control-center"):
+            content = testlib.read_text(applications / f"{name}.desktop")
+            self.assertRegex(content, r"(?m)^Name\[es\]=.+$")
+            icon = re.search(r"(?m)^Icon=(.+)$", content)
+            self.assertIsNotNone(icon, f"{name}.desktop no declara Icon")
+            matches = list(icons.glob(f"**/{icon.group(1)}.*"))
+            self.assertTrue(matches, f"{name}.desktop apunta al icono inexistente {icon.group(1)}")
+        regreet = testlib.read_text(testlib.AIROOTFS / "etc/greetd/regreet.toml")
+        self.assertNotIn(" de %B", regreet, "el formato de fecha de ReGreet fuerza gramática española")
 
 
 if __name__ == "__main__":

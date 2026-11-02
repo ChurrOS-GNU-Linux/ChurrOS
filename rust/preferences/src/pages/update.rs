@@ -99,7 +99,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("system.svg"),
         None,
         None,
-        Some(Box::new(move |_| run_update(&log_rc))),
+        Some(Box::new(move |button| run_update(&log_rc, button))),
     ));
 
     let status_row = Row::new(
@@ -451,11 +451,15 @@ fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<
     });
 }
 
-fn run_update(log_view: &Rc<RefCell<Option<gtk::TextView>>>) {
+fn run_update(log_view: &Rc<RefCell<Option<gtk::TextView>>>, button: &gtk::Button) {
+    if !button.is_sensitive() {
+        return;
+    }
+    button.set_sensitive(false);
     set_log(log_view, "");
     append_log(log_view, "Iniciando actualización...\n");
 
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (tx, rx) = std::sync::mpsc::sync_channel::<String>(256);
     std::thread::spawn(move || {
         let ok_pac = {
             let tx_p = tx.clone();
@@ -488,12 +492,16 @@ fn run_update(log_view: &Rc<RefCell<Option<gtk::TextView>>>) {
     });
 
     let lv = Rc::clone(log_view);
+    let button = button.clone();
     glib::timeout_add_local(std::time::Duration::from_millis(120), move || {
         loop {
             match rx.try_recv() {
                 Ok(line) => append_log(&lv, &line),
                 Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
-                Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+                Err(TryRecvError::Disconnected) => {
+                    button.set_sensitive(true);
+                    return glib::ControlFlow::Break;
+                }
             }
         }
     });

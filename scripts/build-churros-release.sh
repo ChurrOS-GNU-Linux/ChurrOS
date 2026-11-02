@@ -5,7 +5,8 @@
 # en el servidor de actualizaciones.
 #
 # Uso:
-#   ./scripts/build-churros-release.sh [x86_64|aarch64|i686]
+#   CHURROS_RELEASE_SECRET_KEY=/ruta/release.key \
+#     ./scripts/build-churros-release.sh [x86_64|aarch64|i686]
 #
 # Produce en release/:
 #   <arch>/churros-utils-<version>-<arch>.tar.zst
@@ -21,6 +22,7 @@ VERSION="$(cat "$PROJECT_DIR/VERSION")"
 OUT="$PROJECT_DIR/release"
 STAGE="$(mktemp -d)"
 ARCH="${1:-$(uname -m)}"
+SECRET_KEY="${CHURROS_RELEASE_SECRET_KEY:-}"
 
 case "$ARCH" in
     x86_64|aarch64|i686) ;;
@@ -30,6 +32,19 @@ case "$ARCH" in
         ;;
 esac
 
+[ -n "$SECRET_KEY" ] || {
+    echo "Error: CHURROS_RELEASE_SECRET_KEY debe apuntar a la clave minisign privada." >&2
+    exit 1
+}
+[ -r "$SECRET_KEY" ] || {
+    echo "Error: no se puede leer la clave minisign privada: $SECRET_KEY" >&2
+    exit 1
+}
+command -v minisign >/dev/null 2>&1 || {
+    echo "Error: minisign es obligatorio para publicar una release." >&2
+    exit 1
+}
+
 ARCH_OUT="$OUT/$ARCH"
 BUNDLE="churros-utils-${VERSION}-${ARCH}.tar.zst"
 
@@ -38,7 +53,21 @@ echo "==> ChurrOS release build — v${VERSION}"
 # 1. Compilar las apps Rust (release)
 echo "  [1/4] compilando apps Rust..."
 export RUST_MIN_STACK="${RUST_MIN_STACK:-67108864}"
-cargo build --release --manifest-path "$RUST_DIR/Cargo.toml" --jobs "$(nproc)"
+HOST_ARCH="$(uname -m)"
+[ "$HOST_ARCH" = arm64 ] && HOST_ARCH=aarch64
+case "$ARCH" in
+    x86_64) TARGET_TRIPLE=x86_64-unknown-linux-gnu ;;
+    aarch64) TARGET_TRIPLE=aarch64-unknown-linux-gnu ;;
+    i686) TARGET_TRIPLE=i686-unknown-linux-gnu ;;
+esac
+CARGO_ARGS=(build --release --manifest-path "$RUST_DIR/Cargo.toml" --jobs "$(nproc)")
+TARGET_DIR="${CARGO_TARGET_DIR:-$RUST_DIR/target}"
+TARGET_RELEASE="$TARGET_DIR/release"
+if [ "$ARCH" != "$HOST_ARCH" ]; then
+    CARGO_ARGS+=(--target "$TARGET_TRIPLE")
+    TARGET_RELEASE="$TARGET_DIR/$TARGET_TRIPLE/release"
+fi
+cargo "${CARGO_ARGS[@]}"
 
 # 2. Staging: binarios Rust (solo crates con deploy = true)
 echo "  [2/4] montando staging..."
@@ -48,11 +77,13 @@ for crate_dir in "$RUST_DIR"/*/; do
     grep -q '^deploy = true$' "$crate_dir/Cargo.toml" || continue
     crate_name=$(sed -n 's/^name = "\(.*\)"/\1/p' "$crate_dir/Cargo.toml" | head -1)
     [ -n "$crate_name" ] || continue
-    binary="$RUST_DIR/target/release/$crate_name"
-    if [ -x "$binary" ]; then
-        cp "$binary" "$STAGE/usr/bin/$crate_name"
-        echo "    + usr/bin/$crate_name"
-    fi
+    binary="$TARGET_RELEASE/$crate_name"
+    [ -x "$binary" ] || {
+        echo "Error: cargo no produjo el binario desplegable $binary" >&2
+        exit 1
+    }
+    cp "$binary" "$STAGE/usr/bin/$crate_name"
+    echo "    + usr/bin/$crate_name"
 done
 
 # 3. Scripts de la ISO (usr/bin y usr/local/bin)
@@ -136,10 +167,9 @@ cat > "$ARCH_OUT/updates.json" <<EOF
 }
 EOF
 
-# Keep the legacy root manifest as an x86_64 alias for older clients.
-if [ "$ARCH" = x86_64 ]; then
-    cp "$ARCH_OUT/updates.json" "$OUT/updates.json"
-fi
+minisign -S -s "$SECRET_KEY" -m "$ARCH_OUT/updates.json" \
+    -x "$ARCH_OUT/updates.json.minisig" \
+    -t "ChurrOS utilities v${VERSION} ${ARCH}"
 
 rm -rf "$STAGE"
 
@@ -148,5 +178,6 @@ echo "    $ARCH_OUT/$BUNDLE"
 echo "    $ARCH_OUT/$BUNDLE_NIRI"
 echo "    $ARCH_OUT/$BUNDLE_XFCE"
 echo "    $ARCH_OUT/updates.json"
+echo "    $ARCH_OUT/updates.json.minisig"
 echo
 echo "  Sube los archivos a: https://download.churroslinux.org/churros/"

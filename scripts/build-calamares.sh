@@ -30,12 +30,14 @@ mkdir -p "$PACKAGE_DIR"
 HOST_PYTHON="$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 PATCHES_DIR="$PROJECT_DIR/installer/patches"
 STAMP_FILE="$PACKAGE_DIR/.calamares-build.stamp"
+CALAMARES_AUR_COMMIT=167151beb537c06cb75c8dbfd409799ba308bb66
 
 calamares_want_stamp() {
     (
         cd "$PATCHES_DIR"
         ls calamares-*.patch | sort | xargs sha256sum
         echo "python=$HOST_PYTHON"
+        echo "aur=$CALAMARES_AUR_COMMIT"
     ) | sha256sum | awk '{print $1}'
 }
 
@@ -56,7 +58,9 @@ choose_work_dir
 rm -rf "$WORK_DIR" 2>/dev/null || true
 
 echo "[1/4] Cloning calamares from AUR..."
-git clone https://aur.archlinux.org/calamares.git "$WORK_DIR"
+git clone --no-checkout https://aur.archlinux.org/calamares.git "$WORK_DIR"
+git -C "$WORK_DIR" checkout --detach "$CALAMARES_AUR_COMMIT"
+[ "$(git -C "$WORK_DIR" rev-parse HEAD)" = "$CALAMARES_AUR_COMMIT" ]
 
 echo "[2/4] Applying installer/patches/calamares-*.patch..."
 
@@ -196,7 +200,7 @@ echo "[4/4] Building calamares against Python $HOST_PYTHON (this may take a whil
 (
     cd "$WORK_DIR"
     # Prefer /usr/bin over ~/.local so ninja/cmake helpers match the ISO.
-    PATH="/usr/bin:$PATH" makepkg -sf --noconfirm --skippgpcheck
+    PATH="/usr/bin:$PATH" makepkg -sf --noconfirm
 )
 
 echo "    makepkg done."

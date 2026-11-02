@@ -75,7 +75,7 @@ Estado de cada servicio en el sistema instalado. Lo decide `archiso/airootfs/usr
 2. `flatpak update -y`
 3. `churros-update-utils`, que descarga e instala el paquete de utilidades de ChurrOS si el manifiesto anuncia una versión distinta de la instalada ([privileged-execution.md](privileged-execution.md)).
 
-Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). La salida va a `/tmp/churros-update.log`; `journalctl -u churros-update.service` muestra cuándo se ejecutó. El script intenta avisar con una notificación de escritorio, que en un servidor no llega a ninguna parte.
+Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). La salida va a `/var/log/churros-update.log`; `journalctl -u churros-update.service` muestra cuándo se ejecutó. El script intenta avisar con una notificación de escritorio, que en un servidor no llega a ninguna parte.
 
 Si prefieres actualizar a mano:
 

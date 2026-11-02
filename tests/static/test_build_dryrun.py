@@ -517,6 +517,31 @@ class BuildDryRunTest(unittest.TestCase):
                 # work/ se queda para inspeccionar el fallo; el siguiente build lo borra.
                 self.assert_clean(result, allow_work=True)
 
+    def test_preexisting_host_repository_is_rejected(self):
+        """Nunca se consume ni elimina un /root/packages ajeno al build."""
+        host_repo = self.box.fake_root / "packages"
+        host_repo.mkdir()
+        marker = host_repo / "untrusted"
+        marker.write_text("no usar\n")
+        result = self.box.build("--edition", "niri", "--arch", "x86_64")
+        self.assertNotEqual(result.code, 0, result.describe())
+        self.assertIn("/root/packages ya existe", result.output)
+        self.assertEqual(marker.read_text(), "no usar\n")
+        marker.unlink()
+        host_repo.rmdir()
+        self.assert_clean(result, allow_work=True)
+
+    def test_container_wrapper_does_not_lock_out_inner_build(self):
+        """El wrapper host delega antes de tomar el cerrojo del checkout."""
+        text = (testlib.ROOT / "scripts/cli/build.sh").read_text(encoding="utf-8")
+        delegation = text.index('if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then')
+        lock = text.index("exec 9<.")
+        self.assertGreater(
+            lock,
+            delegation,
+            "el wrapper --container toma el flock antes de delegar y bloquea a su propio build interior",
+        )
+
     def test_unsupported_combinations_are_rejected(self):
         """Ediciones o arquitecturas que build.sh no soporta: error claro y nada tocado."""
         names = sorted({item.name for item in testlib.EDITIONS})
