@@ -253,6 +253,49 @@ class DesktopReady(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("unchanged", reason)
 
+    def test_a_generic_change_is_not_wlogout(self):
+        width, height = 60, 48
+        before = bytearray((0x40, 0x40, 0x40) * (width * height))
+        after = bytearray(before)
+        for y in range(16, 36):
+            for x in range(16, 36):
+                index = (y * width + x) * 3
+                after[index:index + 3] = b"\xff\xff\xff"
+        ok, reason = self.frames.session_menu_visible(bytes(before), bytes(after), width, height)
+        self.assertFalse(ok, "menu:not-generic")
+        self.assertIn("not-wlogout", reason)
+
+    def test_wlogout_is_a_centered_button_grid(self):
+        width, height = 60, 48
+        before = bytearray((0x40, 0x40, 0x40) * (width * height))
+        after = bytearray(before)
+        button = bytes((0x2A, 0x16, 0x12))
+        accent = bytes((0xDE, 0x86, 0x36))
+        for left in (12, 24, 36):
+            for y in range(16, 28):
+                for x in range(left, left + 8):
+                    index = (y * width + x) * 3
+                    after[index:index + 3] = accent if y == 16 else button
+        ok, reason = self.frames.session_menu_visible(bytes(before), bytes(after), width, height)
+        self.assertTrue(ok, reason)
+        self.assertEqual(reason, "wlogout")
+
+    def test_renamed_desktop_is_not_a_diff_screen(self):
+        width, height = 32, 32
+        desktop = bytes((0x40, 0x40, 0x40)) * (width * height)
+        ok, reason = self.frames.differs_from_desktop(desktop, desktop, width, height)
+        self.assertFalse(ok, "same-as-desktop")
+        self.assertEqual(reason, "same-as-desktop")
+        changed = bytearray(desktop)
+        for y in range(8, 24):
+            for x in range(8, 24):
+                index = (y * width + x) * 3
+                changed[index:index + 3] = bytes((0xF9, 0x73, 0x16))
+        ok, reason = self.frames.differs_from_desktop(desktop, bytes(changed), width, height)
+        self.assertTrue(ok, reason)
+        script = (ROOT / "scripts/qa/visual/capture.sh").read_text(encoding="utf-8")
+        self.assertIn('differs --before "$base"', script, "same-as-desktop")
+
     def test_kernel_text_shot_is_not_ok(self):
         rgb = bytearray(4 * 2 * 3)
         rgb[0:3] = b"\xff\xff\xff"
@@ -357,6 +400,9 @@ class CaptureContract(unittest.TestCase):
         self.assertIn('agent_reason="no-diff-screens"', script, "agent:no-diff-screens")
         self.assertIn('agent_reason="no-key"', script, "agent:no-key")
         self.assertIn('agent_status="not-run"', script)
+        self.assertIn("VISUAL_QA_MENU_TIMEOUT:-90", script)
+        self.assertIn('--key esc', script)
+        self.assertIn('mv "$png" "$workdir/"', script, "initial-png:workdir")
 
 
 class CaptureWorkflow(unittest.TestCase):

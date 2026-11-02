@@ -25,6 +25,8 @@ def build_prompt(qmp: str, vnc: str, out: str, vmctl: str, screens: list[str]) -
         "meta_l+spc opens the Noctalia launcher.",
         "meta_l+shift+e opens wlogout. ret confirms.",
         "Calamares is /usr/local/bin/calamares.",
+        "The hotkey overlay and wlogout are already closed.",
+        "Do not write initial.png or any other file in the output directory.",
         "Write exactly these files and then exit:",
     ]
     for screen in screens:
