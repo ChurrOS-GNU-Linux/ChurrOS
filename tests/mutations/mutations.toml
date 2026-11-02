@@ -1461,6 +1461,15 @@ expect = "test_preexisting_host_repository_is_rejected"
 why = "El repositorio local precede a los oficiales y admite paquetes sin firma; reutilizar una ruta global permite inyectar paquetes en la ISO."
 
 [[mutation]]
+name = "test_build_dryrun: el wrapper de contenedor vuelve a bloquear su propio build"
+file = "scripts/cli/build.sh"
+find = 'if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then'
+replace = 'exec 9<.\nflock -n 9\nif [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then'
+caught_by = "tests.static.test_build_dryrun"
+expect = "bloquea a su propio build interior"
+why = "El checkout se monta dentro del contenedor: conservar el flock en el wrapper hace que los builds --container aborten al entrar."
+
+[[mutation]]
 name = "test_calamares_config: aarch64 deja de copiar el kernel que exige mkinitcpio"
 file = "installer/calamares/modules/aarch64/unpackfs.conf"
 find = "  - source: \"/run/archiso/bootmnt/churros/boot/aarch64/vmlinuz-linux-aarch64\"\n    sourcefs: \"file\"\n    destination: \"/boot/Image\"\n"
@@ -1492,7 +1501,7 @@ name = "churros-services: el estado de sesión vuelve a ser global en /tmp"
 file = "rust/services/src/lib.rs"
 find = "    let dir = base.join(\"churros\");"
 replace = "    let dir = PathBuf::from(\"/tmp/churros\");"
-caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services runtime_state_is_private_and_scoped_to_the_session"
+caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services runtime_state_is_private_and_scoped_to_the_session"
 expect = "runtime_state_is_private_and_scoped_to_the_session"
 why = "Un directorio global permite colisiones entre usuarios y ataques con enlaces simbólicos sobre pidfiles y logs."
 
@@ -1501,7 +1510,7 @@ name = "churros-services: los comandos cortos dejan de recogerse"
 file = "rust/services/src/lib.rs"
 find = "            std::thread::spawn(move || {\n                let _ = child.wait();\n            });\n"
 replace = "            drop(child);\n"
-caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services spawned_short_command_is_reaped"
+caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services spawned_short_command_is_reaped"
 expect = "spawned_short_command_is_reaped"
 why = "Descartar Child no hace wait en Rust; sliders y toggles acumulan procesos zombis hasta cerrar la aplicación."
 
@@ -2736,7 +2745,7 @@ name = "churros-services: el timeout vuelve a matar solo al hijo directo"
 file = "rust/services/src/lib.rs"
 find = "            libc::kill(-(child.id() as i32), libc::SIGKILL);"
 replace = "            libc::kill(child.id() as i32, libc::SIGKILL);"
-caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services test_run_deadline_kills_descendants"
+caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services test_run_deadline_kills_descendants"
 expect = "test_run_deadline_kills_descendants"
 why = "Los descendientes pueden conservar pipes y locks o continuar una operación privilegiada después del timeout."
 

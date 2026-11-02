@@ -367,7 +367,12 @@ mod tests {
         assert!(run(&["sh", "-c", &script], 100).is_none());
         let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
         for _ in 0..100 {
-            if unsafe { libc::kill(pid, 0) } != 0 {
+            let alive = unsafe { libc::kill(pid, 0) } == 0;
+            let zombie = std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .ok()
+                .and_then(|stat| stat.rsplit_once(") ").map(|(_, rest)| rest.starts_with('Z')))
+                .unwrap_or(false);
+            if !alive || zombie {
                 let _ = std::fs::remove_file(pid_file);
                 return;
             }

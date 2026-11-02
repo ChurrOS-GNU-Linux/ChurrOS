@@ -531,6 +531,17 @@ class BuildDryRunTest(unittest.TestCase):
         host_repo.rmdir()
         self.assert_clean(result, allow_work=True)
 
+    def test_container_wrapper_does_not_lock_out_inner_build(self):
+        """El wrapper host delega antes de tomar el cerrojo del checkout."""
+        text = (testlib.ROOT / "scripts/cli/build.sh").read_text(encoding="utf-8")
+        delegation = text.index('if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then')
+        lock = text.index("exec 9<.")
+        self.assertGreater(
+            lock,
+            delegation,
+            "el wrapper --container toma el flock antes de delegar y bloquea a su propio build interior",
+        )
+
     def test_unsupported_combinations_are_rejected(self):
         """Ediciones o arquitecturas que build.sh no soporta: error claro y nada tocado."""
         names = sorted({item.name for item in testlib.EDITIONS})

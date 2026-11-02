@@ -7,14 +7,6 @@ source "$(dirname "$0")/../lib/host.sh"
 # shellcheck source=scripts/lib/local-repo.sh
 source "$(dirname "$0")/../lib/local-repo.sh"
 
-# El build muta overlays, listas de paquetes, work/, out/ y una ruta global del
-# host. Dos builds del mismo checkout no pueden ejecutarse de forma segura.
-exec 9<.
-if ! flock -n 9; then
-    echo "Error: ya hay otro build de ChurrOS ejecutándose en este checkout." >&2
-    exit 1
-fi
-
 HOST_REPO_SYMLINK=0
 EDITION="niri"
 # Sin --arch se usa la arquitectura del equipo (uname -m).
@@ -153,6 +145,15 @@ if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then
     container_run --privileged --upgrade -- \
         bash scripts/cli/build.sh ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"} --arch "$TARGET_ARCH"
     exit 0
+fi
+
+# El build real muta overlays, listas de paquetes, work/, out/ y una ruta
+# global del host. Se toma el cerrojo después del salto al contenedor para que
+# el wrapper exterior no bloquee a su propio build interior.
+exec 9<.
+if ! flock -n 9; then
+    echo "Error: ya hay otro build de ChurrOS ejecutándose en este checkout." >&2
+    exit 1
 fi
 
 # x86_64 sigue en archiso/packages/. aarch64 tiene su propio directorio para
