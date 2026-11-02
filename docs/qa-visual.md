@@ -115,14 +115,21 @@ el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
   orden fijo, `grub`, `plymouth`, `desktop`, `bar`, `launcher`,
   `session-menu` e `installer`. Un diff visual que no casa con ninguna
   pide el escritorio.
-- KVM si `/dev/kvm` se puede abrir; si no, TCG. QEMU expone VNC en
-  `127.0.0.1` y QMP en un socket.
-- GRUB y Plymouth se capturan con `screendump` de QMP, sin agente. Si la
-  salida es GL y QMP responde que no hay superficie, se usa `xwd` del Xvfb.
+- KVM si `/dev/kvm` se puede abrir; si no, TCG. La sesión gráfica es
+  virgl en un Xvfb: `virtio-vga-gl` a 1920×1080 (EDID) y SDL con GL. VNC
+  no se combina con ese contexto GL (QEMU muere al crear el socket). QMP
+  sigue abierto; si el proceso no sigue vivo un segundo después, se
+  reintenta sin GL. Sin 3D niri no pinta y el manifiesto queda
+  `capture-failed`.
+- GRUB y Plymouth no usan una espera fija. Se muestrean fotogramas hasta
+  ver el menú (el timeout del menú en la ISO es 15 s) y, si aparece, un
+  splash. Si la línea de órdenes del kernel no lleva `splash` ni
+  `plymouth`, o el fotograma siguiente ya es texto del kernel, Plymouth
+  queda `not-in-boot` en vez de una toma tardía.
 - El resto lo recorre OpenCode con Claude (`ANTHROPIC_API_KEY`, modelo
-  `VISUAL_QA_MODEL`). El prompt le pide usar `scripts/qa/visual/vmctl.py`
-  para las teclas y las capturas. La clave no entra en el prompt; si el log
-  de OpenCode la repite, el script la tapa.
+  `VISUAL_QA_MODEL`) usando `scripts/qa/visual/vmctl.py`. La tecla Mod es
+  el qcode `meta_l`. Si falta una toma pedida, el agente no queda en `ok`.
+  La clave no entra en el prompt; si el log la repite, el script la tapa.
 - `manifest.json` lista el plan, el acelerador, VNC y cada toma. Si la ISO
   no llegó, el estado es `iso-missing` y no se arranca QEMU.
 

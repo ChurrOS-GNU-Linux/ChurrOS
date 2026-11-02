@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Arranca una ISO en QEMU y deja capturas en --out.
 #
-# KVM si /dev/kvm se puede abrir; si no, TCG. Expone VNC en 127.0.0.1 y QMP
-# por un socket. GRUB y Plymouth se capturan con QMP screendump (y xwd si la
-# salida es GL). El resto lo recorre OpenCode con Claude, usando vmctl.py.
+# KVM si /dev/kvm se puede abrir; si no, TCG. La sesión gráfica va por
+# virgl en un Xvfb (SDL + GL, 1920x1080 por EDID): VNC y el contexto GL no
+# conviven. QMP sigue abierto. Si QEMU muere tras crear el socket, se
+# reintenta sin GL. Sin 3D el escritorio de niri no pinta y la captura
+# queda en capture-failed. GRUB y Plymouth se eligen mirando fotogramas,
+# no con una espera fija. El resto lo recorre OpenCode; la tecla Mod es
+# el qcode meta_l.
 #
 # --dry-run no arranca QEMU: escribe manifest.json con el plan y el acelerador.
 # --missing escribe el manifiesto sin ISO (el artefacto no llegó a tiempo).
@@ -67,6 +71,8 @@ firmware="bios"
 agent_status="not-run"
 accel="tcg"
 gpu="plain"
+graphical="false"
+display_mode=""
 
 cleanup() {
   if [[ -n "$qemu_pid" ]] && kill -0 "$qemu_pid" 2>/dev/null; then
@@ -102,9 +108,9 @@ mapfile -t screens < <(python3 -c 'import json,sys; print("\n".join(json.load(op
 
 write_manifest() {
   local status="$1"
-  python3 - "$out/manifest.json" "$role" "$iso" "$accel" "$gpu" "$firmware" "$vnc_note" "$agent_status" "$status" "$plan" "$out/shots.jsonl" <<'PY'
+  python3 - "$out/manifest.json" "$role" "$iso" "$accel" "$gpu" "$firmware" "$vnc_note" "$agent_status" "$status" "$plan" "$out/shots.jsonl" "$graphical" "$display_mode" <<'PY'
 import json, pathlib, sys
-(path, role, iso, accel, gpu, firmware, vnc, agent, status, plan_path, shots_path) = sys.argv[1:]
+(path, role, iso, accel, gpu, firmware, vnc, agent, status, plan_path, shots_path, graphical, display_mode) = sys.argv[1:]
 plan = json.loads(pathlib.Path(plan_path).read_text(encoding="utf-8"))
 shots = []
 shot_file = pathlib.Path(shots_path)
@@ -116,6 +122,8 @@ pathlib.Path(path).write_text(json.dumps({
     "iso": iso,
     "accel": accel,
     "gpu": gpu,
+    "graphical": graphical == "true",
+    "display": display_mode,
     "firmware": firmware,
     "vnc": vnc,
     "screens": plan.get("screens", []),
@@ -166,9 +174,6 @@ fi
 
 launch_xvfb() {
   local info number
-  if [[ -e /dev/dri/renderD128 ]]; then
-    return 0
-  fi
   command -v Xvfb >/dev/null 2>&1 || return 1
   info="$(python3 - <<'PY'
 import os, subprocess, sys
@@ -193,7 +198,7 @@ PY
 }
 
 build_cmd() {
-  local with_vnc="$1"
+  local mode="$1"
   QEMU_CMD=(
     qemu-system-x86_64
     -name churros-visual-qa
@@ -207,15 +212,18 @@ build_cmd() {
     -boot d
     -no-reboot
   )
-  if [[ "$gpu" == "virgl" ]]; then
-    QEMU_CMD+=(-device "virtio-vga-gl" -display "sdl,gl=on")
-    if [[ "$with_vnc" -eq 1 ]]; then
-      QEMU_CMD+=(-vnc "127.0.0.1:${vnc_display}")
-    fi
-  elif [[ "$with_vnc" -eq 1 ]]; then
-    QEMU_CMD+=(-device "virtio-vga,xres=1920,yres=1080" -vnc "127.0.0.1:${vnc_display}")
+  # VNC y virtio-vga-gl no pueden ir juntos: QEMU crea el socket QMP y
+  # luego muere con "Display vnc is incompatible with the GL context".
+  if [[ "$mode" == "gl" ]]; then
+    QEMU_CMD+=(
+      -device "virtio-vga-gl,xres=1920,yres=1080,edid=on"
+      -display "sdl,gl=on"
+    )
   else
-    QEMU_CMD+=(-device "virtio-vga,xres=1920,yres=1080" -display none)
+    QEMU_CMD+=(
+      -device "virtio-vga,xres=1920,yres=1080,edid=on"
+      -vnc "127.0.0.1:${vnc_display}"
+    )
   fi
   if ((${#FW[@]})); then
     QEMU_CMD+=("${FW[@]}")
@@ -236,69 +244,109 @@ if fw_line="$(bash -c 'set -euo pipefail; source "$1"; churros_resolve_pflash x8
   fi
 fi
 
-if [[ "$gpu" == "virgl" && ! -e /dev/dri/renderD128 ]]; then
-  launch_xvfb || gpu="plain"
-fi
+stop_qemu() {
+  if [[ -n "$qemu_pid" ]] && kill -0 "$qemu_pid" 2>/dev/null; then
+    kill "$qemu_pid" 2>/dev/null || true
+    wait "$qemu_pid" 2>/dev/null || true
+  fi
+  qemu_pid=""
+  rm -f "$qmp"
+}
+
+qemu_stayed_up() {
+  kill -0 "$qemu_pid" 2>/dev/null || return 1
+  if [[ -f "$out/qemu.log" ]] && grep -q 'incompatible with the GL context' "$out/qemu.log"; then
+    return 1
+  fi
+  return 0
+}
 
 launch_qemu() {
-  local with_vnc="$1"
-  rm -f "$qmp" "$serial"
-  build_cmd "$with_vnc"
+  local mode="$1"
+  local spins=0
+  stop_qemu
+  build_cmd "$mode"
+  printf '%s\n' "${QEMU_CMD[*]}" >> "$out/qemu-attempts.log"
   "${QEMU_CMD[@]}" >"$out/qemu.log" 2>&1 &
   qemu_pid=$!
-  local spins=0
   while [[ ! -S "$qmp" ]]; do
     if ! kill -0 "$qemu_pid" 2>/dev/null; then
+      qemu_pid=""
       return 1
     fi
     spins=$((spins + 1))
     if [[ "$spins" -gt 50 ]]; then
+      stop_qemu
       return 1
     fi
     sleep 0.2
   done
+  # El socket aparece antes de que QEMU decida morir por la pantalla.
+  sleep 1
+  if ! qemu_stayed_up; then
+    stop_qemu
+    return 1
+  fi
+  display_mode="$mode"
+  if [[ "$mode" == "gl" ]]; then
+    graphical="true"
+    vnc_note="unavailable"
+  else
+    graphical="false"
+    vnc_note="127.0.0.1:$((5900 + vnc_display))"
+  fi
   return 0
 }
 
-if launch_qemu 1; then
-  vnc_note="127.0.0.1:$((5900 + vnc_display))"
-else
-  echo "visual-qa: qemu rechazó VNC con esta GPU; reintento sin VNC" >&2
-  if [[ -n "$qemu_pid" ]]; then
-    kill "$qemu_pid" 2>/dev/null || true
-    wait "$qemu_pid" 2>/dev/null || true
-    qemu_pid=""
-  fi
-  if ! launch_qemu 0; then
-    echo "visual-qa: QEMU no arrancó" >&2
-    write_manifest "qemu-failed"
-    exit 1
+want_gl=0
+if [[ "$gpu" == "virgl" ]]; then
+  if launch_xvfb; then
+    want_gl=1
+  else
+    gpu="plain"
   fi
 fi
+if [[ "$want_gl" -eq 1 ]]; then
+  launch_qemu gl || echo "visual-qa: GL no se mantuvo en marcha; reintento sin GL" >&2
+fi
+if [[ -z "$display_mode" ]]; then
+  gpu="plain"
+  graphical="false"
+  launch_qemu plain || echo "visual-qa: el arranque sin GL tampoco se mantuvo" >&2
+fi
+if [[ -z "$display_mode" ]]; then
+  echo "visual-qa: QEMU no se mantuvo en marcha" >&2
+  write_manifest "qemu-failed"
+  exit 1
+fi
 
-shot() {
-  local screen="$1" method
-  if method="$(python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$out/${screen}.png")"; then
-    note_shot "$screen" ok "$method" "${screen}.png"
-  else
-    note_shot "$screen" fail "qmp" "${screen}.png"
-  fi
-}
-
+need_grub=0
+need_plymouth=0
 for screen in "${screens[@]}"; do
   case "$screen" in
-    grub)
-      sleep "${VISUAL_QA_GRUB_DELAY:-2}"
-      shot grub
-      ;;
-    plymouth)
-      python3 "$SCRIPT_DIR/vmctl.py" wait-serial --log "$serial" \
-        --pattern 'Linux version|plymouth|Welcome to ChurrOS' \
-        --timeout "${VISUAL_QA_BOOT_TIMEOUT:-120}" || true
-      shot plymouth
-      ;;
+    grub) need_grub=1 ;;
+    plymouth) need_plymouth=1 ;;
   esac
 done
+if [[ "$need_grub" -eq 1 || "$need_plymouth" -eq 1 ]]; then
+  python3 "$SCRIPT_DIR/bootframes.py" watch \
+    --socket "$qmp" --serial "$serial" --out "$out" \
+    --timeout "${VISUAL_QA_BOOT_POLL:-20}" \
+    --grub "$need_grub" --plymouth "$need_plymouth"
+  while IFS=' ' read -r shot_id shot_ok shot_method shot_file; do
+    [[ -n "$shot_id" ]] || continue
+    note_shot "$shot_id" "$shot_ok" "$shot_method" "$shot_file"
+  done < <(python3 -c '
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+methods = {"ok": "qmp-poll", "missed": "menu-missed", "absent": "not-in-boot"}
+for key in ("grub", "plymouth"):
+    value = data.get(key)
+    if not value:
+        continue
+    print(key, "ok" if value == "ok" else "fail", methods.get(value, value), key + ".png")
+' "$out/boot-watch.json")
+fi
 
 desktop=()
 for screen in "${screens[@]}"; do
@@ -323,29 +371,20 @@ path.write_text(text, encoding="utf-8")
 PY
 }
 
+final_status="captured"
+if [[ "$graphical" != "true" && ${#desktop[@]} -gt 0 ]]; then
+  final_status="capture-failed"
+  for screen in "${desktop[@]}"; do
+    note_shot "$screen" fail "no-graphical-session" "${screen}.png"
+  done
+  desktop=()
+fi
+
 if ((${#desktop[@]})); then
   prompt="$out/opencode-prompt.txt"
-  python3 - "$prompt" "$qmp" "$vnc_note" "$out" "$SCRIPT_DIR/vmctl.py" "${desktop[@]}" <<'PY'
-import pathlib, sys
-prompt, qmp, vnc, out, vmctl, *screens = sys.argv[1:]
-lines = [
-    "Capture screenshots of a running ChurrOS live ISO. Do not print API keys or tokens.",
-    f"QMP socket: {qmp}",
-    f"VNC (localhost only): {vnc}",
-    "Drive the VM only through this helper:",
-    f"  python3 {vmctl} screendump --socket {qmp} --out {out}/NAME.png",
-    f"  python3 {vmctl} send-key --socket {qmp} --key KEY [--key KEY]",
-    f"  python3 {vmctl} wait-serial --log {out}/serial.log --pattern REGEX --timeout SECONDS",
-    "The live user churros is logged in automatically.",
-    "Shortcuts: super+spc opens the Noctalia launcher (Mod+Space).",
-    "super+shift+e opens wlogout. ret confirms.",
-    "Calamares is /usr/local/bin/calamares.",
-    "Write exactly these files and then exit:",
-]
-for screen in screens:
-    lines.append(f"- {out}/{screen}.png ({screen})")
-pathlib.Path(prompt).write_text("\n".join(lines) + "\n", encoding="utf-8")
-PY
+  python3 "$SCRIPT_DIR/prompt.py" \
+    --qmp "$qmp" --vnc "$vnc_note" --out "$out" \
+    --vmctl "$SCRIPT_DIR/vmctl.py" --screens "${desktop[@]}" > "$prompt"
   agent_status="missing"
   if ! command -v opencode >/dev/null 2>&1; then
     agent_status="missing"
@@ -376,14 +415,19 @@ PY
       fi
     fi
   fi
+  missing_shot=0
   for screen in "${desktop[@]}"; do
     if [[ -f "$out/${screen}.png" ]]; then
       note_shot "$screen" ok "opencode" "${screen}.png"
     else
       note_shot "$screen" fail "opencode" "${screen}.png"
+      missing_shot=1
     fi
   done
+  if [[ "$agent_status" == "ok" && "$missing_shot" -eq 1 ]]; then
+    agent_status="incomplete"
+  fi
 fi
 
-write_manifest "captured"
+write_manifest "$final_status"
 echo "visual-qa: capturas en $out (agent=${agent_status}, accel=${accel}, gpu=${gpu})" >&2

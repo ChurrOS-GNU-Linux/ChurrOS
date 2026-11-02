@@ -110,6 +110,122 @@ class CaptureDryRun(unittest.TestCase):
         self.assertEqual(data["pr_name"], "visual-qa-pr-abc123-niri")
 
 
+class BootFrames(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.frames = load("visual_bootframes", "bootframes.py")
+
+    def test_blank_text_menu_and_splash(self):
+        frames = self.frames
+        self.assertEqual(frames.classify_frame(8, 8, bytes(8 * 8 * 3)), "blank")
+        text = bytearray(16 * 8 * 3)
+        for x in range(16):
+            index = (4 * 16 + x) * 3
+            text[index:index + 3] = b"\xff\xff\xff"
+        self.assertEqual(frames.classify_frame(16, 8, bytes(text)), "text")
+        menu = bytearray(16 * 8 * 3)
+        for index in range(16 * 8):
+            menu[index * 3:index * 3 + 3] = bytes((0x11, 0x18, 0x27))
+        for x in range(16):
+            index = (3 * 16 + x) * 3
+            menu[index:index + 3] = bytes((0xF9, 0x73, 0x16))
+        self.assertEqual(frames.classify_frame(16, 8, bytes(menu)), "menu")
+        splash = bytes((0x20, 0x30, 0xA0)) * (8 * 8)
+        self.assertEqual(frames.classify_frame(8, 8, splash), "splash")
+
+    def test_kernel_text_is_not_the_menu_and_plymouth_can_be_absent(self):
+        watch = self.frames.BootWatch(True, True)
+        watch.feed("text")
+        self.assertIsNone(watch.grub)
+        watch.feed("menu")
+        self.assertEqual(watch.grub, "ok")
+        watch.feed("text", splash_flag=False)
+        self.assertEqual(watch.plymouth, "absent")
+        watch.finish()
+        self.assertEqual(watch.grub, "ok")
+
+    def test_cmdline_without_splash(self):
+        self.assertIsNone(self.frames.splash_on_cmdline("Booting"))
+        self.assertFalse(self.frames.splash_on_cmdline("Kernel command line: console=ttyS0"))
+        self.assertTrue(self.frames.splash_on_cmdline("Kernel command line: quiet splash"))
+
+
+class PromptKeys(unittest.TestCase):
+    def test_mod_key_is_meta_l(self):
+        prompt = load("visual_prompt", "prompt.py")
+        text = prompt.build_prompt("/tmp/qmp.sock", "unavailable", "/tmp/out", "vmctl.py", ["session-menu"])
+        self.assertIn("meta_l", text)
+        self.assertIn("meta_l+shift+e", text)
+        self.assertNotIn("super+", text)
+
+
+class QemuDeath(unittest.TestCase):
+    def test_socket_then_exit_is_not_a_successful_launch(self):
+        script = ROOT / "scripts/qa/visual/capture.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bindir = root / "bin"
+            bindir.mkdir()
+            attempts = root / "attempts.log"
+            qemu = bindir / "qemu-system-x86_64"
+            qemu.write_text(
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$*\" >> {attempts}\n"
+                "sock=\n"
+                "prev=\n"
+                "for arg in \"$@\"; do\n"
+                "  case \"$arg\" in\n"
+                "    unix:*) sock=${arg#unix:}; sock=${sock%%,*} ;;\n"
+                "  esac\n"
+                "  prev=$arg\n"
+                "done\n"
+                "if [ -n \"$sock\" ]; then\n"
+                "  python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])' \"$sock\"\n"
+                "fi\n"
+                "sleep 0.2\n"
+                "echo 'Display vnc is incompatible with the GL context' >&2\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            qemu.chmod(0o755)
+            xvfb = bindir / "Xvfb"
+            xvfb.write_text(
+                "#!/bin/sh\n"
+                "prev=\n"
+                "fd=\n"
+                "for arg in \"$@\"; do\n"
+                "  if [ \"$prev\" = \"-displayfd\" ]; then fd=$arg; fi\n"
+                "  prev=$arg\n"
+                "done\n"
+                "if [ -n \"$fd\" ]; then echo 5 >&\"$fd\"; fi\n"
+                "sleep 30\n",
+                encoding="utf-8",
+            )
+            xvfb.chmod(0o755)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps({"screens": ["desktop"], "paths": []}), encoding="utf-8")
+            iso = root / "fake.iso"
+            iso.write_bytes(b"iso")
+            out = root / "out"
+            env = os.environ.copy()
+            env["PATH"] = f"{bindir}:{env.get('PATH', '')}"
+            env["VISUAL_QA_GPU"] = "virgl"
+            env["VISUAL_QA_BOOT_POLL"] = "1"
+            result = testlib.run(
+                ["bash", str(script), "--iso", str(iso), "--plan", str(plan), "--out", str(out), "--role", "before"],
+                timeout=30, env=env,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout)
+            manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "qemu-failed")
+            lines = attempts.read_text(encoding="utf-8").splitlines()
+            self.assertGreaterEqual(len(lines), 2, lines)
+            self.assertIn("virtio-vga-gl", lines[0])
+            self.assertNotIn("-vnc", lines[0])
+            self.assertIn("-vnc", lines[1])
+            self.assertNotIn("virtio-vga-gl", lines[1])
+
+
 class CaptureWorkflow(unittest.TestCase):
     def test_capture_does_not_block_and_uploads_both_sides(self):
         testlib.require_module(self, "yaml")
