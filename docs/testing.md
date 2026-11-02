@@ -1,8 +1,6 @@
 # Pruebas
 
-ChurrOS se prueba en capas. Las de abajo tardan segundos y corren en cada pull
-request; las de arriba construyen y arrancan la ISO de verdad. Cada capa
-detecta fallos que la anterior no puede ver.
+ChurrOS se prueba en capas. Los tests estáticos, Rust, GUI, contenedor y polkit corren en pull requests; los jobs de ISO se ejecutan a diario en `main` o manualmente. Cada capa detecta fallos que la anterior no puede ver. La instalación completa de Calamares todavía requiere pruebas manuales.
 
 | Capa | Comando | Tarda | Qué ve | CI |
 |------|---------|-------|--------|----|
@@ -11,8 +9,8 @@ detecta fallos que la anterior no puede ver.
 | Rust | `./churros rust` | ~10 min | compila y prueba `rust/` (build, test, clippy) | `rust.yml` |
 | Apps GTK | `./churros test --gui` | ~5 min | cada app y cada popup arrancan en release sin morir (`scripts/test-gui-smoke.py`); los tests de widgets del recorrido (`scripts/test-tour.py`) | `rust.yml` |
 | Contenedor Arch | `./churros test --container` | ~5 min | los repos reales de Arch (`pacman`), `niri validate` (también de lo que escribe Ajustes) | `rust.yml` |
-| ISO | `./churros test --iso [ISO]` | ~2 min | el producto final, sin arrancarlo | `iso.yml`, `iso-arm64.yml` |
-| Arranque | `./churros test --boot [ISO]` | 3 min con KVM | la sesión Live en QEMU, desde dentro | `iso.yml` |
+| ISO | `./churros test --iso [ISO]` | ~2 min | el producto final, sin arrancarlo | `iso.yml` nightly/manual; `iso-arm64.yml` nightly/manual |
+| Arranque | `./churros test --boot [ISO]` | 3 min con KVM | la sesión Live en QEMU, desde dentro | `iso.yml` nightly/manual |
 | Manual | `./churros run` | — | lo que todavía no se automatiza (ver abajo) | — |
 
 `CHURROS_STRICT=1` (y `CI=true`, que GitHub exporta) hace que una herramienta
@@ -30,13 +28,7 @@ obligar a instalarlo todo: `./install-deps.sh` instala lo necesario.
   `./churros build`, luego `./churros test --iso --boot`, y un vistazo en
   `./churros run`.
 
-`iso.yml` repite la construcción y el arranque en los PR que tocan lo que entra
-en la ISO: siempre la edición niri, más cada edición x86_64 cuyos ficheros toca
-el PR (`tests/iso/pick_editions.py`: por la ruta, como la lista de XFCE o la
-sesión X, o por el contenido, como un script común que decide según la
-edición; `build.sh`, la bienvenida o `known_issues.toml` construyen todas). Arranca por UEFI; por BIOS (syslinux) solo si el PR toca
-`archiso/syslinux`, `profiledef.sh` o `tests/vm`. Cada noche, las tres ediciones
-x86_64 por UEFI y por BIOS.
+`iso.yml` no corre en los PR. En cada ejecución nocturna construye, audita y arranca las ediciones x86_64 en `main`; también se puede lanzar manualmente eligiendo edición. La prueba BIOS depende del selector configurado en el workflow. Las pruebas estáticas conservan el selector por diff para validar la lógica, pero no crean un job de ISO para cada PR.
 
 ## Capa estática: `tests/static`
 
@@ -152,6 +144,9 @@ solo en la comprobación: cada llamada de una página a él necesita un caso en
 
 ## Capas que necesitan la ISO
 
+`iso.yml` corre de forma nocturna en `main` y a mano; `iso-arm64.yml` corre a diario en `main` y a mano. No son checks de cada pull request ni prueban la instalación al disco. Los artefactos temporales de ISO/CI tienen retención limitada y no equivalen a una publicación estable o firmada. x86_64 arranca el Live por UEFI y por BIOS cuando la selección del workflow lo indica; ARM64 pasa auditoría de contenido, pero no tiene prueba de arranque en este workflow.
+
+
 `tests/iso/check_iso.py` audita la ISO sin arrancarla: entradas El Torito,
 `archisosearchuuid`, permisos reales dentro de `airootfs.sfs`, que las apps
 Rust y Calamares (con sus módulos) son ELF de la arquitectura con todas sus
@@ -213,6 +208,20 @@ en [qa-visual.md](qa-visual.md).
   arregla en ese PR.
 - `AGENTS.md` describe el sistema tal como es: `test_repo_wiring.py` falla si
   afirma cosas que el repo contradice.
+
+## Instalación completa en QEMU
+
+El smoke test de arranque valida el Live, no la instalación. La prueba automatizada de instalación completa aún debe implementarse. Deberá iniciar la ISO con un disco virtual vacío, conducir Calamares con elecciones de prueba explícitas, esperar a que la instalación termine, apagar el Live, arrancar **solo desde el disco** y validar el sistema instalado. El job debe conservar el log de QEMU, eventos de instalador, journal del sistema instalado, tabla de particiones y un informe JSON, incluso cuando falle.
+
+La prueba no debe confirmar un particionado que apunte al disco del runner ni omitir un diálogo de borrado: el único destino debe ser un QCOW2 temporal creado por el job. Las credenciales de prueba y el autologin del Live no se deben trasladar al sistema instalado. La cobertura esperada para Niri y XFCE x86_64 UEFI incluye:
+
+- Calamares llega al final sin error y el informe confirma el disco QCOW2 de prueba como destino.
+- El disco virtual arranca sin ISO; GRUB, kernel e initramfs están presentes y se detecta la raíz instalada.
+- Se muestra ReGreet sin autologin; una cuenta de prueba creada por el instalador puede iniciar sesión.
+- `verify-install` no reporta residuos críticos del Live; la edición, red y servicios esperados coinciden con la configuración instalada.
+- El log distingue claramente una ejecución completa de una instalación o primer arranque parciales; ninguna prueba de contenido de ISO se presenta como instalación.
+
+La automatización de la interfaz debe usar el camino real de Calamares y comprobar cada transición y resultado; una secuencia que simula éxito o modifica directamente el sistema instalado no satisface este criterio. Hasta que la prueba y el workflow estén implementados y pasen, las instalaciones y el primer arranque siguen siendo comprobaciones manuales.
 
 ## Lo que todavía se prueba a mano
 
