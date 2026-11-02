@@ -126,15 +126,26 @@ el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
   splash. Si la línea de órdenes del kernel no lleva `splash` ni
   `plymouth`, o el fotograma siguiente ya es texto del kernel, Plymouth
   queda `not-in-boot` en vez de una toma tardía.
-- OpenCode no arranca hasta que, después del texto del kernel, hay una
-  barra a lo ancho y varios fotogramas seguidos casi iguales
-  (`VISUAL_QA_DESKTOP_TIMEOUT`, 600 s). El escritorio y la barra los toma
-  el propio script. El menú de sesión se abre con `meta_l+shift+e` y solo
-  se acepta si la imagen cambia de verdad; si no, queda fallida. Cada PNG
-  tiene que ser gráfico y medir 1920×1080.
-- SDL arranca con `SDL_VIDEO_WINDOW_POS=0,0` y, si hay `xdotool`, la
-  ventana se mueve a 0,0 antes de cada `xwd -name`. No hace falta
-  `xwininfo`. QMP se usa cuando la superficie existe. El Xvfb es 2560×1600.
+- El escritorio, la barra y el menú de sesión los toma el script cuando
+  el plan los pide. OpenCode entra después, y solo para las pantallas del
+  diff que no son esas ni el arranque (`launcher`, `installer`, …). No
+  arranca hasta que el escritorio está listo: texto del kernel, una barra
+  distinta del fondo y varios fotogramas seguidos casi iguales
+  (`VISUAL_QA_DESKTOP_TIMEOUT`, 600 s). Si no hay clave o no hay pantallas
+  propias del diff, el manifiesto queda en `agent.status=not-run` y dice
+  la razón (`no-key` o `no-diff-screens`). Cada PNG, también los de
+  OpenCode, tiene que ser gráfico y medir 1920×1080. El menú de sesión se
+  abre con `meta_l+shift+e` y solo se acepta si la imagen cambia de verdad.
+- La barra se distingue del fondo: una franja superior o inferior cuyo
+  color medio contrasta con el dominante del centro y, o tiene borde, o
+  coincide con un color de barra. Si existe `design-tokens.json` junto al
+  script, usa sus roles panel, fondo, primario y secundario; si no, la
+  paleta fija. Un gris plano, incluido el `#404040` de niri, no cuenta.
+- SDL arranca con `SDL_VIDEO_WINDOW_POS=0,0`. Hace falta `xdotool` para
+  mover la ventana a 0,0 antes de cada `xwd -name`; si falta, la captura
+  falla con un error claro. No hace falta `xwininfo`. QMP se usa cuando la
+  superficie existe. El Xvfb es 2560×1600. La imagen base del escritorio
+  se queda en el directorio temporal y no entra en `out/`.
 - El prompt usa `scripts/qa/visual/vmctl.py`. La tecla Mod es el qcode
   `meta_l`. La clave no entra en el prompt; si el log la repite, el script
   la tapa.

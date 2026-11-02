@@ -5,9 +5,10 @@
 # virgl en un Xvfb (SDL + GL, 1920x1080 por EDID): VNC y el contexto GL no
 # conviven. QMP sigue abierto. Si QEMU muere tras crear el socket, se
 # reintenta sin GL. Sin 3D el escritorio de niri no pinta y la captura
-# queda en capture-failed. GRUB y Plymouth se eligen mirando fotogramas,
-# no con una espera fija. El resto lo recorre OpenCode; la tecla Mod es
-# el qcode meta_l.
+# queda en capture-failed. GRUB, Plymouth, el escritorio, la barra y el
+# menú de sesión los toma el script. OpenCode recorre solo las pantallas
+# del diff que no son esas, cuando el escritorio ya está listo. Sin
+# xdotool la captura se corta: la ventana SDL no queda en 0,0.
 #
 # --dry-run no arranca QEMU: escribe manifest.json con el plan y el acelerador.
 # --missing escribe el manifiesto sin ISO (el artefacto no llegó a tiempo).
@@ -69,6 +70,7 @@ vnc_display=""
 vnc_note="unavailable"
 firmware="bios"
 agent_status="not-run"
+agent_reason=""
 accel="tcg"
 gpu="plain"
 graphical="false"
@@ -108,9 +110,9 @@ mapfile -t screens < <(python3 -c 'import json,sys; print("\n".join(json.load(op
 
 write_manifest() {
   local status="$1"
-  python3 - "$out/manifest.json" "$role" "$iso" "$accel" "$gpu" "$firmware" "$vnc_note" "$agent_status" "$status" "$plan" "$out/shots.jsonl" "$graphical" "$display_mode" <<'PY'
+  python3 - "$out/manifest.json" "$role" "$iso" "$accel" "$gpu" "$firmware" "$vnc_note" "$agent_status" "$agent_reason" "$status" "$plan" "$out/shots.jsonl" "$graphical" "$display_mode" <<'PY'
 import json, pathlib, sys
-(path, role, iso, accel, gpu, firmware, vnc, agent, status, plan_path, shots_path, graphical, display_mode) = sys.argv[1:]
+(path, role, iso, accel, gpu, firmware, vnc, agent, agent_reason, status, plan_path, shots_path, graphical, display_mode) = sys.argv[1:]
 plan = json.loads(pathlib.Path(plan_path).read_text(encoding="utf-8"))
 shots = []
 shot_file = pathlib.Path(shots_path)
@@ -129,7 +131,7 @@ pathlib.Path(path).write_text(json.dumps({
     "screens": plan.get("screens", []),
     "paths": plan.get("paths", []),
     "shots": shots,
-    "agent": {"tool": "opencode", "status": agent},
+    "agent": {"tool": "opencode", "status": agent, "reason": agent_reason},
 }, indent=2) + "\n", encoding="utf-8")
 PY
 }
@@ -147,21 +149,27 @@ PY
 
 if [[ "$dry_run" -eq 1 ]]; then
   agent_status="dry-run"
+  agent_reason="dry-run"
   write_manifest "dry-run"
   exit 0
 fi
 if [[ "$missing" -eq 1 ]]; then
   agent_status="not-run"
+  agent_reason="iso-missing"
   write_manifest "iso-missing"
   exit 0
 fi
 if [[ -z "$iso" || ! -f "$iso" ]]; then
   echo "visual-qa: falta la ISO (--iso)" >&2
+  agent_status="not-run"
+  agent_reason="iso-missing"
   write_manifest "iso-missing"
   exit 2
 fi
 if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   echo "visual-qa: no está qemu-system-x86_64" >&2
+  agent_status="not-run"
+  agent_reason="qemu-missing"
   write_manifest "qemu-missing"
   exit 1
 fi
@@ -318,6 +326,7 @@ if [[ -z "$display_mode" ]]; then
 fi
 if [[ -z "$display_mode" ]]; then
   echo "visual-qa: QEMU no se mantuvo en marcha" >&2
+  agent_reason="qemu-failed"
   write_manifest "qemu-failed"
   exit 1
 fi
@@ -350,11 +359,13 @@ for key in ("grub", "plymouth"):
 ' "$out/boot-watch.json")
 fi
 
-desktop=()
+base_screens=()
+diff_screens=()
 for screen in "${screens[@]}"; do
   case "$screen" in
     grub|plymouth) ;;
-    *) desktop+=("$screen") ;;
+    desktop|bar|session-menu) base_screens+=("$screen") ;;
+    *) diff_screens+=("$screen") ;;
   esac
 done
 
@@ -377,42 +388,51 @@ final_status="captured"
 export VISUAL_QA_QEMU_NAME=churros-visual-qa
 export VISUAL_QA_GUEST_WIDTH=1920
 export VISUAL_QA_GUEST_HEIGHT=1080
-if [[ "$graphical" != "true" && ${#desktop[@]} -gt 0 ]]; then
+desktop_ready=0
+need_desktop=0
+if [[ ${#base_screens[@]} -gt 0 || ${#diff_screens[@]} -gt 0 ]]; then
+  need_desktop=1
+fi
+if [[ "$graphical" != "true" && "$need_desktop" -eq 1 ]]; then
   final_status="capture-failed"
-  for screen in "${desktop[@]}"; do
+  for screen in "${base_screens[@]}" "${diff_screens[@]}"; do
     note_shot "$screen" fail "no-graphical-session" "${screen}.png"
   done
-  desktop=()
-elif [[ ${#desktop[@]} -gt 0 ]]; then
-  # En TCG el escritorio tarda unos 4-6 min. No se lanza OpenCode antes.
+  if [[ ${#diff_screens[@]} -gt 0 ]]; then
+    agent_status="no-graphical-session"
+    agent_reason="no-graphical-session"
+  else
+    agent_status="not-run"
+    agent_reason="no-diff-screens"
+  fi
+  base_screens=()
+  diff_screens=()
+elif [[ "$need_desktop" -eq 1 ]]; then
+  # En TCG el escritorio tarda unos 4-6 min. OpenCode no arranca antes.
   desktop_timeout="${VISUAL_QA_DESKTOP_TIMEOUT:-600}"
   if ! python3 "$SCRIPT_DIR/bootframes.py" wait-desktop --socket "$qmp" --timeout "$desktop_timeout"; then
     final_status="capture-failed"
     agent_status="desktop-not-ready"
-    for screen in "${desktop[@]}"; do
+    agent_reason="desktop-not-ready"
+    for screen in "${base_screens[@]}" "${diff_screens[@]}"; do
       note_shot "$screen" fail "desktop-not-ready" "${screen}.png"
     done
-    desktop=()
+    base_screens=()
+    diff_screens=()
+  else
+    desktop_ready=1
   fi
 fi
 
-owned=()
-rest=()
-for screen in "${desktop[@]}"; do
-  case "$screen" in
-    desktop|bar|session-menu) owned+=("$screen") ;;
-    *) rest+=("$screen") ;;
-  esac
-done
-if [[ ${#owned[@]} -gt 0 ]]; then
-  base="$out/_desktop-base.png"
+if [[ ${#base_screens[@]} -gt 0 ]]; then
+  base="$workdir/_desktop-base.png"
   if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$base"; then
     final_status="capture-failed"
-    for screen in "${owned[@]}"; do
+    for screen in "${base_screens[@]}"; do
       note_shot "$screen" fail "screendump" "${screen}.png"
     done
   else
-    for screen in "${owned[@]}"; do
+    for screen in "${base_screens[@]}"; do
       [[ "$screen" == "session-menu" ]] && continue
       cp "$base" "$out/${screen}.png"
       set +e
@@ -426,7 +446,7 @@ if [[ ${#owned[@]} -gt 0 ]]; then
         final_status="capture-failed"
       fi
     done
-    for screen in "${owned[@]}"; do
+    for screen in "${base_screens[@]}"; do
       [[ "$screen" == "session-menu" ]] || continue
       python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key meta_l --key shift --key e || true
       sleep "${VISUAL_QA_MENU_DELAY:-2}"
@@ -457,22 +477,22 @@ if [[ ${#owned[@]} -gt 0 ]]; then
     done
   fi
 fi
-if [[ ${#rest[@]} -eq 0 ]]; then
-  desktop=()
-else
-  desktop=("${rest[@]}")
-fi
-
-if ((${#desktop[@]})); then
+if [[ ${#diff_screens[@]} -eq 0 ]]; then
+  if [[ -z "$agent_reason" ]]; then
+    agent_status="not-run"
+    agent_reason="no-diff-screens"
+  fi
+elif [[ "$desktop_ready" -eq 1 ]]; then
   prompt="$out/opencode-prompt.txt"
   python3 "$SCRIPT_DIR/prompt.py" \
     --qmp "$qmp" --vnc "$vnc_note" --out "$out" \
-    --vmctl "$SCRIPT_DIR/vmctl.py" --screens "${desktop[@]}" > "$prompt"
-  agent_status="missing"
+    --vmctl "$SCRIPT_DIR/vmctl.py" --screens "${diff_screens[@]}" > "$prompt"
   if ! command -v opencode >/dev/null 2>&1; then
     agent_status="missing"
+    agent_reason="opencode-missing"
   elif [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-    agent_status="no-key"
+    agent_status="not-run"
+    agent_reason="no-key"
   else
     model="${VISUAL_QA_MODEL:-claude-haiku-4-5}"
     if [[ "$model" != */* ]]; then
@@ -481,6 +501,7 @@ if ((${#desktop[@]})); then
     help_text="$(opencode --help 2>&1 || true)"
     if ! grep -q 'run' <<<"$help_text"; then
       agent_status="unsupported-cli"
+      agent_reason="unsupported-cli"
     else
       set +e
       if command -v timeout >/dev/null 2>&1; then
@@ -493,33 +514,45 @@ if ((${#desktop[@]})); then
       scrub_log "$out/opencode.log"
       if [[ "$rc" -eq 0 ]]; then
         agent_status="ok"
+        agent_reason="ok"
       else
         agent_status="failed"
+        agent_reason="failed"
       fi
     fi
   fi
-  missing_shot=0
-  for screen in "${desktop[@]}"; do
-    png="$out/${screen}.png"
-    if [[ ! -f "$png" ]]; then
-      note_shot "$screen" fail "missing" "${screen}.png"
-      missing_shot=1
-      continue
-    fi
-    set +e
-    reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$png" --width 1920 --height 1080)"
-    assess_rc=$?
-    set -e
-    if [[ "$assess_rc" -eq 0 ]]; then
-      note_shot "$screen" ok "$reason" "${screen}.png"
-    else
-      note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
-      missing_shot=1
-    fi
-  done
-  if [[ "$agent_status" == "ok" && "$missing_shot" -eq 1 ]]; then
-    agent_status="incomplete"
+  if [[ "$agent_status" == "not-run" || "$agent_status" == "missing" || "$agent_status" == "unsupported-cli" ]]; then
+    for screen in "${diff_screens[@]}"; do
+      note_shot "$screen" fail "not-run:${agent_reason}" "${screen}.png"
+    done
     final_status="capture-failed"
+  else
+    missing_shot=0
+    for screen in "${diff_screens[@]}"; do
+      png="$out/${screen}.png"
+      if [[ ! -f "$png" ]]; then
+        note_shot "$screen" fail "missing" "${screen}.png"
+        missing_shot=1
+        continue
+      fi
+      set +e
+      reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$png" --width 1920 --height 1080)"
+      assess_rc=$?
+      set -e
+      if [[ "$assess_rc" -eq 0 ]]; then
+        note_shot "$screen" ok "$reason" "${screen}.png"
+      else
+        note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
+        missing_shot=1
+      fi
+    done
+    if [[ "$missing_shot" -eq 1 ]]; then
+      final_status="capture-failed"
+      if [[ "$agent_status" == "ok" ]]; then
+        agent_status="incomplete"
+        agent_reason="incomplete"
+      fi
+    fi
   fi
 fi
 

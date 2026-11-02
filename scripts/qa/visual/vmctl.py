@@ -154,17 +154,22 @@ def xwd_selectors(name: str) -> list[list[str]]:
 
 
 def pin_qemu_window(display: str) -> None:
-    """SDL recentra al cambiar de tamaño. xdotool la devuelve a 0,0 si está."""
-    if not display or not shutil.which("xdotool"):
+    """SDL recentra al cambiar de tamaño. Sin xdotool la ventana no queda en 0,0."""
+    if not display:
         return
+    if not shutil.which("xdotool"):
+        raise QmpError("falta xdotool: SDL_VIDEO_WINDOW_POS no basta y la ventana de QEMU no queda en 0,0")
     name = os.environ.get("VISUAL_QA_QEMU_NAME", "churros-visual-qa")
     env = dict(os.environ)
     env["DISPLAY"] = display
     for title in (f"QEMU ({name}-0)", f"QEMU ({name})", name):
-        subprocess.run(
+        result = subprocess.run(
             ["xdotool", "search", "--name", title, "windowmove", "0", "0"],
             env=env, capture_output=True, timeout=10, check=False,
         )
+        if result.returncode == 0:
+            return
+    raise QmpError("xdotool no pudo mover la ventana de QEMU a 0,0")
 
 
 def fit_guest(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
