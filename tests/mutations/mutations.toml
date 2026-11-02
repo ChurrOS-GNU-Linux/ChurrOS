@@ -2715,3 +2715,23 @@ caught_by = "tests.static.test_visual_capture"
 expect = "opencode:1.19.5"
 why = "An unpinned installer can fetch OpenCode 2, which does not provide the opencode run Talos checked on 1.19.5."
 
+[[mutation]]
+name = "visual qa: any frame change counts as wlogout"
+file = "scripts/qa/visual/bootframes.py"
+find = """    if _wlogout_grid(before, after, width, height):
+        return True, \"wlogout\""""
+replace = """    if change_ratio(before, after) >= 0.04:
+        return True, \"wlogout\""""
+caught_by = "tests.static.test_visual_capture"
+expect = "menu:not-generic"
+why = "A 4% change is what closing the niri hotkey overlay looks like. wlogout is a centered button grid."
+
+[[mutation]]
+name = "visual qa: a renamed desktop passes as a diff screen"
+file = "scripts/qa/visual/capture.sh"
+find = 'differs --before "$base"'
+replace = 'assess --before "$base"'
+caught_by = "tests.static.test_visual_capture"
+expect = "same-as-desktop"
+why = "OpenCode can save the desktop under the launcher name. assess only checks that the PNG is graphical."
+

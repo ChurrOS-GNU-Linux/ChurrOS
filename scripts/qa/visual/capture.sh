@@ -384,6 +384,52 @@ path.write_text(text, encoding="utf-8")
 PY
 }
 
+dismiss_overlay() {
+  python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key esc || true
+  sleep "${VISUAL_QA_OVERLAY_DELAY:-2}"
+  python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key esc || true
+  sleep "${VISUAL_QA_OVERLAY_DELAY:-2}"
+}
+
+close_session_menu() {
+  local tries=0 probe
+  probe="$workdir/_menu-closed.png"
+  while (( tries < 8 )); do
+    python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key esc || true
+    sleep 1
+    if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$probe"; then
+      return 0
+    fi
+    if [[ ! -f "$base" ]]; then
+      return 0
+    fi
+    if python3 "$SCRIPT_DIR/bootframes.py" menu-visible --before "$base" --after "$probe" >/dev/null; then
+      tries=$((tries + 1))
+      continue
+    fi
+    return 0
+  done
+}
+
+park_stray_pngs() {
+  local png name keep screen
+  shopt -s nullglob
+  for png in "$out"/*.png; do
+    name="$(basename "$png" .png)"
+    keep=0
+    for screen in "${screens[@]}"; do
+      if [[ "$name" == "$screen" ]]; then
+        keep=1
+        break
+      fi
+    done
+    if [[ "$keep" -eq 0 ]]; then
+      mv "$png" "$workdir/"
+    fi
+  done
+  shopt -u nullglob
+}
+
 final_status="captured"
 export VISUAL_QA_QEMU_NAME=churros-visual-qa
 export VISUAL_QA_GUEST_WIDTH=1920
@@ -424,9 +470,16 @@ elif [[ "$need_desktop" -eq 1 ]]; then
   fi
 fi
 
-if [[ ${#base_screens[@]} -gt 0 ]]; then
-  base="$workdir/_desktop-base.png"
+base="$workdir/_desktop-base.png"
+menu_opened=0
+if [[ "$desktop_ready" -eq 1 ]]; then
+  dismiss_overlay
   if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$base"; then
+    rm -f "$base"
+  fi
+fi
+if [[ ${#base_screens[@]} -gt 0 ]]; then
+  if [[ ! -f "$base" ]]; then
     final_status="capture-failed"
     for screen in "${base_screens[@]}"; do
       note_shot "$screen" fail "screendump" "${screen}.png"
@@ -448,19 +501,29 @@ if [[ ${#base_screens[@]} -gt 0 ]]; then
     done
     for screen in "${base_screens[@]}"; do
       [[ "$screen" == "session-menu" ]] || continue
+      menu_opened=1
       python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key meta_l --key shift --key e || true
-      sleep "${VISUAL_QA_MENU_DELAY:-2}"
-      if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$out/session-menu.png"; then
-        note_shot session-menu fail "screendump" "session-menu.png"
-        final_status="capture-failed"
-        continue
-      fi
-      set +e
-      reason="$(python3 "$SCRIPT_DIR/bootframes.py" menu-visible --before "$base" --after "$out/session-menu.png")"
-      menu_rc=$?
-      set -e
+      menu_timeout="${VISUAL_QA_MENU_TIMEOUT:-90}"
+      menu_deadline=$((SECONDS + menu_timeout))
+      menu_reason="menu-not-visible:timeout"
+      menu_rc=1
+      while (( SECONDS < menu_deadline )); do
+        if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$out/session-menu.png"; then
+          menu_reason="screendump"
+          menu_rc=1
+          break
+        fi
+        set +e
+        menu_reason="$(python3 "$SCRIPT_DIR/bootframes.py" menu-visible --before "$base" --after "$out/session-menu.png")"
+        menu_rc=$?
+        set -e
+        if [[ "$menu_rc" -eq 0 ]]; then
+          break
+        fi
+        sleep "${VISUAL_QA_MENU_POLL:-2}"
+      done
       if [[ "$menu_rc" -ne 0 ]]; then
-        note_shot session-menu fail "${reason:-menu-not-visible}" "session-menu.png"
+        note_shot session-menu fail "${menu_reason:-menu-not-visible}" "session-menu.png"
         final_status="capture-failed"
         continue
       fi
@@ -476,6 +539,9 @@ if [[ ${#base_screens[@]} -gt 0 ]]; then
       fi
     done
   fi
+fi
+if [[ "$menu_opened" -eq 1 ]]; then
+  close_session_menu
 fi
 if [[ ${#diff_screens[@]} -eq 0 ]]; then
   if [[ -z "$agent_reason" ]]; then
@@ -539,10 +605,24 @@ elif [[ "$desktop_ready" -eq 1 ]]; then
       reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$png" --width 1920 --height 1080)"
       assess_rc=$?
       set -e
-      if [[ "$assess_rc" -eq 0 ]]; then
+      if [[ "$assess_rc" -ne 0 ]]; then
+        note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
+        missing_shot=1
+        continue
+      fi
+      if [[ ! -f "$base" ]]; then
+        note_shot "$screen" fail "same-as-desktop" "${screen}.png"
+        missing_shot=1
+        continue
+      fi
+      set +e
+      reason="$(python3 "$SCRIPT_DIR/bootframes.py" differs --before "$base" --after "$png")"
+      differ_rc=$?
+      set -e
+      if [[ "$differ_rc" -eq 0 ]]; then
         note_shot "$screen" ok "$reason" "${screen}.png"
       else
-        note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
+        note_shot "$screen" fail "${reason:-same-as-desktop}" "${screen}.png"
         missing_shot=1
       fi
     done
@@ -556,5 +636,6 @@ elif [[ "$desktop_ready" -eq 1 ]]; then
   fi
 fi
 
+park_stray_pngs
 write_manifest "$final_status"
 echo "visual-qa: capturas en $out (agent=${agent_status}, accel=${accel}, gpu=${gpu})" >&2

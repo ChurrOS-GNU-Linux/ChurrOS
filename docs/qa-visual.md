@@ -134,8 +134,12 @@ el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
   (`VISUAL_QA_DESKTOP_TIMEOUT`, 600 s). Si no hay clave o no hay pantallas
   propias del diff, el manifiesto queda en `agent.status=not-run` y dice
   la razón (`no-key` o `no-diff-screens`). Cada PNG, también los de
-  OpenCode, tiene que ser gráfico y medir 1920×1080. El menú de sesión se
-  abre con `meta_l+shift+e` y solo se acepta si la imagen cambia de verdad.
+  OpenCode, tiene que ser gráfico, medir 1920×1080 y distinguirse del
+  escritorio de base: un `desktop.png` renombrado no vale. Antes de esa
+  base se pulsa Escape para cerrar el overlay de atajos de niri. El menú
+  de sesión se abre con `meta_l+shift+e` y se sondea hasta ver la rejilla
+  de botones de wlogout (`VISUAL_QA_MENU_TIMEOUT`, 90 s en TCG). Luego se
+  cierra con Escape, antes de OpenCode. `initial.png` no se queda en `out/`.
 - La barra se distingue del fondo: una franja superior o inferior cuyo
   color medio contrasta con el dominante del centro y, o tiene borde, o
   coincide con un color de barra. Si existe `design-tokens.json` junto al

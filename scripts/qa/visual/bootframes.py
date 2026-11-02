@@ -292,20 +292,101 @@ def change_ratio(before: bytes, after: bytes) -> float:
     return changed / pixels if pixels else 1.0
 
 
+# Botones de wlogout: fondo y borde de
+# archiso/airootfs/etc/skel/.config/wlogout/style.css (colors-waybar.css).
+WLOGOUT_BUTTON = (0x2A, 0x16, 0x12)
+WLOGOUT_ACCENT = (0xDE, 0x86, 0x36)
+WLOGOUT_BUTTON2 = 32 * 32
+WLOGOUT_ACCENT2 = 36 * 36
+
+
+def _cell(rgb: bytes, index: int) -> tuple[int, int, int]:
+    return rgb[index], rgb[index + 1], rgb[index + 2]
+
+
+def _wlogout_grid(before: bytes, after: bytes, width: int, height: int) -> bool:
+    """Rejilla de botones centrada, distinta de la base. Un cambio suelto no basta."""
+    x0, x1 = width // 6, width - width // 6
+    y0, y1 = height // 5, height - height // 6
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return False
+    stride = 1 if width * height <= 80 * 80 else 4
+    xs = list(range(x0, x1, stride))
+    ys = list(range(y0, y1, stride))
+    if len(xs) < 4 or len(ys) < 4:
+        return False
+    mask = []
+    accent = 0
+    for y in ys:
+        row = []
+        for x in xs:
+            index = (y * width + x) * 3
+            now = _cell(after, index)
+            was = _cell(before, index)
+            moved = _dist2(now, was) >= 18 * 18
+            row.append(_dist2(now, WLOGOUT_BUTTON) <= WLOGOUT_BUTTON2 and moved)
+            if moved and _dist2(now, WLOGOUT_ACCENT) <= WLOGOUT_ACCENT2:
+                accent += 1
+        mask.append(row)
+    seen = [[False] * len(xs) for _ in ys]
+    columns = set()
+    blobs = 0
+    for y, row in enumerate(mask):
+        for x, hit in enumerate(row):
+            if not hit or seen[y][x]:
+                continue
+            stack = [(x, y)]
+            seen[y][x] = True
+            size = 0
+            acc_x = 0
+            while stack:
+                cx, cy = stack.pop()
+                size += 1
+                acc_x += cx
+                for nx, ny in ((cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)):
+                    if 0 <= nx < len(xs) and 0 <= ny < len(ys) and mask[ny][nx] and not seen[ny][nx]:
+                        seen[ny][nx] = True
+                        stack.append((nx, ny))
+            if size >= 4:
+                blobs += 1
+                columns.add(acc_x // size)
+    return blobs >= 3 and len(columns) >= 2 and accent >= 3
+
+
 def session_menu_visible(before: bytes, after: bytes, width: int, height: int) -> tuple[bool, str]:
-    """wlogout cambia una parte clara de la pantalla; un gris plano no cuenta."""
+    """wlogout es una rejilla de botones centrada. Cerrar el overlay no cuenta."""
     if len(before) != len(after) or width * height * 3 != len(after):
         return False, "menu-not-visible:size"
-    if change_ratio(before, after) < 0.04:
+    if change_ratio(before, after) < 0.01:
         return False, "menu-not-visible:unchanged"
     kind = classify_frame(width, height, after)
     if kind in {"text", "blank"}:
         return False, f"menu-not-visible:{kind}"
-    samples = frame_signature(after, width, height)
-    levels = [max(pixel) for pixel in samples]
-    if max(levels) - min(levels) < 40:
-        return False, "menu-not-visible:flat"
-    return True, "wlogout"
+    if _wlogout_grid(before, after, width, height):
+        return True, "wlogout"
+    return False, "menu-not-visible:not-wlogout"
+
+
+def differs_from_desktop(before: bytes, after: bytes, width: int, height: int) -> tuple[bool, str]:
+    """La pantalla del diff no puede ser el escritorio con otro nombre."""
+    if len(before) != len(after) or width * height * 3 != len(after):
+        return False, "same-as-desktop:size"
+    if change_ratio(before, after) < 0.08:
+        return False, "same-as-desktop"
+    x0, x1 = width // 4, width - width // 4
+    y0, y1 = height // 4, height - height // 4
+    changed = 0
+    total = 0
+    for y in range(y0, y1):
+        row = y * width * 3
+        for x in range(x0, x1):
+            index = row + x * 3
+            total += 1
+            if before[index:index + 3] != after[index:index + 3]:
+                changed += 1
+    if total == 0 or changed / total < 0.08:
+        return False, "same-as-desktop:center"
+    return True, "changed"
 
 
 def assess_image(
@@ -473,6 +554,9 @@ def main(argv: list[str] | None = None) -> int:
     menu_cmd = sub.add_parser("menu-visible")
     menu_cmd.add_argument("--before", type=Path, required=True)
     menu_cmd.add_argument("--after", type=Path, required=True)
+    differs_cmd = sub.add_parser("differs")
+    differs_cmd.add_argument("--before", type=Path, required=True)
+    differs_cmd.add_argument("--after", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.cmd == "watch":
         watch(
@@ -493,6 +577,15 @@ def main(argv: list[str] | None = None) -> int:
             print("menu-not-visible:size")
             return 1
         ok, reason = session_menu_visible(before_rgb, after_rgb, after_w, after_h)
+        print(reason)
+        return 0 if ok else 1
+    if args.cmd == "differs":
+        before_w, before_h, before_rgb = read_png(args.before)
+        after_w, after_h, after_rgb = read_png(args.after)
+        if (before_w, before_h) != (after_w, after_h):
+            print("same-as-desktop:size")
+            return 1
+        ok, reason = differs_from_desktop(before_rgb, after_rgb, after_w, after_h)
         print(reason)
         return 0 if ok else 1
     width, height, rgb = read_png(args.png)
