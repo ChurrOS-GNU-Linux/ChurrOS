@@ -2804,6 +2804,24 @@ expect = "boot-nocow debe validar airootfs.sha512 antes de unpackfs: falta airoo
 why = "Si el medio se corrompe después de arrancar, Calamares debe detenerse antes de copiar el squashfs dañado al disco instalado."
 
 [[mutation]]
+name = "test_editions: ARM64 loses zram-generator"
+file = "archiso/packages.aarch64"
+find = "zram-generator\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/aarch64:zram-generator"
+why = "The shared Live configuration requires zram-generator and Arch Linux ARM provides this package."
+
+[[mutation]]
+name = "test_memory_profile: QEMU smoke stops requiring active zram"
+file = "tests/vm/boot_smoke.py"
+find = "    report.check(\"zram0 swap active\", active, swaps or \"no active swap\")\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "zram0 swap active"
+why = "Having the package in a profile does not prove zram was activated at runtime."
+
+[[mutation]]
 name = "supply_chain: install-deps uses partial upgrade pacman -Sy"
 file = "install-deps.sh"
 find = "PM_REFRESH=(sudo pacman -Syu)"

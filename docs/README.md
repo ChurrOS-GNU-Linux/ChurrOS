@@ -23,6 +23,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Contributing](contributing.md) | Cómo contribuir, con o sin programar: flujo de trabajo, pruebas según el tipo de cambio, licencia de las contribuciones y uso de IA. |
 | [Principios](principios.md) | Los principios del proyecto y cómo se decide; todo PR se revisa contra ellos. |
 | [Pruebas](testing.md) | Capas de pruebas (`./churros test` y sus opciones), CI, problemas conocidos y autoprueba por mutaciones. |
+| [QA visual](qa-visual.md) | Clasificación de diffs que cambian la interfaz. No bloquea el merge. |
 | [Getting Started](getting-started.md) | Preparar el entorno de desarrollo en Arch u otra distro (con contenedor). |
 | [CLI](cli.md) | Referencia de `./churros` (build, run, check, test, rust, apps, doctor, cluster, clean). |
 | [VM](vm.md) | Probar la ISO en QEMU/KVM. |
@@ -43,6 +44,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Preferences](preferences.md) | App de ajustes `churros-settings`. |
 | [Popups](popups.md) | Binario `churros-popup` y sus popups. |
 | [Services](services.md) | Crate `churros-services`, la capa común sobre las herramientas del sistema. |
+| [Memoria y zram](memory.md) | Swap comprimido, comandos de diagnóstico y perfiles de memoria en QEMU. |
 | [ChurrOS Tour](churros-tour.md) | Recorrido guiado de primer inicio y su catálogo de apps. |
 | [Branding](branding.md) | Dónde vive cada elemento de identidad visual y cómo llega a la ISO. |
 

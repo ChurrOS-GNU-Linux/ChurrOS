@@ -193,6 +193,16 @@ Con KVM tarda 2-4 minutos; sin KVM (emulación por software, con virgl) unos
 8-10. La espera sale del acelerador que usa la VM: una ISO i686 o aarch64 en un
 equipo x86_64 va por TCG aunque haya `/dev/kvm`.
 
+## QA visual
+
+`tests/static/test_visual_classify.py` cubre el clasificador de
+`scripts/qa/visual/classify.py`. El workflow
+`.github/workflows/visual-qa-classify.yml` corre en cada pull request: aplica
+las reglas de ruta y, solo si el diff es ambiguo, consulta a Jev y en su
+defecto a Claude Haiku. Publica la salida `visual` y la etiqueta `visual-qa`.
+No forma parte de `./churros test` y no es un check requerido. El detalle está
+en [qa-visual.md](qa-visual.md).
+
 ## Reglas para cambios hechos con ayuda de IA
 
 - No se borra, se salta ni se suaviza una prueba para que el CI pase. Si una

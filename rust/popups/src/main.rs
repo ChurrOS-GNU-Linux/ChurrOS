@@ -14,7 +14,7 @@ mod power;
 
 use std::fs;
 use std::io::Write;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::PathBuf;
 use std::process::exit;
 
