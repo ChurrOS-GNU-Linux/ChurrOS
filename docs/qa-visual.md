@@ -2,8 +2,8 @@
 
 Flujo para ver, en una pull request, si el diff cambia la interfaz de
 ChurrOS. El clasificador decide. Si el diff es visual, se construyen la ISO
-del PR y la de `main`, y se capturan las mismas pantallas de las dos. El
-informe de comparación se documenta aquí cuando existe.
+del PR y la de `main`, se capturan las mismas pantallas de las dos y un
+informe las compara. El informe comenta la pull request y no bloquea el merge.
 
 El clasificador no sustituye a `./churros test`. Un diff que no es visual
 sigue solo con la CI habitual.
@@ -135,4 +135,32 @@ python3 scripts/qa/visual/screens.py --paths-file changed.txt --out plan.json
 scripts/qa/visual/capture.sh --dry-run --plan plan.json --out out/before --role before
 scripts/qa/visual/capture.sh --iso out/qa-visual/main/*.iso --plan plan.json --out out/before --role before
 scripts/qa/visual/capture.sh --iso out/qa-visual/pr/*.iso --plan plan.json --out out/after --role after
+```
+
+## Informe
+
+`.github/workflows/visual-qa-report.yml` corre en cada pull request. Si
+`visual=true`, espera los artefactos `visual-qa-before-<sha>` y
+`visual-qa-after-<sha>` y ejecuta `scripts/qa/visual/report.py`.
+
+El informe (HTML, Markdown y `report.json`) empareja los PNG por nombre.
+Pinta el diff en rojo y marca desviación si falta un lado, si el tamaño
+no coincide o si la fracción de píxeles distintos pasa el umbral
+(`VISUAL_QA_DIFF_RATIO`, por defecto `0.01`). Sube el artefacto
+`visual-qa-report-<sha>`.
+
+La lista sale de `scripts/qa/visual/design-tokens.json`, generado desde
+`branding/colors.md`, `branding/typography.md`, `branding/ui-guidelines.md`,
+`branding/logo-guidelines.md` y `docs/branding.md`
+(`python3 scripts/qa/visual/tokens.py --out scripts/qa/visual/design-tokens.json`).
+Ahí están los hex de la paleta, las familias y las medidas del logo.
+Si las guías no coinciden (el fondo y las familias, hoy), el informe lo
+marca como conflicto conocido, no como fallo de la pull request.
+
+`scripts/qa/visual/pr-comment.sh` publica o actualiza un solo comentario
+(la marca `<!-- visual-qa-report -->`). No crea un commit status. El job
+lleva `continue-on-error` y no debe añadirse a los checks requeridos.
+
+```bash
+python3 scripts/qa/visual/report.py --before out/before --after out/after --out out/qa-visual/report
 ```
