@@ -89,6 +89,21 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
 
+      - name: Install OpenCode
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          version=1.19.5
+          curl -fsSL https://opencode.ai/install | bash -s -- --version "$version" --no-modify-path
+          echo "${HOME}/.opencode/bin" >> "$GITHUB_PATH"
+          installed="$("${HOME}/.opencode/bin/opencode" --version)"
+          printf '%s\n' "$installed"
+          if [[ "$installed" != "$version" ]]; then
+            echo "visual-qa: se esperaba opencode ${version}" >&2
+            exit 1
+          fi
+          "${HOME}/.opencode/bin/opencode" --help 2>&1 | grep -q 'run'
+
       - name: Wait for ISO artifacts
         env:
           GH_TOKEN: ${{ github.token }}

@@ -159,6 +159,24 @@ niri 26.04 no pinta sin 3D. Con `VISUAL_QA_GPU=auto` (el defecto) se usa
 virgl si hay un nodo DRM o Xvfb; si no, la VGA es plana y el escritorio
 puede salir negro. Las pantallas de arranque siguen saliendo por QMP.
 
+El workflow instala OpenCode 1.19.5 con el instalador oficial
+(`curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5`)
+antes de capturar. Es la versión en la que `opencode run` está
+comprobado. El binario queda en `~/.opencode/bin` y el job lo pone en
+`GITHUB_PATH`. En la máquina donde se construye la ISO con
+`build-local.sh` y luego se capturan las pantallas, hace falta el mismo
+pin y `ANTHROPIC_API_KEY` en el entorno: sin el binario las pantallas
+propias del diff quedan en `opencode-missing`.
+
+```bash
+curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5
+export PATH="$HOME/.opencode/bin:$PATH"
+opencode --version
+```
+
+El instalador es el de OpenCode 1 y rechaza una 2.x. En CI se pasa
+`--no-modify-path` porque el runner no lee `.bashrc`.
+
 ```bash
 python3 scripts/qa/visual/screens.py --paths-file changed.txt --out plan.json
 scripts/qa/visual/capture.sh --dry-run --plan plan.json --out out/before --role before

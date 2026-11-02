@@ -2706,3 +2706,12 @@ caught_by = "tests.static.test_visual_capture"
 expect = "agent:no-key"
 why = "agent=not-run is only honest when the manifest says whether the key or the diff screens were missing."
 
+[[mutation]]
+name = "visual qa: opencode install is not pinned"
+file = ".github/workflows/visual-qa-capture.yml"
+find = "version=1.19.5"
+replace = "version=0.0.0"
+caught_by = "tests.static.test_visual_capture"
+expect = "opencode:1.19.5"
+why = "An unpinned installer can fetch OpenCode 2, which does not provide the opencode run Talos checked on 1.19.5."
+
