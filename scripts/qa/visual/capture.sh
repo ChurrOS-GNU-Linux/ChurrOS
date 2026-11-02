@@ -179,7 +179,7 @@ launch_xvfb() {
 import os, subprocess, sys
 read_fd, write_fd = os.pipe()
 proc = subprocess.Popen(
-    ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+    ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "2560x1600x24", "-nolisten", "tcp"],
     pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 os.close(write_fd)
 with os.fdopen(read_fd) as handle:
@@ -372,12 +372,26 @@ PY
 }
 
 final_status="captured"
+export VISUAL_QA_QEMU_NAME=churros-visual-qa
+export VISUAL_QA_GUEST_WIDTH=1920
+export VISUAL_QA_GUEST_HEIGHT=1080
 if [[ "$graphical" != "true" && ${#desktop[@]} -gt 0 ]]; then
   final_status="capture-failed"
   for screen in "${desktop[@]}"; do
     note_shot "$screen" fail "no-graphical-session" "${screen}.png"
   done
   desktop=()
+elif [[ ${#desktop[@]} -gt 0 ]]; then
+  # En TCG el escritorio tarda unos 4-6 min. No se lanza OpenCode antes.
+  desktop_timeout="${VISUAL_QA_DESKTOP_TIMEOUT:-600}"
+  if ! python3 "$SCRIPT_DIR/bootframes.py" wait-desktop --socket "$qmp" --timeout "$desktop_timeout"; then
+    final_status="capture-failed"
+    agent_status="desktop-not-ready"
+    for screen in "${desktop[@]}"; do
+      note_shot "$screen" fail "desktop-not-ready" "${screen}.png"
+    done
+    desktop=()
+  fi
 fi
 
 if ((${#desktop[@]})); then
@@ -417,15 +431,26 @@ if ((${#desktop[@]})); then
   fi
   missing_shot=0
   for screen in "${desktop[@]}"; do
-    if [[ -f "$out/${screen}.png" ]]; then
-      note_shot "$screen" ok "opencode" "${screen}.png"
+    png="$out/${screen}.png"
+    if [[ ! -f "$png" ]]; then
+      note_shot "$screen" fail "missing" "${screen}.png"
+      missing_shot=1
+      continue
+    fi
+    set +e
+    reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$png" --width 1920 --height 1080)"
+    assess_rc=$?
+    set -e
+    if [[ "$assess_rc" -eq 0 ]]; then
+      note_shot "$screen" ok "$reason" "${screen}.png"
     else
-      note_shot "$screen" fail "opencode" "${screen}.png"
+      note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
       missing_shot=1
     fi
   done
   if [[ "$agent_status" == "ok" && "$missing_shot" -eq 1 ]]; then
     agent_status="incomplete"
+    final_status="capture-failed"
   fi
 fi
 

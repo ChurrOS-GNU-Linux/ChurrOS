@@ -157,6 +157,48 @@ class PromptKeys(unittest.TestCase):
         self.assertIn("meta_l", text)
         self.assertIn("meta_l+shift+e", text)
         self.assertNotIn("super+", text)
+        self.assertNotIn("is logged in automatically", text)
+        self.assertIn("graphical frame is already on screen", text)
+
+
+class DesktopReady(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.frames = load("visual_bootframes_ready", "bootframes.py")
+        cls.vmctl = load("visual_vmctl_crop", "vmctl.py")
+
+    def test_menu_before_kernel_text_is_not_the_desktop(self):
+        wait = self.frames.DesktopWait()
+        self.assertFalse(wait.feed("menu"))
+        self.assertFalse(wait.feed("text"))
+        self.assertTrue(wait.feed("menu"))
+
+    def test_kernel_text_shot_is_not_ok(self):
+        rgb = bytearray(4 * 2 * 3)
+        rgb[0:3] = b"\xff\xff\xff"
+        ok, reason = self.frames.assess_image(4, 2, bytes(rgb), 4, 2)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("not-graphical:"))
+
+    def test_wrong_resolution_fails_even_if_graphical(self):
+        color = bytes((0xF9, 0x73, 0x16))
+        rgb = color * 4
+        ok, reason = self.frames.assess_image(2, 2, rgb, 1920, 1080)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("wrong-resolution:"))
+
+    def test_xwd_targets_the_qemu_window_and_crops_the_border(self):
+        selectors = self.vmctl.xwd_selectors("churros-visual-qa")
+        self.assertTrue(all(item[0] == "-name" for item in selectors))
+        self.assertNotIn(["-root"], selectors)
+        rgb = bytearray(6 * 4 * 3)
+        for y in range(1, 3):
+            for x in range(1, 5):
+                index = (y * 6 + x) * 3
+                rgb[index:index + 3] = b"\x10\x20\x30"
+        width, height, cropped = self.vmctl.crop_to_content(6, 4, bytes(rgb))
+        self.assertEqual((width, height), (4, 2))
+        self.assertEqual(cropped, b"\x10\x20\x30" * 8)
 
 
 class QemuDeath(unittest.TestCase):

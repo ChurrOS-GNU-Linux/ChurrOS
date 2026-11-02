@@ -62,6 +62,38 @@ def classify_frame(width: int, height: int, rgb: bytes) -> str:
     return "text"
 
 
+GRAPHICAL_KINDS = {"menu", "splash"}
+
+
+def is_graphical(kind: str) -> bool:
+    """Un fotograma que ya no es consola de texto ni negro."""
+    return kind in GRAPHICAL_KINDS
+
+
+class DesktopWait:
+    """No acepta el menú de arranque: primero tiene que verse texto del kernel."""
+
+    def __init__(self) -> None:
+        self.seen_text = False
+        self.ready = False
+
+    def feed(self, kind: str) -> bool:
+        if kind in {"text", "blank"}:
+            self.seen_text = True
+        elif self.seen_text and is_graphical(kind):
+            self.ready = True
+        return self.ready
+
+
+def assess_image(width: int, height: int, rgb: bytes, expect_w: int, expect_h: int) -> tuple[bool, str]:
+    kind = classify_frame(width, height, rgb)
+    if kind in {"text", "blank"}:
+        return False, f"not-graphical:{kind}"
+    if (width, height) != (expect_w, expect_h):
+        return False, f"wrong-resolution:{width}x{height}"
+    return True, "graphical"
+
+
 def splash_on_cmdline(serial: str) -> bool | None:
     """True/False si la serie ya mostró la línea de órdenes del kernel.
 
@@ -162,6 +194,35 @@ def watch(socket: Path, serial: Path, out: Path, timeout: float, want_grub: bool
     return result
 
 
+def wait_desktop(socket: Path, timeout: float, interval: float = 2.0) -> bool:
+    """Espera un fotograma gráfico posterior al texto del kernel."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from imageutil import read_png  # noqa: E402
+    from vmctl import QmpError, screendump  # noqa: E402
+
+    state = DesktopWait()
+    frame = socket.parent / "_desktop-frame.png"
+    failures = 0
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            screendump(socket, frame)
+            failures = 0
+        except (OSError, QmpError, ValueError):
+            failures += 1
+            if failures >= 5:
+                break
+            time.sleep(interval)
+            continue
+        width, height, rgb = read_png(frame)
+        if state.feed(classify_frame(width, height, rgb)):
+            frame.unlink(missing_ok=True)
+            return True
+        time.sleep(interval)
+    frame.unlink(missing_ok=True)
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Vigila el menú de arranque y Plymouth.")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -172,12 +233,30 @@ def main(argv: list[str] | None = None) -> int:
     watch_cmd.add_argument("--timeout", type=float, default=20.0)
     watch_cmd.add_argument("--grub", type=int, default=0)
     watch_cmd.add_argument("--plymouth", type=int, default=0)
+    desktop_cmd = sub.add_parser("wait-desktop")
+    desktop_cmd.add_argument("--socket", type=Path, required=True)
+    desktop_cmd.add_argument("--timeout", type=float, default=600.0)
+    assess_cmd = sub.add_parser("assess")
+    assess_cmd.add_argument("--png", type=Path, required=True)
+    assess_cmd.add_argument("--width", type=int, default=1920)
+    assess_cmd.add_argument("--height", type=int, default=1080)
     args = parser.parse_args(argv)
-    watch(
-        args.socket, args.serial, args.out, args.timeout,
-        bool(args.grub), bool(args.plymouth),
-    )
-    return 0
+    if args.cmd == "watch":
+        watch(
+            args.socket, args.serial, args.out, args.timeout,
+            bool(args.grub), bool(args.plymouth),
+        )
+        return 0
+    if args.cmd == "wait-desktop":
+        ready = wait_desktop(args.socket, args.timeout)
+        print("ready" if ready else "timeout")
+        return 0 if ready else 1
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from imageutil import read_png  # noqa: E402
+    width, height, rgb = read_png(args.png)
+    ok, reason = assess_image(width, height, rgb, args.width, args.height)
+    print(reason)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
