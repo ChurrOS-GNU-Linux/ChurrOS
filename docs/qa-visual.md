@@ -126,10 +126,17 @@ el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
   splash. Si la línea de órdenes del kernel no lleva `splash` ni
   `plymouth`, o el fotograma siguiente ya es texto del kernel, Plymouth
   queda `not-in-boot` en vez de una toma tardía.
-- El resto lo recorre OpenCode con Claude (`ANTHROPIC_API_KEY`, modelo
-  `VISUAL_QA_MODEL`) usando `scripts/qa/visual/vmctl.py`. La tecla Mod es
-  el qcode `meta_l`. Si falta una toma pedida, el agente no queda en `ok`.
-  La clave no entra en el prompt; si el log la repite, el script la tapa.
+- OpenCode no arranca hasta que un fotograma posterior al texto del
+  kernel es gráfico (`bootframes.py wait-desktop`). En TCG el escritorio
+  tarda unos 4-6 min; el plazo es `VISUAL_QA_DESKTOP_TIMEOUT` (por defecto
+  600 s). Cada PNG se clasifica: si es texto, negro o no mide 1920×1080,
+  esa pantalla queda fallida y el agente no pasa a `ok`.
+- La captura GL usa `xwd` sobre la ventana de QEMU (`-name` o `-id`), no
+  sobre la raíz del Xvfb, y recorta el borde negro. El Xvfb es 2560×1600
+  para que la ventana de 1920×1080 quepa entera.
+- El prompt usa `scripts/qa/visual/vmctl.py`. La tecla Mod es el qcode
+  `meta_l`. La clave no entra en el prompt; si el log la repite, el script
+  la tapa.
 - `manifest.json` lista el plan, el acelerador, VNC y cada toma. Si la ISO
   no llegó, el estado es `iso-missing` y no se arranca QEMU.
 

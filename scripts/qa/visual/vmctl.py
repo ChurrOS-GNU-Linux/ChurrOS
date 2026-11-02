@@ -119,19 +119,96 @@ def screendump(socket_path: Path, dest: Path) -> str:
     return "qmp-screendump"
 
 
+def crop_to_content(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
+    """Recorta al rectángulo con píxeles no negros."""
+    rows = [y for y in range(height) if any(rgb[y * width * 3:(y + 1) * width * 3])]
+    if not rows:
+        return 1, 1, b"\0\0\0"
+    top, bottom = rows[0], rows[-1]
+    left, right = width, -1
+    for y in range(top, bottom + 1):
+        line = rgb[y * width * 3:(y + 1) * width * 3]
+        first = next((x for x in range(width) if any(line[x * 3:x * 3 + 3])), None)
+        if first is None:
+            continue
+        last = next(x for x in range(width - 1, -1, -1) if any(line[x * 3:x * 3 + 3]))
+        left, right = min(left, first), max(right, last)
+    new_width = right - left + 1
+    out = b"".join(rgb[(y * width + left) * 3:(y * width + right + 1) * 3] for y in range(top, bottom + 1))
+    return new_width, bottom - top + 1, out
+
+
+def guest_size() -> tuple[int, int]:
+    width = int(os.environ.get("VISUAL_QA_GUEST_WIDTH", "1920"))
+    height = int(os.environ.get("VISUAL_QA_GUEST_HEIGHT", "1080"))
+    return width, height
+
+
+def xwd_selectors(name: str) -> list[list[str]]:
+    """Ventana de QEMU, nunca la raíz del Xvfb (queda desplazada y recortada)."""
+    return [
+        ["-name", f"QEMU ({name}-0)"],
+        ["-name", f"QEMU ({name})"],
+        ["-name", name],
+    ]
+
+
+def qemu_window_ids(display: str, name: str) -> list[str]:
+    if not shutil.which("xwininfo"):
+        return []
+    result = subprocess.run(
+        ["xwininfo", "-display", display, "-root", "-tree"],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if result.returncode != 0:
+        return []
+    found = []
+    for line in result.stdout.splitlines():
+        if name not in line and "QEMU" not in line:
+            continue
+        match = re.search(r"\b(0x[0-9a-fA-F]+)\b", line)
+        if match:
+            found.append(match.group(1))
+    return found
+
+
+def fit_guest(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
+    """Se queda con la ventana si ya es la resolución del invitado; si no, recorta el negro."""
+    expect_w, expect_h = guest_size()
+    if (width, height) == (expect_w, expect_h):
+        return width, height, rgb
+    cropped_w, cropped_h, cropped = crop_to_content(width, height, rgb)
+    if (cropped_w, cropped_h) == (expect_w, expect_h):
+        return cropped_w, cropped_h, cropped
+    if os.environ.get("VISUAL_QA_REQUIRE_SIZE") == "1":
+        raise QmpError(f"wrong-resolution:{cropped_w}x{cropped_h}")
+    return cropped_w, cropped_h, cropped
+
+
+def _xwd_bytes(display: str) -> bytes:
+    if not shutil.which("xwd"):
+        raise QmpError("screendump no disponible")
+    name = os.environ.get("VISUAL_QA_QEMU_NAME", "churros-visual-qa")
+    selectors = xwd_selectors(name)
+    selectors.extend(["-id", window] for window in qemu_window_ids(display, name))
+    for selector in selectors:
+        result = subprocess.run(
+            ["xwd", "-silent", "-display", display, *selector],
+            capture_output=True, timeout=60, check=False,
+        )
+        if result.returncode == 0 and len(result.stdout) > 100:
+            return result.stdout
+    raise QmpError("xwd no encontró la ventana de QEMU")
+
+
 def _xwd(dest: Path) -> str:
     display = os.environ.get("VISUAL_QA_XWD_DISPLAY", "")
-    if not display or not shutil.which("xwd"):
+    if not display:
         raise QmpError("screendump no disponible")
-    result = subprocess.run(
-        ["xwd", "-silent", "-display", display, "-root"],
-        capture_output=True, timeout=60, check=False,
-    )
-    if result.returncode != 0 or len(result.stdout) < 100:
-        raise QmpError("xwd no capturó la pantalla")
-    width, height, rgb = xwd_to_rgb(result.stdout)
+    width, height, rgb = xwd_to_rgb(_xwd_bytes(display))
+    width, height, rgb = fit_guest(width, height, rgb)
     write_png(dest, width, height, rgb)
-    return "xwd"
+    return "xwd-window"
 
 
 def free_display() -> int:
