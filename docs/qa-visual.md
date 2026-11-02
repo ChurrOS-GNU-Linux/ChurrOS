@@ -48,14 +48,17 @@ El umbral compara la probabilidad más alta de `probabilities`, no
 `confidence`. `confidence` se anota en el log y no decide. En el empate
 exacto con el umbral (0.8) se acepta a Jev: solo un valor menor escala.
 
-Si Jev y Haiku fallan, la salida es `visual=false` y `decider=unresolved`.
-El script sale con 0. Una invocación mal formada sale con 2.
+Si no hay clave (una pull request desde un fork no recibe los secrets) o
+Jev y Haiku fallan, un diff ambiguo sale `visual=true` con
+`decider=unresolved-default-visual`. Así no se salta la QA. Una ruta que
+las reglas ya descartan sigue en `visual=false`. El script sale con 0.
+Una invocación mal formada sale con 2.
 
 El job lleva `continue-on-error: true`. No publica un commit status propio
 y no debe añadirse a los checks requeridos de `main`: un fallo de la API o
 del etiquetado no impide fusionar. En una pull request desde un fork el
-token no puede crear la etiqueta y los secrets no están disponibles; las
-reglas de ruta siguen aplicando y un diff ambiguo queda `unresolved`.
+token no puede crear la etiqueta; las reglas de ruta siguen aplicando y
+un diff ambiguo queda visual por ese defecto.
 
 La forma de la llamada a Jev está en `ask_jev`, alineada con la primitiva
 Choice de [docs.typesafe.ai](https://docs.typesafe.ai/primitives/choice) y
