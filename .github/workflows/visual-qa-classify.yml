@@ -1,0 +1,83 @@
+name: Visual QA classify
+
+# Clasifica el diff de la pull request. No construye la ISO y no publica
+# un commit status propio: no debe añadirse a los checks requeridos de la
+# rama. continue-on-error deja el check en verde aunque falle el etiquetado
+# o la API, para no impedir el merge. La salida del job es visual=true|false.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: visual-qa-classify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    outputs:
+      visual: ${{ steps.classify.outputs.visual }}
+      decider: ${{ steps.classify.outputs.decider }}
+      probability: ${{ steps.classify.outputs.probability }}
+      model: ${{ steps.classify.outputs.model }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VISUAL_QA_JEV_MODEL: ${{ vars.VISUAL_QA_JEV_MODEL }}
+          VISUAL_QA_JEV_THRESHOLD: ${{ vars.VISUAL_QA_JEV_THRESHOLD }}
+          VISUAL_QA_MODEL: ${{ vars.VISUAL_QA_MODEL }}
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff --unified=1 HEAD^1 HEAD > "$RUNNER_TEMP/diff.txt"
+          python3 scripts/qa/visual/classify.py \
+            --paths-file "$RUNNER_TEMP/changed.txt" \
+            --diff-file "$RUNNER_TEMP/diff.txt" \
+            --github-output "$GITHUB_OUTPUT" \
+            --result "$RUNNER_TEMP/visual-class.json"
+
+      - name: Update visual-qa label
+        if: steps.classify.outputs.visual != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VISUAL: ${{ steps.classify.outputs.visual }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PR}" || -z "${REPO}" ]]; then
+            echo "visual-qa: no hay número de pull request; no se etiqueta" >&2
+            exit 0
+          fi
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "visual-qa: gh no está instalado; no se etiqueta" >&2
+            exit 0
+          fi
+          # El token lo lee gh desde GH_TOKEN. Esta paso no lo imprime.
+          gh api --method POST "repos/${REPO}/labels" \
+            -f name='visual-qa' \
+            -f color='F97316' \
+            -f description='El diff cambia la interfaz visible' \
+            >/dev/null || echo "visual-qa: la etiqueta ya existe o el token no puede crearla" >&2
+          if [[ "${VISUAL}" == "true" ]]; then
+            gh api --method POST "repos/${REPO}/issues/${PR}/labels" \
+              -f 'labels[]=visual-qa' >/dev/null
+          else
+            gh api --method DELETE "repos/${REPO}/issues/${PR}/labels/visual-qa" \
+              >/dev/null || echo "visual-qa: la etiqueta no estaba puesta" >&2
+          fi
