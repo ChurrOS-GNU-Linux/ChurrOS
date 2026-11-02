@@ -47,6 +47,16 @@ build_aur() {
         git checkout --detach "${AUR_COMMITS[$name]}"
         [ "$(git rev-parse HEAD)" = "${AUR_COMMITS[$name]}" ]
         churros_pkgbuild_allow_arch PKGBUILD
+        # Importar las claves PGP de los mantenedores declaradas en validpgpkeys
+        # para que makepkg verifique las firmas de los tarballs de origen.
+        mapfile -t PGP_KEYS < <(grep -oP 'validpgpkeys=\(\K[^)]+' PKGBUILD | tr -d '"' | tr ' ' '\n' | grep -v '^$' || true)
+        for key in "${PGP_KEYS[@]}"; do
+            for hk in hkps://keys.openpgp.org hkps://pgp.mit.edu; do
+                if gpg --keyserver "$hk" --recv-keys "$key" 2>/dev/null; then
+                    break
+                fi
+            done
+        done
         success=0
         for attempt in 1 2 3 4; do
             if makepkg -sf --noconfirm; then
