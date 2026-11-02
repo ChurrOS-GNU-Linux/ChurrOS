@@ -267,7 +267,9 @@ launch_qemu() {
   stop_qemu
   build_cmd "$mode"
   printf '%s\n' "${QEMU_CMD[*]}" >> "$out/qemu-attempts.log"
-  "${QEMU_CMD[@]}" >"$out/qemu.log" 2>&1 &
+  # Sin gestor de ventanas SDL centra la ventana de GRUB y, al pasar a
+  # 1920x1080, ese origen la saca de la pantalla. Queda clavada en 0,0.
+  SDL_VIDEO_WINDOW_POS=0,0 "${QEMU_CMD[@]}" >"$out/qemu.log" 2>&1 &
   qemu_pid=$!
   while [[ ! -S "$qmp" ]]; do
     if ! kill -0 "$qemu_pid" 2>/dev/null; then
@@ -392,6 +394,73 @@ elif [[ ${#desktop[@]} -gt 0 ]]; then
     done
     desktop=()
   fi
+fi
+
+owned=()
+rest=()
+for screen in "${desktop[@]}"; do
+  case "$screen" in
+    desktop|bar|session-menu) owned+=("$screen") ;;
+    *) rest+=("$screen") ;;
+  esac
+done
+if [[ ${#owned[@]} -gt 0 ]]; then
+  base="$out/_desktop-base.png"
+  if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$base"; then
+    final_status="capture-failed"
+    for screen in "${owned[@]}"; do
+      note_shot "$screen" fail "screendump" "${screen}.png"
+    done
+  else
+    for screen in "${owned[@]}"; do
+      [[ "$screen" == "session-menu" ]] && continue
+      cp "$base" "$out/${screen}.png"
+      set +e
+      reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$out/${screen}.png" --width 1920 --height 1080 --require-bar)"
+      assess_rc=$?
+      set -e
+      if [[ "$assess_rc" -eq 0 ]]; then
+        note_shot "$screen" ok "$reason" "${screen}.png"
+      else
+        note_shot "$screen" fail "${reason:-not-graphical}" "${screen}.png"
+        final_status="capture-failed"
+      fi
+    done
+    for screen in "${owned[@]}"; do
+      [[ "$screen" == "session-menu" ]] || continue
+      python3 "$SCRIPT_DIR/vmctl.py" send-key --socket "$qmp" --key meta_l --key shift --key e || true
+      sleep "${VISUAL_QA_MENU_DELAY:-2}"
+      if ! python3 "$SCRIPT_DIR/vmctl.py" screendump --socket "$qmp" --out "$out/session-menu.png"; then
+        note_shot session-menu fail "screendump" "session-menu.png"
+        final_status="capture-failed"
+        continue
+      fi
+      set +e
+      reason="$(python3 "$SCRIPT_DIR/bootframes.py" menu-visible --before "$base" --after "$out/session-menu.png")"
+      menu_rc=$?
+      set -e
+      if [[ "$menu_rc" -ne 0 ]]; then
+        note_shot session-menu fail "${reason:-menu-not-visible}" "session-menu.png"
+        final_status="capture-failed"
+        continue
+      fi
+      set +e
+      reason="$(python3 "$SCRIPT_DIR/bootframes.py" assess --png "$out/session-menu.png" --width 1920 --height 1080)"
+      assess_rc=$?
+      set -e
+      if [[ "$assess_rc" -eq 0 ]]; then
+        note_shot session-menu ok "wlogout" "session-menu.png"
+      else
+        note_shot session-menu fail "${reason:-not-graphical}" "session-menu.png"
+        final_status="capture-failed"
+      fi
+    done
+  fi
+fi
+if [[ ${#rest[@]} -eq 0 ]]; then
+  desktop=()
+else
+  desktop=("${rest[@]}")
 fi
 
 if ((${#desktop[@]})); then

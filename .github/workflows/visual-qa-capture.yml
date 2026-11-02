@@ -80,7 +80,7 @@ jobs:
           sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y -o Acquire::Retries=3 \
             qemu-system-x86 qemu-utils ovmf \
-            xvfb x11-apps libgl1-mesa-dri
+            xvfb x11-apps libgl1-mesa-dri xdotool
 
       - name: Enable KVM
         run: |

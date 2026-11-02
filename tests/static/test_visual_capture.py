@@ -168,10 +168,36 @@ class DesktopReady(unittest.TestCase):
         cls.vmctl = load("visual_vmctl_crop", "vmctl.py")
 
     def test_menu_before_kernel_text_is_not_the_desktop(self):
-        wait = self.frames.DesktopWait()
-        self.assertFalse(wait.feed("menu"))
+        wait = self.frames.DesktopWait(stable_needed=2)
+        self.assertFalse(wait.feed("menu", (b"\x10\x20\x30",), bar=True))
         self.assertFalse(wait.feed("text"))
-        self.assertTrue(wait.feed("menu"))
+        signature = (b"\x10\x20\x30",)
+        self.assertFalse(wait.feed("menu", signature, bar=True))
+        self.assertTrue(wait.feed("menu", signature, bar=True))
+
+    def test_overlay_without_a_bar_does_not_count(self):
+        wait = self.frames.DesktopWait(stable_needed=1)
+        wait.feed("text")
+        self.assertFalse(wait.feed("menu", (b"\x10\x20\x30",), bar=False))
+
+    def test_bar_is_a_full_width_strip(self):
+        width, height = 20, 8
+        overlay = bytearray(width * height * 3)
+        for y in range(3, 5):
+            for x in range(8, 12):
+                index = (y * width + x) * 3
+                overlay[index:index + 3] = bytes((0xF9, 0x73, 0x16))
+        self.assertFalse(self.frames.has_bar(width, height, bytes(overlay)))
+        bar = bytearray(width * height * 3)
+        for x in range(width):
+            bar[x * 3:x * 3 + 3] = bytes((0xF9, 0x73, 0x16))
+        self.assertTrue(self.frames.has_bar(width, height, bytes(bar)))
+
+    def test_unchanged_frame_is_not_wlogout(self):
+        rgb = bytes((0x11, 0x18, 0x27)) * 16
+        ok, reason = self.frames.session_menu_visible(rgb, rgb, 4, 4)
+        self.assertFalse(ok)
+        self.assertIn("unchanged", reason)
 
     def test_kernel_text_shot_is_not_ok(self):
         rgb = bytearray(4 * 2 * 3)

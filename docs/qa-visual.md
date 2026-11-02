@@ -126,14 +126,15 @@ el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
   splash. Si la línea de órdenes del kernel no lleva `splash` ni
   `plymouth`, o el fotograma siguiente ya es texto del kernel, Plymouth
   queda `not-in-boot` en vez de una toma tardía.
-- OpenCode no arranca hasta que un fotograma posterior al texto del
-  kernel es gráfico (`bootframes.py wait-desktop`). En TCG el escritorio
-  tarda unos 4-6 min; el plazo es `VISUAL_QA_DESKTOP_TIMEOUT` (por defecto
-  600 s). Cada PNG se clasifica: si es texto, negro o no mide 1920×1080,
-  esa pantalla queda fallida y el agente no pasa a `ok`.
-- La captura GL usa `xwd` sobre la ventana de QEMU (`-name` o `-id`), no
-  sobre la raíz del Xvfb, y recorta el borde negro. El Xvfb es 2560×1600
-  para que la ventana de 1920×1080 quepa entera.
+- OpenCode no arranca hasta que, después del texto del kernel, hay una
+  barra a lo ancho y varios fotogramas seguidos casi iguales
+  (`VISUAL_QA_DESKTOP_TIMEOUT`, 600 s). El escritorio y la barra los toma
+  el propio script. El menú de sesión se abre con `meta_l+shift+e` y solo
+  se acepta si la imagen cambia de verdad; si no, queda fallida. Cada PNG
+  tiene que ser gráfico y medir 1920×1080.
+- SDL arranca con `SDL_VIDEO_WINDOW_POS=0,0` y, si hay `xdotool`, la
+  ventana se mueve a 0,0 antes de cada `xwd -name`. No hace falta
+  `xwininfo`. QMP se usa cuando la superficie existe. El Xvfb es 2560×1600.
 - El prompt usa `scripts/qa/visual/vmctl.py`. La tecla Mod es el qcode
   `meta_l`. La clave no entra en el prompt; si el log la repite, el script
   la tapa.
