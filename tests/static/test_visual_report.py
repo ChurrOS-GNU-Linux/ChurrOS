@@ -113,6 +113,52 @@ class PixelReport(unittest.TestCase):
         self.assertTrue(any(item["status"] == "deviation" for item in foreign_findings))
         self.assertTrue(any("naranja" in item["text"] for item in foreign_findings))
 
+    def test_manifest_explains_a_missing_screen_on_both_sides(self):
+        tokens = {"colors": [], "fonts": [], "metrics": {}, "conflicts": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "before"
+            after = root / "after"
+            before.mkdir()
+            after.mkdir()
+            manifest = {
+                "status": "capture-failed",
+                "screens": ["plymouth", "desktop"],
+                "shots": [
+                    {"id": "plymouth", "ok": False, "method": "not-in-boot", "file": "plymouth.png"},
+                    {"id": "desktop", "ok": False, "method": "no-graphical-session", "file": "desktop.png"},
+                ],
+            }
+            (before / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (after / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            payload = report.build_report(before, after, root / "report", tokens, 0.01)
+        by_name = {pair["name"]: pair for pair in payload["pairs"]}
+        self.assertIn("plymouth.png", by_name)
+        self.assertIn("desktop.png", by_name)
+        self.assertIn("capture-failed", by_name["desktop.png"]["reason"])
+        self.assertIn("no-graphical-session", by_name["desktop.png"]["reason"])
+        self.assertIn("not-in-boot", by_name["plymouth.png"]["reason"])
+        self.assertTrue(by_name["plymouth.png"]["deviation"])
+
+    def test_grub_flags_the_arch_logo(self):
+        tokens = {
+            "colors": [
+                {"hex": "#F97316", "name": "Naranja", "role": "primary", "source": "branding/colors.md"},
+                {"hex": "#111827", "name": "Midnight", "role": "background", "source": "branding/colors.md"},
+            ],
+            "fonts": [],
+            "metrics": {},
+            "conflicts": [],
+        }
+        night = bytes((0x11, 0x18, 0x27))
+        arch = bytes((23, 147, 209))
+        clean = night * 4
+        branded = night + night + arch + arch
+        self.assertFalse(any("Arch" in item["text"] for item in report.palette_findings(
+            "grub.png", [("antes", clean, 2, 2)], tokens)))
+        flagged = report.palette_findings("grub.png", [("antes", branded, 2, 2)], tokens)
+        self.assertTrue(any("Arch" in item["text"] and item["status"] == "deviation" for item in flagged))
+
 
 class CommentScript(unittest.TestCase):
     def test_without_a_pull_request_it_does_not_call_github(self):

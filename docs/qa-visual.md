@@ -167,7 +167,10 @@ un lado, si el tamaño no coincide o si la fracción de píxeles distintos
 pasa el umbral (`VISUAL_QA_DIFF_RATIO`, por defecto `0.01`). Además
 muestrea los píxeles y los compara con la paleta de
 `design-tokens.json`: si el naranja principal o un fondo de marca no
-aparecen en la pantalla, la lista lo marca como desviación. Sube el
+aparecen en la pantalla, la lista lo marca como desviación. En GRUB
+también marca el azul del logo de Arch (`#1793D1`). Lee `manifest.json`
+de cada lado: un `capture-failed` explica el hueco, y una pantalla del
+plan que no tiene PNG en ningún lado sigue en el informe. Sube el
 artefacto `visual-qa-report-<sha>`.
 
 La lista sale de `scripts/qa/visual/design-tokens.json`, generado desde

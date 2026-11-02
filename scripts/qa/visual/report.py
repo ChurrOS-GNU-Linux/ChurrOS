@@ -27,6 +27,7 @@ from imageutil import read_png, write_png  # noqa: E402
 MARKER = "<!-- visual-qa-report -->"
 DEFAULT_THRESHOLD = 0.01
 PALETTE_DISTANCE = 72
+ARCH_BLUE = (23, 147, 209)  # #1793D1, el azul del logo de Arch Linux
 PALETTE_ROLES = {
     "primary", "background", "text", "secondary", "hover", "panel",
     "installer-background", "success", "warning", "error",
@@ -154,7 +155,85 @@ def palette_findings(name: str, images: list[tuple[str, bytes, int, int]], token
                     "status": "deviation",
                     "text": f"{name} ({label}): ningún fondo de la paleta está cerca (distancia {distance:.0f}).",
                 })
+        if screen == "grub" and arch_logo_pixels(pixels, palette):
+            findings.append({
+                "status": "deviation",
+                "text": f"{name} ({label}): se ve el logo de Arch (#1793D1), no solo el fondo.",
+            })
     return findings
+
+
+def arch_logo_pixels(pixels: list[tuple[int, int, int]], palette: list[dict], near: float = 48, far: float = 60) -> bool:
+    """Azul de Arch que no encaja en la paleta de ChurrOS."""
+    known = [parse_hex(item["hex"]) for item in palette]
+    for pixel in pixels:
+        if color_distance(pixel, ARCH_BLUE) > near:
+            continue
+        if not known or min(color_distance(pixel, color) for color in known) > far:
+            return True
+    return False
+
+
+def load_manifest(directory: Path) -> dict:
+    path = directory / "manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def shot_reason(manifest: dict, stem: str) -> str:
+    status = str(manifest.get("status") or "")
+    method = ""
+    for shot in manifest.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        shot_id = str(shot.get("id") or "")
+        shot_file = Path(str(shot.get("file") or "")).stem
+        if shot_id != stem and shot_file != stem:
+            continue
+        if shot.get("ok") is False:
+            method = str(shot.get("method") or "failed")
+            break
+    parts = []
+    if status and status not in {"captured", "dry-run"}:
+        parts.append(status)
+    if method:
+        parts.append(method)
+    return ":".join(parts)
+
+
+def planned_names(*manifests: dict, files: set[str]) -> list[str]:
+    names = set(files)
+    for manifest in manifests:
+        for screen in manifest.get("screens") or []:
+            text = str(screen)
+            names.add(text if text.endswith(".png") else f"{text}.png")
+        for shot in manifest.get("shots") or []:
+            if not isinstance(shot, dict):
+                continue
+            if shot.get("file"):
+                names.add(str(shot["file"]))
+            elif shot.get("id"):
+                names.add(f"{shot['id']}.png")
+    return sorted(names)
+
+
+def pair_reason(before_missing: bool, after_missing: bool, before_detail: str, after_detail: str) -> str | None:
+    if before_missing and after_missing:
+        if before_detail and before_detail == after_detail:
+            return f"missing:{before_detail}"
+        if before_detail or after_detail:
+            return f"missing:{before_detail or 'missing'}|{after_detail or 'missing'}"
+        return "missing"
+    if before_missing:
+        return f"missing-before:{before_detail}" if before_detail else "missing-before"
+    if after_missing:
+        return f"missing-after:{after_detail}" if after_detail else "missing-after"
+    return None
 
 
 def side_by_side(panels: list[tuple[int, int, bytes]], gap: int = 4) -> tuple[int, int, bytes]:
@@ -314,13 +393,23 @@ def render_summary(report: dict) -> str:
 
 
 def build_report(before: Path, after: Path, out: Path, tokens: dict, threshold: float) -> dict:
-    names = sorted(png_names(before) | png_names(after))
+    before_manifest = load_manifest(before)
+    after_manifest = load_manifest(after)
+    names = planned_names(before_manifest, after_manifest, files=png_names(before) | png_names(after))
     pairs = []
     for name in names:
+        stem = Path(name).stem
         before_path = before / name if (before / name).is_file() else None
         after_path = after / name if (after / name).is_file() else None
         diff_path = out / "diff" / name
-        result = compare_pair(before_path, after_path, diff_path, threshold)
+        explained = pair_reason(
+            before_path is None, after_path is None,
+            shot_reason(before_manifest, stem), shot_reason(after_manifest, stem),
+        )
+        if explained is not None:
+            result = {"ratio": None, "deviation": True, "reason": explained}
+        else:
+            result = compare_pair(before_path, after_path, diff_path, threshold)
         before_panel = load_panel(before_path, 1, 1)
         after_panel = load_panel(after_path, before_panel[0], before_panel[1])
         diff_panel = load_panel(diff_path if diff_path.is_file() else None, before_panel[0], before_panel[1])
