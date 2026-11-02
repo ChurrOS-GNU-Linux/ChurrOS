@@ -23,6 +23,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Contributing](contributing.md) | Cómo contribuir, con o sin programar: flujo de trabajo, pruebas según el tipo de cambio, licencia de las contribuciones y uso de IA. |
 | [Principios](principios.md) | Los principios del proyecto y cómo se decide; todo PR se revisa contra ellos. |
 | [Pruebas](testing.md) | Capas de pruebas (`./churros test` y sus opciones), CI, problemas conocidos y autoprueba por mutaciones. |
+| [QA visual](qa-visual.md) | Clasificación de diffs que cambian la interfaz. No bloquea el merge. |
 | [Getting Started](getting-started.md) | Preparar el entorno de desarrollo en Arch u otra distro (con contenedor). |
 | [CLI](cli.md) | Referencia de `./churros` (build, run, check, test, rust, apps, doctor, cluster, clean). |
 | [VM](vm.md) | Probar la ISO en QEMU/KVM. |
