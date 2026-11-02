@@ -186,24 +186,28 @@ def load_manifest(directory: Path) -> dict:
 
 
 def shot_reason(manifest: dict, stem: str) -> str:
+    """Causa si esa pantalla quedó ok:false. Un PNG en disco no la absuelve."""
     status = str(manifest.get("status") or "")
-    method = ""
+    found = None
     for shot in manifest.get("shots") or []:
         if not isinstance(shot, dict):
             continue
         shot_id = str(shot.get("id") or "")
         shot_file = Path(str(shot.get("file") or "")).stem
-        if shot_id != stem and shot_file != stem:
-            continue
-        if shot.get("ok") is False:
-            method = str(shot.get("method") or "failed")
+        if shot_id == stem or shot_file == stem:
+            found = shot
             break
-    parts = []
+    if found is None:
+        screens = {str(screen).removesuffix(".png") for screen in manifest.get("screens") or []}
+        if stem in screens and status and status not in {"captured", "dry-run"}:
+            return status
+        return ""
+    if found.get("ok") is not False:
+        return ""
+    method = str(found.get("method") or "failed")
     if status and status not in {"captured", "dry-run"}:
-        parts.append(status)
-    if method:
-        parts.append(method)
-    return ":".join(parts)
+        return f"{status}:{method}"
+    return method
 
 
 def planned_names(*manifests: dict, files: set[str]) -> list[str]:
@@ -223,6 +227,12 @@ def planned_names(*manifests: dict, files: set[str]) -> list[str]:
 
 
 def pair_reason(before_missing: bool, after_missing: bool, before_detail: str, after_detail: str) -> str | None:
+    if not before_missing and not after_missing:
+        if not before_detail and not after_detail:
+            return None
+        if before_detail and before_detail == after_detail:
+            return f"failed:{before_detail}"
+        return f"failed:{before_detail or 'ok'}|{after_detail or 'ok'}"
     if before_missing and after_missing:
         if before_detail and before_detail == after_detail:
             return f"missing:{before_detail}"
@@ -230,10 +240,14 @@ def pair_reason(before_missing: bool, after_missing: bool, before_detail: str, a
             return f"missing:{before_detail or 'missing'}|{after_detail or 'missing'}"
         return "missing"
     if before_missing:
-        return f"missing-before:{before_detail}" if before_detail else "missing-before"
-    if after_missing:
-        return f"missing-after:{after_detail}" if after_detail else "missing-after"
-    return None
+        reason = f"missing-before:{before_detail}" if before_detail else "missing-before"
+        if after_detail:
+            reason = f"{reason};after:{after_detail}"
+        return reason
+    reason = f"missing-after:{after_detail}" if after_detail else "missing-after"
+    if before_detail:
+        reason = f"{reason};before:{before_detail}"
+    return reason
 
 
 def side_by_side(panels: list[tuple[int, int, bytes]], gap: int = 4) -> tuple[int, int, bytes]:
@@ -407,7 +421,7 @@ def build_report(before: Path, after: Path, out: Path, tokens: dict, threshold: 
             shot_reason(before_manifest, stem), shot_reason(after_manifest, stem),
         )
         if explained is not None:
-            result = {"ratio": None, "deviation": True, "reason": explained}
+            result = {"ratio": None, "deviation": True, "reason": explained, "palette": []}
         else:
             result = compare_pair(before_path, after_path, diff_path, threshold)
         before_panel = load_panel(before_path, 1, 1)
@@ -436,7 +450,8 @@ def build_report(before: Path, after: Path, out: Path, tokens: dict, threshold: 
                 shots.append(("después", rgb, width, height))
             except (OSError, ValueError):
                 pass
-        result["palette"] = palette_findings(name, shots, tokens)
+        if "palette" not in result:
+            result["palette"] = palette_findings(name, shots, tokens)
         pairs.append(result)
     palette_items = [item for pair in pairs for item in pair.get("palette", [])]
     payload = {

@@ -159,6 +159,60 @@ class PixelReport(unittest.TestCase):
         flagged = report.palette_findings("grub.png", [("antes", branded, 2, 2)], tokens)
         self.assertTrue(any("Arch" in item["text"] and item["status"] == "deviation" for item in flagged))
 
+    def test_failed_shot_is_not_ok_when_the_png_exists(self):
+        tokens = {"colors": [], "fonts": [], "metrics": {}, "conflicts": []}
+        rgb = bytes((0x11, 0x18, 0x27)) * 4
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "before"
+            after = root / "after"
+            before.mkdir()
+            after.mkdir()
+            imageutil.write_png(before / "desktop.png", 2, 2, rgb)
+            imageutil.write_png(after / "desktop.png", 2, 2, rgb)
+            imageutil.write_png(before / "bar.png", 2, 2, rgb)
+            shot = {"id": "desktop", "ok": False, "method": "wrong-resolution:1600x1040", "file": "desktop.png"}
+            manifest = {"status": "capture-failed", "screens": ["desktop", "bar"], "shots": [shot]}
+            (before / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (after / "manifest.json").write_text(json.dumps({
+                "status": "captured",
+                "screens": ["desktop", "bar"],
+                "shots": [],
+            }), encoding="utf-8")
+            payload = report.build_report(before, after, root / "report", tokens, 0.01)
+        by_name = {pair["name"]: pair for pair in payload["pairs"]}
+        self.assertIn("wrong-resolution", by_name["desktop.png"]["reason"])
+        self.assertTrue(by_name["desktop.png"]["deviation"])
+        self.assertIsNone(by_name["desktop.png"]["ratio"])
+        self.assertIn("bar.png", by_name)
+        self.assertIn("capture-failed", by_name["bar.png"]["reason"])
+
+    def test_missing_after_mentions_the_before_failure(self):
+        tokens = {"colors": [], "fonts": [], "metrics": {}, "conflicts": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "before"
+            after = root / "after"
+            before.mkdir()
+            after.mkdir()
+            imageutil.write_png(before / "desktop.png", 2, 2, bytes((0x11, 0x18, 0x27)) * 4)
+            (before / "manifest.json").write_text(json.dumps({
+                "status": "capture-failed",
+                "screens": ["desktop"],
+                "shots": [{"id": "desktop", "ok": False, "method": "wrong-resolution:1600x1040", "file": "desktop.png"}],
+            }), encoding="utf-8")
+            (after / "manifest.json").write_text(json.dumps({
+                "status": "capture-failed",
+                "screens": ["desktop"],
+                "shots": [{"id": "desktop", "ok": False, "method": "no-graphical-session", "file": "desktop.png"}],
+            }), encoding="utf-8")
+            payload = report.build_report(before, after, root / "report", tokens, 0.01)
+        reason = payload["pairs"][0]["reason"]
+        self.assertIn("missing-after", reason)
+        self.assertIn("before:", reason)
+        self.assertIn("wrong-resolution", reason)
+        self.assertIn("no-graphical-session", reason)
+
 
 class CommentScript(unittest.TestCase):
     def test_without_a_pull_request_it_does_not_call_github(self):
