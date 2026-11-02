@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
 from tests import testlib
@@ -183,6 +184,7 @@ class Classify(unittest.TestCase):
         decision = self.run_classify(["rust/preferences/src/window.rs"], jev=jev, haiku=haiku)
         self.assertTrue(decision.visual)
         self.assertEqual(decision.decider, "unresolved-default-visual")
+        self.assertEqual(decision.model, "none")
         joined = "\n".join(self.logs)
         self.assertIn("jev error=http-503", joined)
         self.assertIn("decider=unresolved-default-visual visual=true", joined)
@@ -200,7 +202,12 @@ class Classify(unittest.TestCase):
         )
         self.assertTrue(decision.visual)
         self.assertEqual(decision.decider, "unresolved-default-visual")
+        self.assertEqual(decision.model, "none")
         self.assertIn("error=no-key", "\n".join(self.logs))
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github-output.txt"
+            classify_mod.write_github_output(output, decision)
+            self.assertIn("model=none\n", output.read_text(encoding="utf-8"))
 
     def test_non_visual_without_keys_stays_false(self):
         decision = classify_mod.classify(

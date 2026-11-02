@@ -50,9 +50,9 @@ exacto con el umbral (0.8) se acepta a Jev: solo un valor menor escala.
 
 Si no hay clave (una pull request desde un fork no recibe los secrets) o
 Jev y Haiku fallan, un diff ambiguo sale `visual=true` con
-`decider=unresolved-default-visual`. Así no se salta la QA. Una ruta que
-las reglas ya descartan sigue en `visual=false`. El script sale con 0.
-Una invocación mal formada sale con 2.
+`decider=unresolved-default-visual` y `model=none` (no una cadena vacía).
+Así no se salta la QA. Una ruta que las reglas ya descartan sigue en
+`visual=false`. El script sale con 0. Una invocación mal formada sale con 2.
 
 El job lleva `continue-on-error: true`. No publica un commit status propio
 y no debe añadirse a los checks requeridos de `main`: un fallo de la API o
