@@ -226,7 +226,20 @@ def planned_names(*manifests: dict, files: set[str]) -> list[str]:
     return sorted(names)
 
 
+def _unify_boot_absence(before_detail: str, after_detail: str) -> tuple[str, str]:
+    """Plymouth ausente es una sola causa aunque el estado del job no coincida."""
+    def bare(detail: str) -> str:
+        if detail == "not-in-boot" or detail.endswith(":not-in-boot"):
+            return "not-in-boot"
+        return detail
+
+    if bare(before_detail) == "not-in-boot" and bare(after_detail) == "not-in-boot":
+        return "not-in-boot", "not-in-boot"
+    return before_detail, after_detail
+
+
 def pair_reason(before_missing: bool, after_missing: bool, before_detail: str, after_detail: str) -> str | None:
+    before_detail, after_detail = _unify_boot_absence(before_detail, after_detail)
     if not before_missing and not after_missing:
         if not before_detail and not after_detail:
             return None

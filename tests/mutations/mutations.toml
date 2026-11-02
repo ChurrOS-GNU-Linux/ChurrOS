@@ -2735,3 +2735,12 @@ caught_by = "tests.static.test_visual_capture"
 expect = "same-as-desktop"
 why = "OpenCode can save the desktop under the launcher name. assess only checks that the PNG is graphical."
 
+[[mutation]]
+name = "visual qa: plymouth absence keeps both job statuses"
+file = "scripts/qa/visual/report.py"
+find = "before_detail, after_detail = _unify_boot_absence(before_detail, after_detail)"
+replace = "before_detail, after_detail = before_detail, after_detail"
+caught_by = "tests.static.test_visual_report"
+expect = "missing:not-in-boot"
+why = "A captured side and a capture-failed side must not report plymouth as two different reasons."
+

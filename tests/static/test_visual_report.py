@@ -140,6 +140,28 @@ class PixelReport(unittest.TestCase):
         self.assertIn("not-in-boot", by_name["plymouth.png"]["reason"])
         self.assertTrue(by_name["plymouth.png"]["deviation"])
 
+    def test_plymouth_absence_is_one_reason_when_job_status_differs(self):
+        tokens = {"colors": [], "fonts": [], "metrics": {}, "conflicts": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "before"
+            after = root / "after"
+            before.mkdir()
+            after.mkdir()
+            (before / "manifest.json").write_text(json.dumps({
+                "status": "captured",
+                "screens": ["plymouth"],
+                "shots": [{"id": "plymouth", "ok": False, "method": "not-in-boot", "file": "plymouth.png"}],
+            }), encoding="utf-8")
+            (after / "manifest.json").write_text(json.dumps({
+                "status": "capture-failed",
+                "screens": ["plymouth"],
+                "shots": [{"id": "plymouth", "ok": False, "method": "not-in-boot", "file": "plymouth.png"}],
+            }), encoding="utf-8")
+            payload = report.build_report(before, after, root / "report", tokens, 0.01)
+        reason = payload["pairs"][0]["reason"]
+        self.assertEqual(reason, "missing:not-in-boot")
+
     def test_grub_flags_the_arch_logo(self):
         tokens = {
             "colors": [

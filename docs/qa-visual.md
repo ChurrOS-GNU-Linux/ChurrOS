@@ -205,6 +205,9 @@ aparecen en la pantalla, la lista lo marca como desviación. En GRUB
 también marca el azul del logo de Arch (`#1793D1`). Lee `manifest.json`
 de cada lado: un `ok: false` deja la pantalla fallida aunque el PNG
 exista. Un `missing-after` incluye también la causa del lado de antes.
+Si Plymouth no va en el arranque en los dos lados, la causa queda en
+una sola, `missing:not-in-boot`, aunque un job esté en `captured` y el
+otro en `capture-failed`.
 Una pantalla del plan que no tiene PNG en ningún lado sigue en el informe. Sube el
 artefacto `visual-qa-report-<sha>`.
 
