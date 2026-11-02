@@ -181,13 +181,36 @@ class Classify(unittest.TestCase):
             raise classify_mod.JevError("http-401")
 
         decision = self.run_classify(["rust/preferences/src/window.rs"], jev=jev, haiku=haiku)
-        self.assertFalse(decision.visual)
-        self.assertEqual(decision.decider, "unresolved")
+        self.assertTrue(decision.visual)
+        self.assertEqual(decision.decider, "unresolved-default-visual")
         joined = "\n".join(self.logs)
         self.assertIn("jev error=http-503", joined)
+        self.assertIn("decider=unresolved-default-visual visual=true", joined)
         self.assertIn("haiku error=http-401", joined)
         self.assertNotIn("typesafe-secret-value", joined)
         self.assertNotIn("anthropic-secret-value", joined)
+
+    def test_ambiguous_without_keys_defaults_to_visual(self):
+        """Un fork no tiene secrets: no hay red y el diff ambiguo es visual."""
+        decision = classify_mod.classify(
+            ["rust/preferences/src/theme.rs"],
+            typesafe_api_key="",
+            anthropic_api_key="",
+            log=self.log,
+        )
+        self.assertTrue(decision.visual)
+        self.assertEqual(decision.decider, "unresolved-default-visual")
+        self.assertIn("error=no-key", "\n".join(self.logs))
+
+    def test_non_visual_without_keys_stays_false(self):
+        decision = classify_mod.classify(
+            ["docs/testing.md"],
+            typesafe_api_key="",
+            anthropic_api_key="",
+            log=self.log,
+        )
+        self.assertFalse(decision.visual)
+        self.assertEqual(decision.decider, "rules")
 
     def test_exception_text_with_a_key_is_redacted(self):
         def jev(state, *, api_key, model):
