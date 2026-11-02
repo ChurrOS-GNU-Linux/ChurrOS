@@ -297,8 +297,8 @@ why = "A CRLF shebang (Windows editor or AI paste): the kernel looks for 'bash\\
 [[mutation]]
 name = "test_shell_scripts: A Calamares shellprocess step executes the sourced library"
 file = "installer/calamares/modules/shellprocess-cleanup.conf"
-find = "-/usr/share/churros/scripts/verify-install\""
-replace = "-/usr/share/churros/scripts/edition-session.sh\""
+find = "/usr/share/churros/scripts/verify-install\""
+replace = "/usr/share/churros/scripts/edition-session.sh\""
 caught_by = "tests.static.test_shell_scripts"
 expect = "[shebang:/usr/share/churros/scripts/edition-session.sh]"
 why = "A Calamares shellprocess step executes the sourced library."
@@ -1398,6 +1398,114 @@ why = "Hardcoded public DNS breaks builds on networks with internal DNS, local m
 # --- release ---
 
 [[mutation]]
+name = "test_privileged_helpers: el actualizador acepta manifiestos sin clave pública"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    [ -r \"$PUBKEY\" ] || die \"falta la clave pública de releases: $PUBKEY\"\n"
+replace = "    [ -r \"$PUBKEY\" ] || return 0\n"
+caught_by = "python3 scripts/test-privileged-helpers.py"
+expect = "test_without_pubkey_aborts"
+why = "Sin la clave pública, el hash del bundle procede del mismo manifiesto no autenticado y un origen comprometido instala código como root."
+
+[[mutation]]
+name = "test_privileged_helpers: el actualizador acepta un manifiesto firmado de otra arquitectura"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "if actual_arch != expected_arch:"
+replace = "if False:"
+caught_by = "python3 scripts/test-privileged-helpers.py"
+expect = "FAIL: test_parse_manifest"
+why = "Una firma válida no hace ejecutable un ELF x86_64 en aarch64 o i686; el cliente debe vincular manifiesto y arquitectura."
+
+[[mutation]]
+name = "test_shell_scripts: el servicio root vuelve a escribir su log en /tmp"
+file = "archiso/airootfs/usr/local/bin/churros-update-auto"
+find = "LOG=/var/log/churros-update.log"
+replace = "LOG=/tmp/churros-update.log"
+caught_by = "tests.static.test_shell_scripts"
+expect = "root-tmp-log"
+why = "churros-update.service corre como root: un log con ruta fija en /tmp permite a otro usuario preparar un enlace simbólico o competir por el fichero."
+
+[[mutation]]
+name = "test-polkit-rules: crear snapshots vuelve a no pedir contraseña"
+file = "archiso/airootfs/etc/polkit-1/rules.d/50-churros-store.rules"
+find = "[/^create manual$/, ADMIN_KEEP],"
+replace = "[/^create manual$/, YES],"
+caught_by = "node scripts/test-polkit-rules.js"
+expect = "create"
+why = "Cada creación rota los snapshots: sin contraseña, un proceso del usuario puede expulsar los puntos de restauración anteriores a una infección."
+
+[[mutation]]
+name = "test_privileged_helpers: pacman vuelve a quedar sin contraseña para wheel"
+file = "archiso/airootfs/etc/sudoers.d/99-churros-pacman"
+find = "%wheel ALL=(ALL:ALL) PASSWD: /usr/bin/pacman"
+replace = "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/pacman"
+caught_by = "python3 scripts/test-privileged-helpers.py"
+expect = "test_pacman_requires_authentication"
+why = "Pacman ejecuta hooks y scriptlets como root; NOPASSWD convierte cualquier proceso del usuario en una vía de escalada."
+
+[[mutation]]
+name = "test_editions: CachyOS vuelve a aceptar paquetes remotos sin firma"
+file = "archiso/pacman.x86_64.conf"
+find = "SigLevel = Required DatabaseOptional\nServer = https://us.cachyos.org"
+replace = "SigLevel = Optional TrustAll\nServer = https://us.cachyos.org"
+caught_by = "tests.static.test_editions"
+expect = "acepta paquetes sin firma"
+why = "HTTPS no sustituye la autenticación de paquetes si un mirror o su origen son comprometidos."
+
+[[mutation]]
+name = "test_build_dryrun: el build continúa con un repositorio global ajeno"
+file = "scripts/cli/build.sh"
+find = "    echo \"Error: /root/packages ya existe; se rechaza usar un repositorio que este build no creó.\" >&2\n    exit 1\n"
+replace = "    echo \"WARNING: /root/packages ya existe; se usará tal cual.\" >&2\n"
+caught_by = "tests.static.test_build_dryrun"
+expect = "test_preexisting_host_repository_is_rejected"
+why = "El repositorio local precede a los oficiales y admite paquetes sin firma; reutilizar una ruta global permite inyectar paquetes en la ISO."
+
+[[mutation]]
+name = "test_calamares_config: aarch64 deja de copiar el kernel que exige mkinitcpio"
+file = "installer/calamares/modules/aarch64/unpackfs.conf"
+find = "  - source: \"/run/archiso/bootmnt/churros/boot/aarch64/vmlinuz-linux-aarch64\"\n    sourcefs: \"file\"\n    destination: \"/boot/Image\"\n"
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "kver-missing"
+why = "El preset aarch64 usa ALL_kver=/boot/Image; sin esa copia publish-aarch64-kernel y mkinitcpio abortan la instalación."
+
+[[mutation]]
+name = "test_calamares_config: Calamares vuelve a ignorar un configure-server fallido"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "  - command: \"/usr/share/churros/scripts/configure-server\""
+replace = "  - command: \"-/usr/share/churros/scripts/configure-server\""
+caught_by = "tests.static.test_calamares_config"
+expect = "configure-server"
+why = "Si la purga o la habilitación de SSH falla, la instalación server no debe anunciar éxito."
+
+[[mutation]]
+name = "test_calamares_config: boot-nocow vuelve a ignorar el fallo de chattr"
+file = "installer/calamares/modules/shellprocess-boot-nocow.conf"
+find = 'then chattr +C +m \"${ROOT}/boot\" && btrfs'
+replace = 'then chattr +C +m \"${ROOT}/boot\" || true; btrfs'
+caught_by = "tests.static.test_calamares_config"
+expect = "boot-nocow"
+why = "En btrfs, continuar sin No_COW puede producir un kernel que GRUB no puede leer."
+
+[[mutation]]
+name = "churros-services: el estado de sesión vuelve a ser global en /tmp"
+file = "rust/services/src/lib.rs"
+find = "    let dir = base.join(\"churros\");"
+replace = "    let dir = PathBuf::from(\"/tmp/churros\");"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services runtime_state_is_private_and_scoped_to_the_session"
+expect = "runtime_state_is_private_and_scoped_to_the_session"
+why = "Un directorio global permite colisiones entre usuarios y ataques con enlaces simbólicos sobre pidfiles y logs."
+
+[[mutation]]
+name = "churros-services: los comandos cortos dejan de recogerse"
+file = "rust/services/src/lib.rs"
+find = "            std::thread::spawn(move || {\n                let _ = child.wait();\n            });\n"
+replace = "            drop(child);\n"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services spawned_short_command_is_reaped"
+expect = "spawned_short_command_is_reaped"
+why = "Descartar Child no hace wait en Rust; sliders y toggles acumulan procesos zombis hasta cerrar la aplicación."
+
+[[mutation]]
 name = "test_release_bundle: Trailing comma left in the updates"
 file = "scripts/build-churros-release.sh"
 find = "      \"sha256\": \"$SHA_XFCE\"\n"
@@ -1427,11 +1535,11 @@ why = "Valid TOML comment after deploy = true. The script's grep '^deploy = true
 [[mutation]]
 name = "test_release_bundle: Wrong cargo profile directory"
 file = "scripts/build-churros-release.sh"
-find = "    binary=\"$RUST_DIR/target/release/$crate_name\""
-replace = "    binary=\"$RUST_DIR/target/debug/$crate_name\""
+find = "    binary=\"$TARGET_RELEASE/$crate_name\""
+replace = "    binary=\"$TARGET_DIR/debug/$crate_name\""
 caught_by = "tests.static.test_release_bundle"
-expect = "release:crate:churros-"
-why = "Wrong cargo profile directory. Every binary is silently skipped and the script still reports success."
+expect = "cargo no produjo el binario desplegable"
+why = "Wrong cargo profile directory. The release script must abort instead of silently publishing a bundle without the freshly built binaries."
 
 [[mutation]]
 name = "test_release_bundle: Wrong checksum tool in the manifest"
@@ -1445,8 +1553,8 @@ why = "Wrong checksum tool in the manifest: the client rejects the sha256 and ne
 [[mutation]]
 name = "test_release_bundle: Binary destination changed"
 file = "scripts/build-churros-release.sh"
-find = "        cp \"$binary\" \"$STAGE/usr/bin/$crate_name\""
-replace = "        cp \"$binary\" \"$STAGE/usr/local/bin/$crate_name\""
+find = "    cp \"$binary\" \"$STAGE/usr/bin/$crate_name\""
+replace = "    cp \"$binary\" \"$STAGE/usr/local/bin/$crate_name\""
 caught_by = "tests.static.test_release_bundle"
 expect = "release:crate:churros-"
 why = "Binary destination changed. validate_tarball still accepts it, but /usr/bin/churros-* is never updated."
@@ -1678,6 +1786,15 @@ replace = "if false; then\n"
 caught_by = "tests.static.test_repo_wiring"
 expect = "no ejecuta actionlint"
 why = "sin actionlint en check.sh, un workflow roto pasa el chequeo estático"
+
+[[mutation]]
+name = "test_repo_wiring: las pruebas ISO dejan de bloquear pull requests"
+file = ".github/workflows/iso.yml"
+find = "  pull_request:\n    paths:\n"
+replace = "  workflow_run:\n    paths:\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "iso.yml no se ejecuta en pull requests"
+why = "Las pruebas estáticas no detectan paquetes ausentes, permisos efectivos ni sesiones que fallan dentro de la ISO real."
 
 [[mutation]]
 name = "test_repo_wiring: el job de checks desactiva el modo estricto"
@@ -1934,8 +2051,8 @@ expect = "setuid"
 why = "La auditoría de file_permissions compararía modos sin los bits especiales y daría por buenos permisos distintos de los declarados."
 
 [[mutation]]
-name = "test_references: una función en segundo plano del wrapper de sesión llama a un programa que no existe"
-file = "archiso/airootfs/usr/bin/churros-pi-session"
+name = "test_references: una función en segundo plano del autostart de labwc llama a un programa que no existe"
+file = "archiso/airootfs/etc/xdg/labwc/autostart"
 find_re = "^waybar (--config [^\\n]*)&$"
 replace = "keep_waybar() {\n    while true; do\n        waybarr \\1\n        sleep 1\n    done\n}\nkeep_waybar &"
 caught_by = "tests.static.test_references"
@@ -2570,6 +2687,78 @@ expect = "edition-pkg:xfce/x86_64:zram-generator"
 why = "Sin zram-generator, etc/systemd/zram-generator.conf no hace nada: la Live XFCE no tiene swap y un equipo de 2 GB puede quedarse sin memoria en unpackfs."
 
 [[mutation]]
+name = "test_editions: aarch64 pierde zram-generator"
+file = "archiso/packages.aarch64"
+find = "zram-generator\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "edition-pkg:niri/aarch64:zram-generator"
+why = "La configuración de zram es inerte sin el generador y unpackfs puede agotar una máquina ARM de 2 GB."
+
+[[mutation]]
+name = "test_editions: la Live vuelve a guardar coredumps externos en RAM"
+file = "archiso/airootfs/etc/systemd/coredump.conf.d/churros-live.conf"
+find = "Storage=none"
+replace = "Storage=external"
+caught_by = "tests.static.test_editions"
+expect = "test_live_coredumps_do_not_consume_the_ram_overlay"
+why = "Un único proceso grande que aborte puede llenar la capa escribible en RAM de una Live con 2 GB."
+
+[[mutation]]
+name = "test_editions: el Tour vuelve a apuntar a un icono inexistente"
+file = "archiso/airootfs/usr/share/applications/churros-tour.desktop"
+find = "Icon=churros-welcome"
+replace = "Icon=org.churros.Welcome"
+caught_by = "tests.static.test_editions"
+expect = "icono inexistente"
+why = "El lanzador aparece sin identidad visual en menús que no resuelven el nombre inexistente."
+
+[[mutation]]
+name = "test_supply_chain: Bazaar vuelve a descargar un PKGBUILD desde main"
+file = "scripts/build-bazaar.sh"
+find = "/-/raw/7f7069be70d66c263f83c8b729fc988f62de4ea4/$f"
+replace = "/-/raw/main/$f"
+caught_by = "tests.static.test_supply_chain"
+expect = "rama mutable"
+why = "Una rama mutable permite que un cambio remoto no revisado se ejecute durante el build privilegiado."
+
+[[mutation]]
+name = "test_control_center_network: los refrescos vuelven a solaparse"
+file = "rust/control-center/src/widgets/window.rs"
+find = "        if self.refresh_in_flight.replace(true) {\n            return;\n        }\n"
+replace = ""
+caught_by = "tests.static.test_control_center_network"
+expect = "refresh-overlap"
+why = "Cada timer puede crear más threads mientras NetworkManager o Bluetooth siguen respondiendo y un resultado antiguo pisa al nuevo."
+
+[[mutation]]
+name = "churros-services: el timeout vuelve a matar solo al hijo directo"
+file = "rust/services/src/lib.rs"
+find = "            libc::kill(-(child.id() as i32), libc::SIGKILL);"
+replace = "            libc::kill(child.id() as i32, libc::SIGKILL);"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services test_run_deadline_kills_descendants"
+expect = "test_run_deadline_kills_descendants"
+why = "Los descendientes pueden conservar pipes y locks o continuar una operación privilegiada después del timeout."
+
+[[mutation]]
+name = "test_control_center_network: el botón vuelve a permitir actualizaciones concurrentes"
+file = "rust/preferences/src/pages/update.rs"
+find = "    if !button.is_sensitive() {\n        return;\n    }\n    button.set_sensitive(false);\n    set_log(log_view, \"\");"
+replace = "    set_log(log_view, \"\");"
+caught_by = "tests.static.test_control_center_network"
+expect = "updates:concurrent"
+why = "Dos pacman -Syu compiten por el lock y las fases Flatpak/utilidades pueden ejecutarse simultáneamente."
+
+[[mutation]]
+name = "test_control_center_network: las actualizaciones vuelven a esperar sin deadline"
+file = "rust/preferences/src/services/update.rs"
+find = "        match rx.recv_timeout(Duration::from_millis(100)) {"
+replace = "        match rx.recv() {"
+caught_by = "tests.static.test_control_center_network"
+expect = "updates:no-deadline"
+why = "Pacman, Flatpak o pkexec pueden quedar bloqueados y mantener el worker y la UI en estado Running para siempre."
+
+[[mutation]]
 name = "test_editions: calamares wrapper pierde DISPLAY en preserve-env"
 file = "archiso/airootfs/usr/local/bin/calamares"
 find = "--preserve-env=DISPLAY,"
@@ -2640,4 +2829,3 @@ replace = 'sudo env CHURROS_ARCH="$TARGET_ARCH" mkarchiso -v \'
 caught_by = "tests.static.test_supply_chain"
 expect = "[reproducible:build-sudo-env]"
 why = "sudo env resets the environment; SOURCE_DATE_EPOCH must be forwarded to mkarchiso."
-

@@ -71,11 +71,10 @@ class ServiceDeadlineTests(unittest.TestCase):
     def test_failure_reaps_child_and_pipes_are_owned(self):
         self.assertIn("let mut out_pipe = child.stdout.take()?;", self.run_code)
         self.assertIn("let mut err_pipe = child.stderr.take()?;", self.run_code)
-        self.assertIn(
-            "})(); if result.is_none() { let _ = child.kill(); let _ = child.wait(); } result }",
-            self.run_code,
-            "[service-deadline:cleanup]",
-        )
+        self.assertIn("if result.is_none()", self.run_code, "[service-deadline:cleanup]")
+        self.assertIn("libc::kill(-(child.id() as i32), libc::SIGKILL)", self.run_code,
+                      "[service-deadline:process-group]")
+        self.assertIn("let _ = child.wait();", self.run_code, "[service-deadline:cleanup]")
         self.assertNotRegex(self.run_code, r"into_raw_fd|mem::forget")
         self.assertIn("String::from_utf8(stdout).ok()?", self.run_code)
         self.assertIn("String::from_utf8(stderr).ok()?", self.run_code)

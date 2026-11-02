@@ -18,11 +18,61 @@ pub mod waybar_style;
 pub mod wifi;
 
 use std::ffi::CStr;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+fn runtime_dir_at(base: &Path) -> io::Result<PathBuf> {
+    let dir = base.join("churros");
+    match std::fs::symlink_metadata(&dir) {
+        Ok(meta) if !meta.file_type().is_dir() => {
+            return Err(io::Error::other("el runtime de ChurrOS no es un directorio"));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => std::fs::create_dir(&dir)?,
+        Err(error) => return Err(error),
+    }
+    let meta = std::fs::symlink_metadata(&dir)?;
+    if meta.uid() != unsafe { libc::geteuid() } {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "el runtime de ChurrOS pertenece a otro usuario",
+        ));
+    }
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(dir)
+}
+
+/// Directorio privado de estado efímero para la sesión gráfica actual.
+pub fn runtime_dir() -> io::Result<PathBuf> {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::other("XDG_RUNTIME_DIR no está definido"))?;
+    runtime_dir_at(&base)
+}
+
+/// Abre un fichero privado del runtime sin seguir enlaces simbólicos.
+pub fn open_runtime_file(name: &str, append: bool) -> io::Result<(PathBuf, File)> {
+    if name.is_empty() || name.contains('/') || name == "." || name == ".." {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "nombre de estado inválido"));
+    }
+    let path = runtime_dir()?.join(name);
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .append(append)
+        .truncate(!append)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&path)?;
+    Ok((path, file))
+}
 
 /// HOME del usuario efectivo; si la variable no existe o está vacía, se consulta
 /// la base de datos de usuarios (passwd) por el UID efectivo mediante libc::getpwuid
@@ -101,9 +151,9 @@ fn read_capture(pipe: &mut impl Read, output: &mut Vec<u8>) -> io::Result<bool> 
 /// Ejecuta un comando capturando stdout/stderr, con timeout opcional.
 /// El plazo cubre el hijo y ambos EOF (también pipes heredados por descendientes).
 /// Con timeout 0 espera sin límite. Devuelve None ante errores de ejecución,
-/// captura, UTF-8 o timeout; en esos casos mata y recoge el hijo directo.
-/// No mata descendientes: cierra los lectores sin dejar threads bloqueados.
+/// captura, UTF-8 o timeout; en esos casos mata el grupo y recoge el hijo.
 pub fn run(cmd: &[&str], timeout_ms: u64) -> Option<RunOut> {
+    let (program, args) = cmd.split_first()?;
     if dev::enabled() && dev::is_mutation(cmd) {
         dev::log_blocked(cmd);
         return Some((0, String::new(), String::new()));
@@ -111,8 +161,9 @@ pub fn run(cmd: &[&str], timeout_ms: u64) -> Option<RunOut> {
 
     let started = Instant::now();
     let timeout = (timeout_ms > 0).then(|| Duration::from_millis(timeout_ms));
-    let mut child = Command::new(cmd[0])
-        .args(&cmd[1..])
+    let mut child = Command::new(program)
+        .args(args)
+        .process_group(0)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -189,26 +240,42 @@ pub fn run(cmd: &[&str], timeout_ms: u64) -> Option<RunOut> {
     })();
 
     if result.is_none() {
-        let _ = child.kill();
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGKILL);
+        }
         let _ = child.wait();
     }
     result
 }
 
-/// Ejecuta un comando al vuelo (fire-and-forget, equivale a subprocess.Popen).
-pub fn spawn(cmd: &[&str]) {
+/// Ejecuta un comando al vuelo y recoge el hijo al terminar para no dejar zombis.
+pub fn spawn(cmd: &[&str]) -> Option<u32> {
+    let Some((program, args)) = cmd.split_first() else {
+        eprintln!("churros-services: comando vacío");
+        return None;
+    };
     if dev::enabled() {
         dev::log_blocked(cmd);
-        return;
+        return None;
     }
 
-    if let Err(e) = Command::new(cmd[0])
-        .args(&cmd[1..])
+    match Command::new(program)
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
     {
-        eprintln!("churros-services: no se pudo lanzar {:?}: {}", cmd, e);
+        Ok(mut child) => {
+            let pid = child.id();
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            Some(pid)
+        }
+        Err(error) => {
+            eprintln!("churros-services: no se pudo lanzar {:?}: {}", cmd, error);
+            None
+        }
     }
 }
 
@@ -290,6 +357,24 @@ mod tests {
     #[test]
     fn test_run_deadline_child_with_inherited_pipes() {
         assert_run_deadline("sleep 2 & wait");
+    }
+
+    #[test]
+    fn test_run_deadline_kills_descendants() {
+        let pid_file = std::env::temp_dir().join(format!("churros-run-child-{}", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let script = format!("sleep 30 & echo $! > '{}'; wait", pid_file.display());
+        assert!(run(&["sh", "-c", &script], 100).is_none());
+        let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+        for _ in 0..100 {
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                let _ = std::fs::remove_file(pid_file);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = std::fs::remove_file(pid_file);
+        panic!("el descendiente {pid} sobrevivió al timeout");
     }
 
     #[test]
@@ -375,5 +460,45 @@ mod tests {
     fn test_session_env_contains_runtime_dir() {
         let env = session_env();
         assert!(env.iter().any(|(k, _)| k == "XDG_RUNTIME_DIR"));
+    }
+
+    #[test]
+    fn runtime_state_is_private_and_scoped_to_the_session() {
+        let base = std::env::temp_dir().join(format!("churros-runtime-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir(&base).unwrap();
+        let dir = runtime_dir_at(&base).unwrap();
+        assert_eq!(dir, base.join("churros"));
+        assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn runtime_state_rejects_a_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!("churros-runtime-link-test-{}", std::process::id()));
+        let target = std::env::temp_dir().join(format!("churros-runtime-target-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&target);
+        std::fs::create_dir(&base).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, base.join("churros")).unwrap();
+        assert!(runtime_dir_at(&base).is_err());
+        std::fs::remove_dir_all(base).unwrap();
+        std::fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
+    fn spawned_short_command_is_reaped() {
+        let pid = spawn(&["sh", "-c", "exit 0"]).unwrap();
+        let proc_path = PathBuf::from(format!("/proc/{pid}"));
+        for _ in 0..100 {
+            if !proc_path.exists() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("el proceso {pid} terminó pero no fue recogido");
     }
 }

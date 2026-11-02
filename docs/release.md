@@ -110,10 +110,13 @@ Los web seeds solo funcionan si el fichero subido en el paso 5 se llama igual y 
 ### 7. Bundle OTA
 
 ```bash
+export CHURROS_RELEASE_SECRET_KEY=/ruta/segura/churros-release.key
 ./scripts/build-churros-release.sh x86_64
 ```
 
-Compila las apps con el cargo del equipo (no usa el contenedor) y deja en `release/x86_64/` `churros-utils-X.Y-x86_64.tar.zst`, dos copias idénticas por edición (`churros-utils-niri-…` y `churros-utils-xfce-…`) y `updates.json`; en x86_64 copia además ese manifiesto a `release/updates.json`. Sube los tres `.tar.zst` y `release/updates.json` a `https://download.churroslinux.org/churros/`.
+La clave privada minisign no se guarda en el repositorio ni en la máquina de build de forma permanente: se conserva cifrada en el gestor de secretos del proyecto y solo se expone durante la publicación. La clave pública fijada en la ISO es `archiso/airootfs/usr/share/churros/churros-release.pubkey`, con identificador `7E53502CD2747C80`. Rotarla exige publicar antes una ISO nueva que confíe en la clave sustituta.
+
+El script aborta si no puede leer la clave o no encuentra `minisign`. Compila para la arquitectura solicitada y deja en `release/<arch>/` los bundles, `updates.json` y `updates.json.minisig`. Sube el contenido completo de ese directorio a `https://download.churroslinux.org/churros/<arch>/`. El cliente selecciona su arquitectura, valida también el campo `arch` y verifica la firma antes de interpretar versión, nombres o hashes; falla cerrado si falta cualquier pieza.
 
 El bundle lleva los binarios Rust con `deploy = true`, los scripts `churros-*` de `/usr/bin` y `/usr/local/bin`, el hook de pacman `50-churros-snapshot.hook`, `/usr/share/churros/` y `/etc/churros-version`. El manifiesto tiene esta forma:
 
@@ -133,8 +136,6 @@ El bundle lleva los binarios Rust con `deploy = true`, los scripts `churros-*` d
 
 Los sistemas instalados lo ven al buscar actualizaciones en Ajustes; el cliente elige el fichero de su edición y, si no la encuentra, el de `niri`. Limitaciones conocidas:
 
-- Solo x86_64: Ajustes y `churros-update-utils` leen siempre `/churros/updates.json`, que es el manifiesto x86_64. Un sistema aarch64 o i686 recibiría binarios x86_64.
-- El manifiesto no está firmado: no hay clave minisign publicada y el cliente solo comprueba el sha256 que viene del mismo servidor ([#139](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/139), [#141](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/141)).
 - La instalación automática desde el timer de usuario falla porque pkexec pide contraseña ([#142](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/142)).
 
 Después de subirlo, comprueba la actualización desde un sistema instalado con la versión anterior.
@@ -157,7 +158,7 @@ La ISO redistribuye programas con licencia GPL, así que las notas del release i
 
 - Código de ChurrOS: el tag `vX.Y` del repositorio (perfil archiso, scripts, apps Rust, configuración de Calamares y los parches de `installer/patches/`).
 - Paquetes de Arch Linux sin cambios: [sources.archlinux.org](https://sources.archlinux.org/sources/packages/). Las ISO aarch64 e i686, que hoy no se publican, usan paquetes de Arch Linux ARM y Arch Linux 32: si se publican, las notas tienen que indicar dónde están las fuentes de esos paquetes.
-- Paquetes recompilados en local (repositorio `[churros]`: calamares con parches, bazaar, yay, wlogout, python-pywal y, en aarch64, libdex): hay que publicar junto a la ISO el PKGBUILD exacto con el que se compilaron y sus fuentes (`makepkg --allsource` genera un `.src.tar.gz` con ambos). Hoy `build-calamares.sh`, `build-aur.sh` y `build-bazaar.sh` descargan la última versión del AUR o de Arch sin fijar commit y borran su directorio de trabajo al terminar, así que este punto no se puede cumplir sin cambiar esos scripts.
+- Paquetes recompilados en local (repositorio `[churros]`: calamares con parches, bazaar, yay, wlogout, python-pywal y, en aarch64, libdex): publica junto a la ISO el PKGBUILD exacto y sus fuentes (`makepkg --allsource`). Los scripts fijan la revisión remota; actualizarla exige revisar el diff del PKGBUILD y cambiar el commit en el mismo PR.
 
 Las licencias de cada componente están en [Licencias](licencias.md).
 

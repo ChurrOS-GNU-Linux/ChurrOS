@@ -16,35 +16,6 @@
 
 # --- tests/static/test_release_bundle.py ---
 
-[[issue]]
-id = "release:manifest:files:updates.json"
-note = "build-churros-release.sh x86_64 copia release/x86_64/updates.json a release/updates.json («alias para clientes antiguos»), pero los bundles que nombra se quedan en release/x86_64/. churros-update-utils descarga ${BASE}<file> del mismo directorio que ${BASE}updates.json: si se publica release/ tal cual en download.churroslinux.org/churros/, todas las instalaciones fallan con 'descarga fallida' (404). Solo funciona si alguien copia a mano los bundles x86_64 a la raíz, y entonces aarch64/i686 reciben x86_64 (release:client:arch:*)."
-
-[[issue]]
-id = "release:bundle-elf:aarch64"
-note = "build-churros-release.sh aarch64 solo usa la arquitectura para nombrar el bundle: `cargo build --release` va sin --target, compila para el equipo que publica y el script copia rust/target/release/*. churros-utils-*-aarch64.tar.zst lleva binarios x86_64 (o los de la máquina donde se genere)."
-
-[[issue]]
-id = "release:bundle-elf:i686"
-note = "build-churros-release.sh i686 solo usa la arquitectura para nombrar el bundle: `cargo build --release` va sin --target, compila para el equipo que publica y el script copia rust/target/release/*. churros-utils-*-i686.tar.zst lleva binarios x86_64 (o los de la máquina donde se genere)."
-
-[[issue]]
-id = "release:client:arch:aarch64"
-note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}updates.json (el alias x86_64 que deja build-churros-release.sh), ignora su campo 'arch' y validate_tarball no comprueba la máquina ELF. Una instalación aarch64 que use «Actualizar utilidades» de Ajustes o churros-update-auto instala churros-settings, churros-welcome... x86_64 en /usr/bin y las apps dejan de arrancar (Exec format error). aa8a233 leía ${BASE}${ARCH}/updates.json y comprobaba 'arch'; el cliente actual ya no."
-
-[[issue]]
-id = "release:client:arch:i686"
-note = "churros-update-utils no mira la arquitectura: descarga siempre ${BASE}updates.json (el alias x86_64 que deja build-churros-release.sh), ignora su campo 'arch' y validate_tarball no comprueba la máquina ELF. Una instalación i686 que use «Actualizar utilidades» de Ajustes o churros-update-auto instala churros-settings, churros-welcome... x86_64 en /usr/bin y las apps dejan de arrancar (Exec format error)."
-
-
-[[issue]]
-id = "release:cargo-target-dir:stale-binaries"
-note = "build-churros-release.sh busca los binarios en rust/target/release aunque CARGO_TARGET_DIR (lo exporta scripts/lib/container.sh; build-rust.sh sí lo respeta) mande la compilación a otro directorio, y `[ -x \"$binary\" ]` salta sin error lo que no encuentra: el bundle sale con los binarios de una compilación anterior, o sin ellos, y el script dice «listo»."
-
-[[issue]]
-id = "release:signing:unsigned-manifest"
-note = "No hay /usr/share/churros/churros-release.pubkey en el airootfs ni en el bundle, build-churros-release.sh no firma y minisign no está en ninguna lista de paquetes (TODO #139, #141 en churros-update-utils). verify_manifest solo avisa por stdout y sigue: quien controle lo que sirve download.churroslinux.org/churros/ instala ficheros como root en /usr/bin de todas las instalaciones, porque el sha256 del bundle viene del mismo manifiesto sin autenticar."
-
 # --- test_calamares_config ---
 
 [[issue]]
@@ -58,14 +29,6 @@ note = "Igual que en modules/shellprocess-fixboot.conf: los módulos virtio_* qu
 [[issue]]
 id = "calamares-sequence:initcpiocfg-overwrites:modules/i686/shellprocess-fixboot.conf"
 note = "Igual que en modules/shellprocess-fixboot.conf (la copia i686; hoy i686 se construye sin Calamares)."
-
-[[issue]]
-id = "calamares-sim:fix-boot:aarch64:command-fails:publish-aarch64-kernel"
-note = "fix-boot en aarch64 termina con '/usr/share/churros/scripts/publish-aarch64-kernel --require' (sin '-'), que exige /boot/Image en el destino. mkarchiso vacía /boot del squashfs (_cleanup_pacstrap_dir) y modules/aarch64/unpackfs.conf solo copia vmlinuz-linux-aarch64 e initramfs-linux-aarch64.img, así que el comando sale con 1 y la instalación aarch64 se aborta en fix-boot. Arreglo: copiar también el kernel del ISO a /boot/Image en aarch64/unpackfs.conf, o no usar --require en el destino."
-
-[[issue]]
-id = "calamares-sim:fix-boot:aarch64:kver-missing:linux-aarch64.preset"
-note = "Mismo origen: el preset instalado deja ALL_kver='/boot/Image', que no existe en el destino. Aunque fix-boot pasara, 'mkinitcpio -P' (paso initcpio) saldría con 'specified kernel image does not exist'. Arreglo: el de calamares-sim:fix-boot:aarch64:command-fails, o ALL_kver='/boot/vmlinuz-linux-aarch64' en el sistema instalado."
 
 [[issue]]
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
@@ -124,28 +87,4 @@ note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_sta
 id = "ref:niri/aarch64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
 
-[[issue]]
-id = "boot-server-x86_64:coredump:light-locker"
-note = "En la sesión Live de server (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar la sesión: SIGABRT en dbus_message_append_args (libdbus) con un argumento NULL. light-locker solo funciona con LightDM (pide la sesión por XDG_SESSION_PATH) y ChurrOS usa greetd, así que nunca bloqueó la pantalla. Decidir el bloqueador (xfce4-screensaver, que xflock4 ya usa si está) y quitar light-locker de la lista."
-
-[[issue]]
-id = "boot-xfce-x86_64:coredump:light-locker"
-note = "Misma causa que boot-server-x86_64:coredump:light-locker (misma sesión XFCE con greetd): en la sesión Live de XFCE (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar con SIGABRT en dbus_message_append_args: necesita LightDM. Decidir el bloqueador (xfce4-screensaver) y quitar light-locker de la lista."
-
 # --- tests/static/test_editions.py (zram-generator) ---
-
-[[issue]]
-id = "edition-pkg:niri/aarch64:zram-generator"
-note = "archiso/packages.aarch64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de niri/aarch64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
-
-[[issue]]
-id = "edition-pkg:niri/i686:zram-generator"
-note = "archiso/packages.i686 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de niri/i686 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
-
-[[issue]]
-id = "edition-pkg:pi/aarch64:zram-generator"
-note = "archiso/packages.pi.aarch64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de pi/aarch64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."
-
-[[issue]]
-id = "edition-pkg:server/x86_64:zram-generator"
-note = "archiso/packages.server.x86_64 no trae zram-generator, pero la airootfs común lleva etc/systemd/zram-generator.conf: la Live de server/x86_64 arranca sin swap zram y con poca RAM unpackfs puede acabar en OOM. Arreglado solo en XFCE (fix/calamares-2gb-ram-xfce); falta comprobar que el paquete existe en el repo de esa arquitectura antes de añadirlo."

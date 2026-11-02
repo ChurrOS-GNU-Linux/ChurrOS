@@ -5,6 +5,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -197,9 +198,13 @@ fn parse_pacman_qu(result: Option<churros_services::RunOut>) -> Result<Vec<Strin
 /// Ejecuta un comando con streaming: llama `cb` con cada línea de salida
 /// (stdout+stderr combinados) según se produce. Evita el deadlock del pipe
 /// leyendo ambos en threads mientras el proceso corre.
-fn run_streaming(args: &[&str], cb: &dyn Fn(&str)) -> bool {
-    let mut child = match Command::new(args[0])
-        .args(&args[1..])
+fn run_streaming(args: &[&str], timeout: Duration, cb: &dyn Fn(&str)) -> bool {
+    let Some((program, command_args)) = args.split_first() else {
+        return false;
+    };
+    let mut child = match Command::new(program)
+        .args(command_args)
+        .process_group(0)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -228,8 +233,20 @@ fn run_streaming(args: &[&str], cb: &dyn Fn(&str)) -> bool {
     }
     drop(tx);
 
-    while let Ok(line) = rx.recv() {
-        cb(&line);
+    let deadline = Instant::now() + timeout;
+    loop {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(line) => cb(&line),
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                unsafe {
+                    libc::kill(-(child.id() as i32), libc::SIGKILL);
+                }
+                let _ = child.wait();
+                return false;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
     }
 
     child.wait().map(|s| s.success()).unwrap_or(false)
@@ -295,12 +312,17 @@ impl UpdateService {
     pub fn update_pacman(cb: &dyn Fn(&str)) -> bool {
         run_streaming(
             &["churros-pkexec", "/usr/bin/pacman", "-Syu", "--noconfirm"],
+            Duration::from_secs(30 * 60),
             cb,
         )
     }
 
     pub fn update_flatpak(cb: &dyn Fn(&str)) -> bool {
-        run_streaming(&["churros-pkexec", "/usr/bin/flatpak", "update", "-y"], cb)
+        run_streaming(
+            &["churros-pkexec", "/usr/bin/flatpak", "update", "-y"],
+            Duration::from_secs(30 * 60),
+            cb,
+        )
     }
 
     // ------------------------------------------- utilidades de ChurrOS
@@ -378,7 +400,11 @@ impl UpdateService {
     /// No se le pasa la URL: `churros-update-utils` la tiene fijada y rechaza
     /// cualquier argumento.
     pub fn update_churros(cb: &dyn Fn(&str)) -> bool {
-        run_streaming(&["churros-pkexec", "/usr/bin/churros-update-utils"], cb)
+        run_streaming(
+            &["churros-pkexec", "/usr/bin/churros-update-utils"],
+            Duration::from_secs(10 * 60),
+            cb,
+        )
     }
 
     // ------------------------------------------------ snapshots (rollback)
@@ -431,6 +457,7 @@ impl UpdateService {
                 "create",
                 "manual",
             ],
+            Duration::from_secs(5 * 60),
             &|_| {},
         )
     }
@@ -444,6 +471,7 @@ impl UpdateService {
                 "delete",
                 stamp,
             ],
+            Duration::from_secs(5 * 60),
             &|_| {},
         )
     }

@@ -10,7 +10,7 @@
 **Binario:** `/usr/bin/churros-settings` (desplegado por `build-rust.sh`; app id `org.churros.preferences`)
 **Atajo:** `Mod+P` (Niri); `Super+I` / `Super+S` (XFCE)
 **Assets:** `/usr/share/churros/churros-settings/assets/` en la ISO; `rust/preferences/assets/` en desarrollo
-**Log:** `/tmp/churros/settings.log` (stdout y stderr del proceso se redirigen ahí)
+**Log:** $XDG_RUNTIME_DIR/churros/settings.log (stdout y stderr del proceso se redirigen ahí)
 
 - **Ventana:** 900×680 por defecto, redimensionable. Por debajo de 760 px de ancho el sidebar se colapsa.
 - **Barra de título:** `adw::HeaderBar` con los botones de ventana (cerrar, maximizar, minimizar) y un botón de menú que aparece en modo estrecho para mostrar u ocultar el sidebar.
@@ -191,7 +191,7 @@ Páginas principales del sidebar, en orden: Sistema, Actualizaciones, Fecha y ho
 
 ## Robustez
 
-- `logging.rs` escribe en `/tmp/churros/settings.log`, redirige ahí stdout/stderr, ignora `SIGPIPE` y captura panics.
+- `logging.rs` escribe en $XDG_RUNTIME_DIR/churros/settings.log, redirige ahí stdout/stderr, ignora `SIGPIPE` y captura panics.
 - Recargas sin reiniciar la app: Niri (`niri msg action load-config-file`), Mako (`makoctl reload`), Waybar (relanzar o `SIGUSR2`), foot (`SIGUSR1`/`SIGUSR2`), tema y acento (CSS en caliente).
 - `ComboRow` es un `gtk::Box` (no hereda de `Button`, para no comerse los clics del dropdown).
 

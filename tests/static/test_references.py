@@ -570,7 +570,9 @@ def xfconf_refs() -> list[Ref]:
 
 def labwc_refs() -> list[Ref]:
     # labwc (src/action.c): Execute toma `command` (atributo o hijo; `execute`
-    # en configuraciones antiguas) y lo lanza sin shell.
+    # en configuraciones antiguas) y lo lanza sin shell. Además ejecuta como
+    # shell script el fichero autostart del mismo directorio tras inicializar
+    # el compositor: su contenido también son referencias que hay que resolver.
     refs = []
     for path in sorted((AIROOTFS / "etc/xdg/labwc").glob("*.xml")):
         for action in ET.parse(path).getroot().iter("action"):
@@ -578,6 +580,10 @@ def labwc_refs() -> list[Ref]:
                 continue
             command = action.get("command") or action.findtext("command") or action.findtext("execute") or ""
             refs += shell_refs(command.strip(), rel(path), LABWC, "Execute")
+    autostart = AIROOTFS / "etc/xdg/labwc/autostart"
+    if autostart.is_file():
+        for item in LABWC:
+            refs += wrapper_refs("/etc/xdg/labwc/autostart", item, "autostart de labwc")
     return refs
 
 

@@ -7,6 +7,14 @@ source "$(dirname "$0")/../lib/host.sh"
 # shellcheck source=scripts/lib/local-repo.sh
 source "$(dirname "$0")/../lib/local-repo.sh"
 
+# El build muta overlays, listas de paquetes, work/, out/ y una ruta global del
+# host. Dos builds del mismo checkout no pueden ejecutarse de forma segura.
+exec 9<.
+if ! flock -n 9; then
+    echo "Error: ya hay otro build de ChurrOS ejecutándose en este checkout." >&2
+    exit 1
+fi
+
 HOST_REPO_SYMLINK=0
 EDITION="niri"
 # Sin --arch se usa la arquitectura del equipo (uname -m).
@@ -502,13 +510,14 @@ echo "[5/5] Building ISO...";
 # el repo local en /root/packages del host para que el build lo encuentre.
 LOCAL_REPO_LINK="$(cd "$LOCAL_REPO" && pwd)"
 if sudo test -L /root/packages && [ "$(sudo readlink /root/packages)" = "$LOCAL_REPO_LINK" ]; then
-    echo "  /root/packages symlink already in place."
+    echo "  Reusing the expected stale /root/packages symlink."
     HOST_REPO_SYMLINK=1
 elif sudo test -e /root/packages || sudo test -L /root/packages; then
-    echo "  WARNING: /root/packages exists but is not our symlink — leaving as is."
+    echo "Error: /root/packages ya existe; se rechaza usar un repositorio que este build no creó." >&2
+    exit 1
 else
     echo "  Exposing local repo at host /root/packages..."
-    sudo ln -sfn "$LOCAL_REPO_LINK" /root/packages
+    sudo ln -s "$LOCAL_REPO_LINK" /root/packages
     HOST_REPO_SYMLINK=1
 fi
 
