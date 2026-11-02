@@ -131,9 +131,3 @@ note = "En la sesión Live de server (CI, UEFI y BIOS con KVM) light-locker abor
 [[issue]]
 id = "boot-xfce-x86_64:coredump:light-locker"
 note = "Misma causa que boot-server-x86_64:coredump:light-locker (misma sesión XFCE con greetd): en la sesión Live de XFCE (CI, UEFI y BIOS con KVM) light-locker aborta al arrancar con SIGABRT en dbus_message_append_args: necesita LightDM. Decidir el bloqueador (xfce4-screensaver) y quitar light-locker de la lista."
-
-# --- tests/static/test_editions.py (zram-generator) ---
-
-
-
-
