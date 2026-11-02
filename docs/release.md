@@ -13,7 +13,7 @@ Cómo se publica una versión de ChurrOS y por dónde se distribuye. El proceso 
   - `README.md`: la tabla de ediciones, la sección de descarga y la línea final con la versión del proyecto.
 
   `etc/skel/.config/` y el branding de Calamares son rutas protegidas en `AGENTS.md`: en un release solo se cambia el número de versión. Antes del commit, `git grep -n '<versión anterior>'` muestra lo que falte (revisa los falsos positivos).
-- Tags existentes: `v0.1.1`, `v0.4.0`, `v0.6`, `v1.0` (ligero, sin anotar) y `v1.3`. Las versiones 0.7, 1.1 y 1.2 se publicaron sin tag.
+- Tags existentes incluyen `v0.1.1`, `v0.4.0`, `v0.6`, `v1.0` (ligero, sin anotar), `v1.3` y `v1.4`. La release GitHub `v1.4` se publicó el 26 de octubre de 2026 y adjunta `SHA256SUMS`, no las ISO. Las versiones 0.7, 1.1 y 1.2 se publicaron sin tag.
 
 ## Checklist
 
@@ -29,7 +29,7 @@ git add VERSION rust/ archiso/airootfs/etc/churros-version <resto de ficheros ca
 git commit -m "chore(release): versión X.Y"
 ```
 
-Abre un pull request. Se fusiona en `main` con la CI en verde (`ci.yml`, `polkit.yml` y `rust.yml`).
+Abre un pull request. Espera los checks requeridos y la revisión humana; actualmente `ci.yml` (incluida la autoprueba por mutaciones), `polkit.yml` y `rust.yml` corren en PR. Los workflows de ISO corren aparte, a diario en `main` o manualmente, no en cada PR.
 
 ### 2. Construir y probar cada ISO
 
@@ -65,7 +65,7 @@ git push origin vX.Y
 
 ### 4. Sumas de verificación
 
-Un único `SHA256SUMS` cubre todas las ISO de la versión:
+Un único `SHA256SUMS` cubre todas las ISO de la versión. La release v1.4 incluye el manifiesto, que también está publicado en el servidor oficial:
 
 ```bash
 cd release/iso
@@ -74,11 +74,11 @@ sha256sum -c SHA256SUMS
 cd ../..
 ```
 
-**Estado actual: pendiente.** La firma es opcional en el procedimiento existente, no hay una clave pública de releases cuya huella se publique por un canal independiente y no se debe anunciar autenticidad verificada hasta completar y probar esa cadena de confianza. Una suma SHA-256 descargada del mismo servidor detecta corrupción accidental, pero no protege contra la sustitución coordinada de ISO y suma. Antes de una publicación estable, custodiar una clave de firma offline o en un servicio de firma aprobado, registrar su huella en un canal independiente, firmar el manifiesto de sumas y verificar la firma desde otra instalación antes de publicar. Nunca añadir una clave privada al repositorio, a la ISO o al CI como texto plano.
+**Estado actual: pendiente.** Las ISO 1.4 tienen un `SHA256SUMS` disponible tanto en el servidor oficial como adjunto a la GitHub Release v1.4. El manifiesto no está firmado y no hay una cadena de confianza publicada: una suma compartida por el mismo publicador no autentica el origen. No se debe anunciar autenticidad verificada hasta completar y probar esa cadena de confianza. Una suma SHA-256 descargada del mismo servidor detecta corrupción accidental, pero no protege contra la sustitución coordinada de ISO y suma. Antes de una publicación estable, custodiar una clave de firma offline o en un servicio de firma aprobado, registrar su huella en un canal independiente, firmar el manifiesto de sumas y verificar la firma desde otra instalación antes de publicar. Nunca añadir una clave privada al repositorio, a la ISO o al CI como texto plano.
 
 ### 5. Subir las ISO
 
-- **download.churroslinux.org**: las ISO, `SHA256SUMS` (y su firma) y, tras el paso 6, los `.torrent`.
+- **download.churroslinux.org**: las ISO y `SHA256SUMS`; publicar la firma todavía es un objetivo pendiente. Tras el paso 6, también los `.torrent`.
 - **SourceForge** ([churr-os](https://sourceforge.net/projects/churr-os/files/)), en una carpeta por versión. Para ficheros de más de 100 MB SourceForge [recomienda rsync](https://sourceforge.net/p/forge/documentation/Files/), porque permite reanudar la subida:
 
   ```bash
@@ -141,10 +141,10 @@ Después de subirlo, comprueba la actualización desde un sistema instalado con 
 
 ### 8. GitHub Release
 
-GitHub Releases solo admite ficheros de [menos de 2 GiB](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases), y las ISO actuales los superan (la ISO Niri 1.3 ocupa 2 438 758 400 bytes). El release del tag lleva:
+GitHub Releases solo admite ficheros de [menos de 2 GiB](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases). Las ISO 1.4 se distribuyen desde download.churroslinux.org; la release GitHub v1.4 adjunta `SHA256SUMS`, no las ISO. En futuros tags, adjunta el manifiesto y los `.torrent`; publica la imagen en un canal que admita su tamaño.
 
 - Notas: cambios, enlaces de descarga (download.churroslinux.org, SourceForge, Internet Archive) y dónde está el código fuente (paso 9).
-- `SHA256SUMS` (y su firma) y los `.torrent`.
+- `SHA256SUMS` y los `.torrent`. Adjunta una firma del manifiesto solo cuando la clave pública de confianza esté publicada y los destinatarios puedan verificarla.
 
 ```bash
 gh release create vX.Y --title "ChurrOS X.Y" --notes-file <notas.md> \
@@ -167,16 +167,16 @@ Canales actuales:
 
 | Canal | Contenido | Versiones |
 |-------|-----------|-----------|
-| [download.churroslinux.org](https://download.churroslinux.org/) | ISO y bundles OTA (`/churros/`) | ISO hasta la 1.3 (Niri y XFCE, x86_64) |
+| [download.churroslinux.org](https://download.churroslinux.org/) | ISO y bundles OTA (`/churros/`) | ISO 1.4 Niri y XFCE (x86_64), publicada el 25-oct-2026 |
 | [SourceForge](https://sourceforge.net/projects/churr-os/files/) | ISO | v0.6, v0.7 y v1.0 |
 | Internet Archive | ISO, un item por versión | v0.6, v0.7 y v1.0 |
 | BitTorrent | `.torrent` en download.churroslinux.org, con web seeds en Internet Archive y SourceForge | v0.6, v0.7 y v1.0 |
-| [GitHub Releases](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases) | notas; la ISO comprimida en 7z solo en v0.1.1 y v0.6; el bundle OTA en v1.0 | el último es v1.0 |
+| [GitHub Releases](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases) | v1.4 incluye `SHA256SUMS` sin ISO; ISO 7z solo en v0.1.1 y v0.6; bundle OTA en v1.0 | última release de distro: v1.4 |
 
 Problemas:
 
-- download.churroslinux.org está detrás de Cloudflare, pero las ISO no quedan en su caché (las respuestas llevan `cf-cache-status: MISS`; en los planes Free, Pro y Business Cloudflare [no cachea ficheros de más de 512 MB](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)). Cada descarga sale del servidor de origen, que es además el único sitio con las ISO 1.1 a 1.3.
-- Su `sha256sums.txt` solo lista una ISO antigua (`ChurrOS-2026.07.23-x86_64.iso`): las ISO 1.1, 1.2 y 1.3 no tienen suma publicada.
+- La ISO 1.4 Niri y XFCE están en el directorio de descargas oficial. El índice publica `SHA256SUMS` para ambas y la GitHub Release v1.4 adjunta el manifiesto, pero las ISO no están adjuntas a GitHub Releases.
+- El manifiesto no tiene una firma verificable publicada. Descargar ISO y suma desde un mismo origen no autentica al publicador, aunque permite detectar daños accidentales. Confirma los nombres publicados y no asumas que versiones antiguas tienen la misma cobertura.
 - Los nombres publicados no siguen un formato (`…-v1.0.iso`, `…-1.0-xfce.iso`, `…-niri-1.2.iso`, `…-Niri-1.3.iso`, `…-Xfce-1,3.iso`).
 
 Pasos propuestos, en este orden:

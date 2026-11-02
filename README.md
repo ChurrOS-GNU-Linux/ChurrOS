@@ -33,15 +33,15 @@ Este repositorio contiene el perfil de la ISO, el overlay del sistema Live, la c
 | QEMU para pruebas | ✅ |
 | Edición Niri | ✅ |
 | Edición XFCE | ✅ |
-| Edición Servidor (sin escritorio, por SSH) | ✅ |
+| Edición Servidor (sin escritorio en instalado) | ✅ |
 | Aplicaciones oficiales en Rust | ✅ |
 | Calamares con branding propio | ✅ |
 | Tema GRUB | ✅ |
 | Actualizador de ChurrOS | ✅ |
 | Rollback mediante snapshots Btrfs | ✅ |
-| Repositorio oficial de paquetes | Pendiente |
+| Repositorio de paquetes remoto y firmado | Pendiente; `[churros]` solo se usa durante el build |
 | Wiki oficial | Pendiente |
-| Manual de usuario | Pendiente |
+| Guía de usuario | Guía inicial disponible ([guía de uso](docs/user-guide.md)); wiki y manual completo pendientes |
 
 ---
 
@@ -51,9 +51,9 @@ Este repositorio contiene el perfil de la ISO, el overlay del sistema Live, la c
 |---|---|---|---|
 | Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.4) |
 | XFCE | x86_64 | XFCE | ISO publicada (1.4) |
-| Servidor | x86_64 | Ninguno en el sistema instalado | Se construye desde el repositorio; no hay ISO publicada (abandonado) |
-| Niri | aarch64 (UEFI) | Niri + Noctalia | Se construye desde el repositorio; no hay ISO publicada |
-| Raspberry Pi Lite (`pi`) | aarch64 | labwc + Waybar | Experimental: no se construye en la CI ni hay ISO publicada |
+| Servidor | x86_64 | Ninguno en el sistema instalado | Se construye y prueba en nightly; no hay ISO publicada |
+| Niri | aarch64 (UEFI) | Niri + Noctalia | CI diaria construye y audita; no publica ISO estable |
+| Raspberry Pi Lite (`pi`) | aarch64 | labwc + Waybar | Experimental: sin build nightly ni ISO publicada |
 | Port de 32 bits | i686 | Ninguno (Niri y Noctalia no existen en Arch Linux 32) | Experimental: sin sesión gráfica ni instalador gráfico |
 
 ### Niri
@@ -91,7 +91,7 @@ Es la más ligera de las ediciones x86_64. Habilita `sshd`, `chronyd`, NetworkMa
 
 ### Otras arquitecturas
 
-- **aarch64 (UEFI):** la edición Niri para ARM de 64 bits, con la lista `archiso/packages.aarch64`. Se construye dentro de un contenedor Arch Linux ARM (`./churros build --container --arch arm64`) o de forma nativa en un host aarch64. La CI la construye en los pull requests que tocan el perfil ARM.
+- **aarch64 (UEFI):** la edición Niri para ARM de 64 bits, con la lista `archiso/packages.aarch64`. Se construye dentro de un contenedor Arch Linux ARM (`./churros build --container --arch arm64`) o de forma nativa en un host aarch64. La CI diaria la construye y audita en runner ARM nativo; no prueba arranque ni instalación.
 - **Raspberry Pi Lite (experimental):** edición `pi`, solo aarch64, con sesión labwc y Waybar (`archiso/packages.pi.aarch64`). Se construye con `./churros build --container --arch arm64 --edition pi`.
 - **i686 (experimental):** port de 32 bits sobre [Arch Linux 32](https://archlinux32.org). Niri y Noctalia no existen allí, así que la ISO no tiene sesión gráfica, y no lleva Calamares porque falta `polkit-qt6`. Los paquetes locales (yay, wlogout, python-pywal) tienen que estar compilados para i686.
 
@@ -99,12 +99,12 @@ Es la más ligera de las ediciones x86_64. Habilita `sshd`, `chronyd`, NetworkMa
 
 ## Descarga
 
-Las ISO se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La versión actual es la 1.4, publicada para x86_64 en dos ediciones: Niri (unos 2,27 GiB) y XFCE (unos 2,22 GiB). Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/). Las [releases de GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases) no incluyen la ISO actual.
+Las ISO publicadas se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La última versión publicada es la **1.4** (25 de octubre de 2026), para x86_64 en ediciones Niri y XFCE. El [directorio de descargas](https://download.churroslinux.org/) lista ambas ISO y `SHA256SUMS`. La [GitHub Release v1.4](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.4) también adjunta el manifiesto, pero no las ISO. Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/).
 
-Las ISO 1.4 tienen publicada su suma SHA-256 en `SHA256SUMS`. Compárala antes de instalar con la de tu descarga:
+El servidor publica SHA-256 para ambas ISO 1.4 en [`SHA256SUMS`](https://download.churroslinux.org/SHA256SUMS), y GitHub adjunta el mismo manifiesto a la [release v1.4](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.4). Las sumas no están firmadas: sirven para detectar corrupción, no para autenticar el origen. Puedes comprobar los archivos así:
 
 ```bash
-sha256sum ChurrOS-*.iso
+sha256sum -c SHA256SUMS
 ```
 
 ---
@@ -372,16 +372,18 @@ Comprueba git, QEMU (x86_64, i386 y aarch64), Python, Node, ShellCheck, gettext,
 
 ## Integración continua
 
-ChurrOS utiliza GitHub Actions con cuatro workflows:
+ChurrOS utiliza GitHub Actions con seis workflows:
 
 | Workflow | Cuándo se ejecuta | Qué hace |
 |---|---|---|
-| `ci.yml` | Push a `main` y pull requests | `./churros check`, pruebas de la regla polkit y de los helpers privilegiados, y `cargo test -p churros-services` |
-| `rust.yml` | Push a `main`, pull requests, cada semana y a mano | `./churros rust` (build, tests y clippy de todo `rust/`) en x86_64 y arm64 |
-| `polkit.yml` | Push a `main` y pull requests | La regla polkit con `pkexec` y `polkitd` reales en un contenedor Arch |
-| `iso-arm64.yml` | A mano y en pull requests que tocan el perfil arm64 | Construye la ISO aarch64 y la sube como artefacto |
+| `ci.yml` | Push a `main` y pull requests | `./churros test` y `./churros test --mutations` (checks estáticos, reglas polkit, helpers y contratos del repositorio) |
+| `rust.yml` | Push a `main`, pull requests, semanal y manual | Build, tests, clippy, pruebas GTK en Broadway y validación de configuración en x86_64 y ARM64; mutaciones del contenedor fuera de PR |
+| `polkit.yml` | Push a `main` y pull requests | Prueba la regla con `pkexec` y `polkitd` reales en un contenedor Arch |
+| `iso.yml` | Diario en `main` y manual | Construye, audita y arranca ediciones x86_64 en QEMU; sube ISO, sumas e informes como artefactos temporales |
+| `iso-arm64.yml` | Diario en `main` y manual | Construye y audita ISO aarch64 en runner ARM; no prueba instalación ni arranque |
+| `visual-qa-classify.yml` | Pull requests | Clasifica cambios de interfaz; no es una prueba visual y no bloquea la fusión |
 
-La ISO x86_64 no se construye en la CI. Para fusionar en `main` solo es obligatorio el check «Static checks» de `ci.yml`.
+Los workflows de ISO no corren en cada PR ni sus artefactos temporales son releases firmadas. El job de instalación completa de Calamares sigue pendiente (#297). Revisa el workflow y los checks requeridos del repositorio antes de asumir que todos bloquean la fusión.
 
 ---
 
@@ -391,7 +393,7 @@ La ISO x86_64 no se construye en la CI. Para fusionar en `main` solo es obligato
 ChurrOS/
 ├── .github/               Workflows de CI y plantillas de issues y PR
 ├── archiso/               Perfil archiso: paquetes, overlay del Live, cargadores
-├── branding/              Identidad visual y customize_airootfs.sh
+├── branding/              Identidad visual; incluye customize_airootfs.sh, aún usado y pendiente de migrar
 ├── docs/                  Documentación
 ├── installer/             Configuración de Calamares y despliegue
 ├── po/                    Catálogo gettext heredado (las apps Rust no lo usan)
@@ -425,30 +427,31 @@ El índice completo, ordenado según lo que vengas a hacer, está en [`docs/READ
 - [Getting Started](docs/getting-started.md): preparar el entorno y generar la primera ISO.
 - [CLI](docs/cli.md): referencia de `./churros`.
 - [Contributing](docs/contributing.md): cómo contribuir, con o sin programar.
-- [Rollback](docs/rollback.md) y [Server](docs/server.md): recuperar el sistema tras una actualización fallida y usar la edición servidor.
+- [Guía de uso](docs/user-guide.md): probar, instalar, actualizar y recuperar el sistema.
+- [Rollback](docs/rollback.md) y [Server](docs/server.md): detalle de recuperación y de la edición servidor.
 
 ---
 
 ## Roadmap
 
-| Fase | Pendiente |
+| Área | Estado |
 |---|---|
-| 1 — Fundación | — |
-| 2 — Identidad | Mascota, Plymouth gráfico, cursor propio |
-| 3 — Escritorio | — |
-| 4 — Instalador | — (Calamares) |
-| 5 — Ecosistema | Repositorio `[churros]` firmado, firma de las actualizaciones de utilidades, paquetes propios publicados |
-| 6 — Publicación | Versión estable, sumas SHA-256 y firma de las ISO, mirrors, documentación de usuario, wiki, foro |
+| Instalación automatizada y primer arranque en QEMU | Pendiente ([#297](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/297)); la guía no sustituye esta prueba |
+| Firma obligatoria del actualizador y repo remoto firmado | Pendientes ([#139](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/139), [#141](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/141)) |
+| Criterios para la primera versión estable | Propuesta en discusión ([#298](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/298)); ninguna versión está declarada estable |
+| Migración desde `customize_airootfs.sh` | Pendiente ([#299](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/299)) |
+| Guía de uso inicial | Disponible en [`docs/user-guide.md`](docs/user-guide.md); wiki y manual completo pendientes |
+| Publicación | Mirrors y política de release estable pendientes |
 
-El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md).
+El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md). La guía inicial de uso está disponible en [`docs/user-guide.md`](docs/user-guide.md); la instalación automatizada y la migración del hook siguen pendientes. La guía inicial de uso ya está disponible en [`docs/user-guide.md`](docs/user-guide.md); la prueba de instalación y la migración del hook de ArchISO siguen pendientes. La [guía inicial para usuarios](docs/user-guide.md) está disponible, pero no sustituye una política de firma ni una prueba automatizada de instalación. La [guía inicial para usuarios](docs/user-guide.md) está disponible; no sustituye una política de firma ni una prueba automatizada de instalación. La [guía inicial para usuarios](docs/user-guide.md) está disponible; no sustituye una política de firma ni una prueba automatizada de instalación.
 
 ---
 
 ## Estado actual
 
-Versión del proyecto: **1.4** ( [`VERSION`](VERSION) ).
+Versión del proyecto: **1.4** ( [`VERSION`](VERSION) ); última versión publicada conocida en este repositorio (25 de octubre de 2026).
 
-ChurrOS cuenta con ISO personalizada, las ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, instalador Calamares, aplicaciones oficiales en Rust, centro de control, herramientas de configuración, popups del sistema, actualizador, rollback Btrfs, branding propio, tema GRUB, CI y sistema de comprobaciones.
+ChurrOS cuenta con ISO personalizada, ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, Calamares, aplicaciones Rust, actualizador, rollback Btrfs, branding propio, tema GRUB y CI. La guía inicial está en [`docs/user-guide.md`](docs/user-guide.md); todavía faltan la prueba automatizada de instalación en disco, la firma obligatoria de actualizaciones y el repositorio remoto firmado.
 
 El proyecto está en desarrollo activo y en etapa temprana. El instalador es Calamares con parches propios. Calamares, Bazaar, yay, wlogout y python-pywal se compilan en local la primera vez que se construye la ISO y se reutilizan en los builds siguientes; Calamares se recompila si cambian libpython o sus parches.
 

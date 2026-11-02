@@ -6,12 +6,12 @@
 
 ## Usar ChurrOS
 
-Todavía no hay un manual de usuario completo (está en el [roadmap](roadmap.md)). Mientras tanto, estas páginas cubren lo que más se pregunta:
+Hay una [guía inicial de uso](user-guide.md) para probar, instalar, actualizar y recuperar el sistema. No es todavía un manual completo ni una wiki; esos objetivos siguen en el [roadmap](roadmap.md).
 
 | Documento | Para qué sirve |
 |-----------|----------------|
-| [Guía de uso](user-guide.md) | Probar e instalar ChurrOS, actualizar y recuperar el sistema. |
-| [Pruebas de instalación](testing.md#instalación-completa-en-qemu) | Alcance requerido y límites de la futura prueba end-to-end de Calamares en QEMU. |
+| [Guía de uso](user-guide.md) | Guía inicial: probar e instalar ChurrOS, actualizar y recuperar el sistema; no sustituye un manual completo. |
+| [Pruebas de instalación](testing.md#instalación-completa-en-qemu) | Estado actual: falta automatizar Calamares y el primer arranque desde disco; especificación de cobertura. |
 | [Rollback](rollback.md) | Recuperar el sistema con los snapshots Btrfs cuando una actualización falla. |
 | [Server](server.md) | Qué instala y qué activa la edición servidor, y qué tienes que configurar tú. |
 | [Login Greeter](login-greeter.md) | Pantalla de inicio de sesión (greetd + ReGreet): qué sesión arranca cada edición y dónde se configura. |
@@ -58,7 +58,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Vision](vision.md) | Qué es ChurrOS y a quién va dirigido. |
 | [Principios](principios.md) | Principios ordenados, regla para programas nuevos y proceso de decisión. |
 | [Roadmap](roadmap.md) | Estado actual y objetivos pendientes. |
-| [Release](release.md) | Cómo se publica una versión y dónde se distribuye. |
+| [Release](release.md) | Proceso de publicación, canales actuales y límites de integridad/firma. |
 | [Licencias](licencias.md) | Licencia del código, componentes de terceros e inventario de arte. |
 | [Devlog](devlog.md) | Registro cronológico del desarrollo. |
 | [Código de conducta](../CODE_OF_CONDUCT.md) | Normas de convivencia y cómo reportar un incidente. |
