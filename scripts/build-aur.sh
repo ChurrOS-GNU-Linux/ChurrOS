@@ -49,13 +49,21 @@ build_aur() {
         churros_pkgbuild_allow_arch PKGBUILD
         # Importar las claves PGP de los mantenedores declaradas en validpgpkeys
         # para que makepkg verifique las firmas de los tarballs de origen.
+        gpgconf --launch dirmngr 2>/dev/null || true
         mapfile -t PGP_KEYS < <(grep -oP 'validpgpkeys=\(\K[^)]+' PKGBUILD | tr -d '"' | tr ' ' '\n' | grep -v '^$' || true)
         for key in "${PGP_KEYS[@]}"; do
+            imported=0
             for hk in hkps://keys.openpgp.org hkps://pgp.mit.edu; do
-                if gpg --keyserver "$hk" --recv-keys "$key" 2>/dev/null; then
+                if gpg --keyserver "$hk" --recv-keys "$key"; then
+                    imported=1
                     break
                 fi
+                echo "[warn] no se pudo recibir la clave $key desde $hk" >&2
             done
+            if [ "$imported" -ne 1 ]; then
+                echo "[error] no se pudo importar la clave PGP $key para $name; makepkg no verificará firmas" >&2
+                exit 1
+            fi
         done
         success=0
         for attempt in 1 2 3 4; do
