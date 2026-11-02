@@ -203,7 +203,9 @@ defecto a Claude Haiku. Publica la salida `visual` y la etiqueta `visual-qa`.
 No forma parte de `./churros test` y no es un check requerido.
 `.github/workflows/visual-qa-iso.yml` construye la ISO del PR y la de main
 solo cuando `visual=true`, y `scripts/qa/visual/build-local.sh` hace lo mismo
-fuera del runner. El detalle está en [qa-visual.md](qa-visual.md).
+fuera del runner. `.github/workflows/visual-qa-capture.yml` arranca esas ISO
+y deja las capturas en `out/before` y `out/after`. El detalle está en
+[qa-visual.md](qa-visual.md).
 
 ## Reglas para cambios hechos con ayuda de IA
 

@@ -2,8 +2,8 @@
 
 Flujo para ver, en una pull request, si el diff cambia la interfaz de
 ChurrOS. El clasificador decide. Si el diff es visual, se construyen la ISO
-del PR y la de `main`. Las capturas y el informe de comparación se documentan
-aquí cuando existen.
+del PR y la de `main`, y se capturan las mismas pantallas de las dos. El
+informe de comparación se documenta aquí cuando existe.
 
 El clasificador no sustituye a `./churros test`. Un diff que no es visual
 sigue solo con la CI habitual.
@@ -99,3 +99,40 @@ scripts/qa/visual/build-local.sh --container --edition niri
 
 `--role pr`, `--role main` o `--role both` (el defecto). `--base <sha>` fija
 el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
+
+## Capturas
+
+`.github/workflows/visual-qa-capture.yml` corre en cada pull request. Si
+`visual=true`, espera los artefactos de la ISO (por defecto 90 minutos,
+`VISUAL_QA_WAIT_SECONDS`) y arranca cada una con
+`scripts/qa/visual/capture.sh`.
+
+- `out/before` es la ISO de main. `out/after` es la del PR.
+- El plan sale de `scripts/qa/visual/screens.py`: las rutas eligen, en un
+  orden fijo, `grub`, `plymouth`, `desktop`, `bar`, `launcher`,
+  `session-menu` e `installer`. Un diff visual que no casa con ninguna
+  pide el escritorio.
+- KVM si `/dev/kvm` se puede abrir; si no, TCG. QEMU expone VNC en
+  `127.0.0.1` y QMP en un socket.
+- GRUB y Plymouth se capturan con `screendump` de QMP, sin agente. Si la
+  salida es GL y QMP responde que no hay superficie, se usa `xwd` del Xvfb.
+- El resto lo recorre OpenCode con Claude (`ANTHROPIC_API_KEY`, modelo
+  `VISUAL_QA_MODEL`). El prompt le pide usar `scripts/qa/visual/vmctl.py`
+  para las teclas y las capturas. La clave no entra en el prompt; si el log
+  de OpenCode la repite, el script la tapa.
+- `manifest.json` lista el plan, el acelerador, VNC y cada toma. Si la ISO
+  no llegó, el estado es `iso-missing` y no se arranca QEMU.
+
+Los artefactos son `visual-qa-before-<sha>` y `visual-qa-after-<sha>`. El
+job lleva `continue-on-error` y no es un check requerido.
+
+niri 26.04 no pinta sin 3D. Con `VISUAL_QA_GPU=auto` (el defecto) se usa
+virgl si hay un nodo DRM o Xvfb; si no, la VGA es plana y el escritorio
+puede salir negro. Las pantallas de arranque siguen saliendo por QMP.
+
+```bash
+python3 scripts/qa/visual/screens.py --paths-file changed.txt --out plan.json
+scripts/qa/visual/capture.sh --dry-run --plan plan.json --out out/before --role before
+scripts/qa/visual/capture.sh --iso out/qa-visual/main/*.iso --plan plan.json --out out/before --role before
+scripts/qa/visual/capture.sh --iso out/qa-visual/pr/*.iso --plan plan.json --out out/after --role after
+```
