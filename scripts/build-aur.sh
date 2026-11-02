@@ -53,7 +53,7 @@ build_aur() {
         mapfile -t PGP_KEYS < <(grep -oP 'validpgpkeys=\(\K[^)]+' PKGBUILD | tr -d '"' | tr ' ' '\n' | grep -v '^$' || true)
         for key in "${PGP_KEYS[@]}"; do
             imported=0
-            for hk in hkps://keys.openpgp.org hkps://pgp.mit.edu; do
+            for hk in hkps://keyserver.ubuntu.com hkps://keys.openpgp.org hkps://pgp.mit.edu; do
                 if gpg --keyserver "$hk" --recv-keys "$key"; then
                     imported=1
                     break
