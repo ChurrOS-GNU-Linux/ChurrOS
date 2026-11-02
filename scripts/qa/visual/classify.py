@@ -10,7 +10,9 @@ Orden:
    probabilidad de cada opción. Se acepta su elección cuando la
    probabilidad más alta llega al umbral (por defecto 0.8).
 3. Si esa probabilidad queda por debajo, o Jev falla, Claude Haiku
-   responde sí o no.
+   responde sí o no. Si no hay clave o los dos fallan, el diff ambiguo
+   queda visual (``decider=unresolved-default-visual``) para no saltarse
+   la QA.
 
 Las claves ``TYPESAFE_API_KEY`` y ``ANTHROPIC_API_KEY`` solo salen en
 las cabeceras HTTP. Ningún log imprime la clave ni el cuerpo de error.
@@ -472,19 +474,26 @@ def classify(
     return decision
 
 
+def _default_visual(write, *, detail, reason, jev_probability=None, jev_choice=None, jev_model=None) -> Decision:
+    """Diff ambiguo sin una decisión fiable: se trata como visual."""
+    write(f"visual-qa: {detail}; decider=unresolved-default-visual visual=true")
+    return Decision(
+        True, "unresolved-default-visual", None, "", reason=reason,
+        jev_probability=jev_probability, jev_choice=jev_choice, jev_model=jev_model,
+    )
+
+
 def _escalate(state, haiku_call, haiku_model, api_key, secrets, write, *, reason, jev_probability=None, jev_choice=None, jev_model=None) -> Decision:
     try:
         visual = bool(haiku_call(state, api_key=api_key, model=haiku_model))
     except JevError as exc:
-        write(f"visual-qa: haiku error={exc.code}; decider=unresolved visual=false")
-        return Decision(
-            False, "unresolved", None, haiku_model, reason=f"haiku-{exc.code}",
+        return _default_visual(
+            write, detail=f"haiku error={exc.code}", reason=f"haiku-{exc.code}",
             jev_probability=jev_probability, jev_choice=jev_choice, jev_model=jev_model,
         )
     except Exception:
-        write("visual-qa: haiku error=unexpected; decider=unresolved visual=false")
-        return Decision(
-            False, "unresolved", None, haiku_model, reason="haiku-unexpected",
+        return _default_visual(
+            write, detail="haiku error=unexpected", reason="haiku-unexpected",
             jev_probability=jev_probability, jev_choice=jev_choice, jev_model=jev_model,
         )
     write(
