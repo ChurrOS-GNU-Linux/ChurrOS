@@ -71,26 +71,118 @@ def is_graphical(kind: str) -> bool:
 
 
 class DesktopWait:
-    """No acepta el menú de arranque: primero tiene que verse texto del kernel."""
+    """El primer fotograma gráfico no basta: puede ser solo el overlay de niri.
 
-    def __init__(self) -> None:
+    Hace falta texto del kernel, una barra a lo ancho, y N fotogramas casi iguales.
+    """
+
+    def __init__(self, stable_needed: int = 3) -> None:
         self.seen_text = False
+        self.stable_needed = stable_needed
+        self.stable = 0
+        self.last: tuple | None = None
         self.ready = False
 
-    def feed(self, kind: str) -> bool:
+    def feed(self, kind: str, signature: tuple | None = None, bar: bool = False) -> bool:
         if kind in {"text", "blank"}:
             self.seen_text = True
-        elif self.seen_text and is_graphical(kind):
-            self.ready = True
+            self.stable = 0
+            self.last = None
+            return False
+        if not (self.seen_text and is_graphical(kind) and bar):
+            self.stable = 0
+            self.last = signature
+            return False
+        if signature is not None and near_identical(self.last, signature):
+            self.stable += 1
+        else:
+            self.stable = 1
+        self.last = signature
+        self.ready = self.stable >= self.stable_needed
         return self.ready
 
 
-def assess_image(width: int, height: int, rgb: bytes, expect_w: int, expect_h: int) -> tuple[bool, str]:
+def frame_signature(rgb: bytes, width: int, height: int, cols: int = 16, rows: int = 9) -> tuple:
+    samples = []
+    for row in range(rows):
+        y = min(height - 1, row * height // rows)
+        for col in range(cols):
+            x = min(width - 1, col * width // cols)
+            index = (y * width + x) * 3
+            samples.append(rgb[index:index + 3])
+    return tuple(samples)
+
+
+def near_identical(previous: tuple | None, current: tuple | None, tolerance: int = 12) -> bool:
+    if previous is None or current is None or len(previous) != len(current) or not previous:
+        return False
+    total = 0
+    for left, right in zip(previous, current):
+        total += abs(left[0] - right[0]) + abs(left[1] - right[1]) + abs(left[2] - right[2])
+    return total / len(previous) <= tolerance
+
+
+def has_bar(width: int, height: int, rgb: bytes) -> bool:
+    """Franja superior o inferior ocupada a lo ancho. El overlay de niri queda al centro."""
+    if width < 4 or height < 4:
+        return False
+    band = max(1, min(height // 8, 48))
+
+    def coverage(y0: int, y1: int) -> float:
+        hit = 0
+        for x in range(width):
+            for y in range(y0, y1):
+                index = (y * width + x) * 3
+                level = rgb[index]
+                if rgb[index + 1] > level:
+                    level = rgb[index + 1]
+                if rgb[index + 2] > level:
+                    level = rgb[index + 2]
+                if level > 30:
+                    hit += 1
+                    break
+        return hit / width
+
+    return coverage(0, band) >= 0.75 or coverage(height - band, height) >= 0.75
+
+
+def change_ratio(before: bytes, after: bytes) -> float:
+    if not before or len(before) != len(after):
+        return 1.0
+    changed = 0
+    pixels = len(before) // 3
+    for index in range(0, len(before), 3):
+        if before[index:index + 3] != after[index:index + 3]:
+            changed += 1
+    return changed / pixels if pixels else 1.0
+
+
+def session_menu_visible(before: bytes, after: bytes, width: int, height: int) -> tuple[bool, str]:
+    """wlogout cambia una parte clara de la pantalla; un gris plano no cuenta."""
+    if len(before) != len(after) or width * height * 3 != len(after):
+        return False, "menu-not-visible:size"
+    if change_ratio(before, after) < 0.04:
+        return False, "menu-not-visible:unchanged"
+    kind = classify_frame(width, height, after)
+    if kind in {"text", "blank"}:
+        return False, f"menu-not-visible:{kind}"
+    samples = frame_signature(after, width, height)
+    levels = [max(pixel) for pixel in samples]
+    if max(levels) - min(levels) < 40:
+        return False, "menu-not-visible:flat"
+    return True, "wlogout"
+
+
+def assess_image(
+    width: int, height: int, rgb: bytes, expect_w: int, expect_h: int, require_bar: bool = False,
+) -> tuple[bool, str]:
     kind = classify_frame(width, height, rgb)
     if kind in {"text", "blank"}:
         return False, f"not-graphical:{kind}"
     if (width, height) != (expect_w, expect_h):
         return False, f"wrong-resolution:{width}x{height}"
+    if require_bar and not has_bar(width, height, rgb):
+        return False, "no-bar"
     return True, "graphical"
 
 
@@ -215,7 +307,9 @@ def wait_desktop(socket: Path, timeout: float, interval: float = 2.0) -> bool:
             time.sleep(interval)
             continue
         width, height, rgb = read_png(frame)
-        if state.feed(classify_frame(width, height, rgb)):
+        kind = classify_frame(width, height, rgb)
+        ready = state.feed(kind, frame_signature(rgb, width, height), has_bar(width, height, rgb))
+        if ready:
             frame.unlink(missing_ok=True)
             return True
         time.sleep(interval)
@@ -240,6 +334,10 @@ def main(argv: list[str] | None = None) -> int:
     assess_cmd.add_argument("--png", type=Path, required=True)
     assess_cmd.add_argument("--width", type=int, default=1920)
     assess_cmd.add_argument("--height", type=int, default=1080)
+    assess_cmd.add_argument("--require-bar", action="store_true")
+    menu_cmd = sub.add_parser("menu-visible")
+    menu_cmd.add_argument("--before", type=Path, required=True)
+    menu_cmd.add_argument("--after", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.cmd == "watch":
         watch(
@@ -253,8 +351,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if ready else 1
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from imageutil import read_png  # noqa: E402
+    if args.cmd == "menu-visible":
+        before_w, before_h, before_rgb = read_png(args.before)
+        after_w, after_h, after_rgb = read_png(args.after)
+        if (before_w, before_h) != (after_w, after_h):
+            print("menu-not-visible:size")
+            return 1
+        ok, reason = session_menu_visible(before_rgb, after_rgb, after_w, after_h)
+        print(reason)
+        return 0 if ok else 1
     width, height, rgb = read_png(args.png)
-    ok, reason = assess_image(width, height, rgb, args.width, args.height)
+    ok, reason = assess_image(width, height, rgb, args.width, args.height, args.require_bar)
     print(reason)
     return 0 if ok else 1
 

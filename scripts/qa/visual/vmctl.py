@@ -153,23 +153,18 @@ def xwd_selectors(name: str) -> list[list[str]]:
     ]
 
 
-def qemu_window_ids(display: str, name: str) -> list[str]:
-    if not shutil.which("xwininfo"):
-        return []
-    result = subprocess.run(
-        ["xwininfo", "-display", display, "-root", "-tree"],
-        capture_output=True, text=True, timeout=15, check=False,
-    )
-    if result.returncode != 0:
-        return []
-    found = []
-    for line in result.stdout.splitlines():
-        if name not in line and "QEMU" not in line:
-            continue
-        match = re.search(r"\b(0x[0-9a-fA-F]+)\b", line)
-        if match:
-            found.append(match.group(1))
-    return found
+def pin_qemu_window(display: str) -> None:
+    """SDL recentra al cambiar de tamaño. xdotool la devuelve a 0,0 si está."""
+    if not display or not shutil.which("xdotool"):
+        return
+    name = os.environ.get("VISUAL_QA_QEMU_NAME", "churros-visual-qa")
+    env = dict(os.environ)
+    env["DISPLAY"] = display
+    for title in (f"QEMU ({name}-0)", f"QEMU ({name})", name):
+        subprocess.run(
+            ["xdotool", "search", "--name", title, "windowmove", "0", "0"],
+            env=env, capture_output=True, timeout=10, check=False,
+        )
 
 
 def fit_guest(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
@@ -188,10 +183,9 @@ def fit_guest(width: int, height: int, rgb: bytes) -> tuple[int, int, bytes]:
 def _xwd_bytes(display: str) -> bytes:
     if not shutil.which("xwd"):
         raise QmpError("screendump no disponible")
+    pin_qemu_window(display)
     name = os.environ.get("VISUAL_QA_QEMU_NAME", "churros-visual-qa")
-    selectors = xwd_selectors(name)
-    selectors.extend(["-id", window] for window in qemu_window_ids(display, name))
-    for selector in selectors:
+    for selector in xwd_selectors(name):
         result = subprocess.run(
             ["xwd", "-silent", "-display", display, *selector],
             capture_output=True, timeout=60, check=False,
