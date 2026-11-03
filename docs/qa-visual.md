@@ -1,9 +1,9 @@
 # QA visual
 
 Flujo para ver, en una pull request, si el diff cambia la interfaz de
-ChurrOS. Esta página cubre el clasificador. La construcción de las ISO, las
-capturas y el informe de comparación entran en los cambios que siguen a este
-y se documentan aquí cuando existen.
+ChurrOS. El clasificador decide. Si el diff es visual, se construyen la ISO
+del PR y la de `main`. Las capturas y el informe de comparación se documentan
+aquí cuando existen.
 
 El clasificador no sustituye a `./churros test`. Un diff que no es visual
 sigue solo con la CI habitual.
@@ -63,3 +63,42 @@ un diff ambiguo queda visual por ese defecto.
 La forma de la llamada a Jev está en `ask_jev`, alineada con la primitiva
 Choice de [docs.typesafe.ai](https://docs.typesafe.ai/primitives/choice) y
 con [el endpoint system-one](https://docs.typesafe.ai/api/system-one).
+
+## ISO del PR y de main
+
+`.github/workflows/visual-qa-iso.yml` corre en cada pull request y también
+a mano (`workflow_dispatch`, edición `niri`, `xfce` o `server`). El job
+`gate` vuelve a ejecutar el clasificador. El job `iso` solo arranca si
+`visual=true`. Un dispatch manual construye siempre.
+
+Construye dos imágenes con `scripts/qa/visual/build-local.sh --container`,
+la misma receta que `iso.yml` (`./churros build --container`), edición
+`niri` por defecto:
+
+- la del commit del PR, artefacto `visual-qa-pr-<sha>-<edición>`;
+- la del padre de ese commit (en un dispatch, `origin/main`), artefacto
+  `visual-qa-main-<sha>-<edición>`.
+
+Cada artefacto lleva la ISO y `SHA256SUMS`. La de main se conserva 7 días
+y el script la reutiliza por SHA: primero
+`${XDG_CACHE_HOME:-~/.cache}/churros/visual-iso/<sha>/<edición>/` y, si hay
+`gh` con `GH_TOKEN` y `GITHUB_REPOSITORY`, el artefacto del mismo nombre.
+`./churros build` borra `out/` al empezar; el script aparta las ISO fuera
+de ese directorio y las publica en `out/qa-visual/{pr,main}/` al terminar.
+
+Los dos jobs llevan `continue-on-error`. No son checks requeridos.
+
+Un runner gratuito puede quedarse sin disco o sin los 240 minutos del job
+(son dos construcciones seguidas, cada una del orden de la ISO nocturna).
+En ese caso el mismo script vale en una máquina propia:
+
+```bash
+# Arch, con las herramientas de ./churros doctor
+scripts/qa/visual/build-local.sh --edition niri
+
+# Sin pacman en el host (el caso del runner de GitHub)
+scripts/qa/visual/build-local.sh --container --edition niri
+```
+
+`--role pr`, `--role main` o `--role both` (el defecto). `--base <sha>` fija
+el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.

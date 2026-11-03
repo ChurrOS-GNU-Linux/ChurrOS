@@ -195,8 +195,10 @@ equipo x86_64 va por TCG aunque haya `/dev/kvm`.
 `.github/workflows/visual-qa-classify.yml` corre en cada pull request: aplica
 las reglas de ruta y, solo si el diff es ambiguo, consulta a Jev y en su
 defecto a Claude Haiku. Publica la salida `visual` y la etiqueta `visual-qa`.
-No forma parte de `./churros test` y no es un check requerido. El detalle está
-en [qa-visual.md](qa-visual.md).
+No forma parte de `./churros test` y no es un check requerido.
+`.github/workflows/visual-qa-iso.yml` construye la ISO del PR y la de main
+solo cuando `visual=true`, y `scripts/qa/visual/build-local.sh` hace lo mismo
+fuera del runner. El detalle está en [qa-visual.md](qa-visual.md).
 
 ## Reglas para cambios hechos con ayuda de IA
 
