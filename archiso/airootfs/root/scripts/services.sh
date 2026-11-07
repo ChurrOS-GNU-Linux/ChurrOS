@@ -38,6 +38,12 @@ systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 enable_unit NetworkManager.service
 enable_unit greetd.service
 enable_unit ufw.service
-enable_unit ananicy-cpp.service
+# ananicy-cpp solo se instala en Niri x86_64 (repo CachyOS). En el resto de
+# perfiles la unidad no existe; habilitarla solo cuando está presente evita el
+# aviso de unidad ausente en la matriz de ediciones/arquitecturas (#308).
+{ [ -e /usr/lib/systemd/system/ananicy-cpp.service ] \
+    || [ -e /etc/systemd/system/ananicy-cpp.service ] \
+    || [ -L /etc/systemd/system/ananicy-cpp.service ]; } \
+    && enable_unit ananicy-cpp.service || true
 
 echo "✓ Services enabled."

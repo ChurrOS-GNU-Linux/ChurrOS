@@ -244,6 +244,50 @@ validate_tarball() {
     done <<< "$listing"
 }
 
+# validate_stage_arch STAGE — rechaza ejecutables ELF de otra arquitectura (#306).
+validate_stage_arch() {
+    local stage="$1"
+    CHURROS_STAGE="$stage" CHURROS_ARCH="$UPDATE_ARCH" python3 - <<'PY'
+import os
+import struct
+import sys
+
+stage = os.environ["CHURROS_STAGE"]
+arch = os.environ["CHURROS_ARCH"]
+expected = {
+    "x86_64": (0x3E, 64),   # EM_X86_64, ELFCLASS64
+    "aarch64": (0xB7, 64),  # EM_AARCH64, ELFCLASS64
+    "i686": (0x03, 32),     # EM_386, ELFCLASS32
+}.get(arch)
+if expected is None:
+    sys.exit(f"arquitectura de actualización no soportada: {arch}")
+
+for root, _dirs, files in os.walk(stage):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            with open(path, "rb") as fh:
+                hdr = fh.read(20)
+        except OSError:
+            continue
+        if len(hdr) < 20 or hdr[:4] != b"\x7fELF":
+            continue
+        ei_class = hdr[4]
+        ei_data = hdr[5]
+        if ei_class not in (1, 2) or ei_data not in (1, 2):
+            sys.exit(f"ELF inválido en el paquete: {os.path.relpath(path, stage)}")
+        endian = "<" if ei_data == 1 else ">"
+        e_machine = struct.unpack_from(endian + "H", hdr, 18)[0]
+        want_machine, want_bits = expected
+        got_bits = 32 if ei_class == 1 else 64
+        if e_machine != want_machine or got_bits != want_bits:
+            sys.exit(
+                f"ELF de arquitectura incompatible en el paquete: {os.path.relpath(path, stage)} "
+                f"(machine={e_machine}, class={got_bits}; esperado {arch})"
+            )
+PY
+}
+
 # ---------------------------------------------------------------- instalar
 
 # install_stage STAGE RAIZ — instala en RAIZ los ficheros del stage.
@@ -329,6 +373,9 @@ main() {
     # saber qué es ejecutable; install_stage los deja en 0755 o 0644.
     tar --zstd -xf "$DL" -C "$STAGE" --no-same-owner \
         || die "fallo al extraer el paquete"
+
+    echo "Validando arquitectura de los ejecutables..."
+    validate_stage_arch "$STAGE"
 
     echo "Instalando..."
     install_stage "$STAGE" /

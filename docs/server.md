@@ -83,7 +83,7 @@ Si prefieres actualizar a mano:
 sudo systemctl disable --now churros-update.timer
 ```
 
-Además, el usuario que creas en el instalador hereda del skel un timer de usuario con el mismo script. Ese timer no actualiza nada en el servidor: sin agente de polkit, los pasos que necesitan root fallan.
+`configure-server` retira del skel y de los homes existentes el timer de usuario de actualizaciones heredado: en server el mecanismo de actualización es únicamente el timer de sistema, sin depender de una sesión de usuario ni de un agente polkit.
 
 ---
 
