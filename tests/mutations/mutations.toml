@@ -2932,3 +2932,21 @@ replace = 'assess --before "$base"'
 caught_by = "tests.static.test_visual_capture"
 expect = "same-as-desktop"
 why = "OpenCode can save the desktop under the launcher name. assess only checks that the PNG is graphical."
+
+[[mutation]]
+name = "visual_iso: the base becomes the tip of origin/main"
+file = "scripts/qa/visual/build-local.sh"
+find = 'main_sha="$(git merge-base HEAD origin/main)"'
+replace = 'main_sha="$(git rev-parse origin/main)"'
+caught_by = "tests.static.test_visual_iso_plan"
+expect = "[base-merge-base]"
+why = "If main moved after the branch was opened, its tip also carries changes the PR does not have, and they would show up as visual differences."
+
+[[mutation]]
+name = "visual_iso: without origin/main the base is HEAD"
+file = "scripts/qa/visual/build-local.sh"
+find = """main_sha="$(git rev-parse 'HEAD^1')\""""
+replace = 'main_sha="$(git rev-parse HEAD)"'
+caught_by = "tests.static.test_visual_iso_plan"
+expect = "[base-first-parent]"
+why = "On a pull_request merge commit HEAD^1 is main; using HEAD would compare the PR against itself."
