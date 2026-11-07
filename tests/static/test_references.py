@@ -769,6 +769,7 @@ def greetd_refs() -> list[Ref]:
         session_cmd = sessions.get(item.name)
         if session_cmd is None:
             continue  # build.sh se para antes (lo vigila test_editions)
+        session_cmd = testlib.build_session_overrides().get((item.arch, session_cmd), session_cmd)
         config = build_greetd_config(session_cmd)
         for section in ("default_session", "initial_session"):
             command = config.get(section, {}).get("command", "")
