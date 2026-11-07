@@ -4,6 +4,7 @@ Type=Application
 Name=Firefox
 Comment=Navegador web
 Exec=firefox %u
+TryExec=firefox
 Icon=firefox
 Path=
 Terminal=false

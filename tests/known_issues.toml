@@ -18,17 +18,7 @@
 
 # --- test_calamares_config ---
 
-[[issue]]
-id = "calamares-sequence:initcpiocfg-overwrites:modules/shellprocess-fixboot.conf"
-note = "fix-boot añade virtio-gpu vmwgfx bochs-drm qxl a MODULES de /etc/mkinitcpio.conf, pero initcpiocfg corre después y reescribe la línea con MODULES=() a partir del mkinitcpio.conf del Live (src/modules/initcpiocfg/main.py, write_mkinitcpio_lines). El sed no llega al sistema instalado. Arreglo: moverlo a un shellprocess entre initcpiocfg e initcpio, o quitarlo (el hook kms ya mete los drivers DRM)."
 
-[[issue]]
-id = "calamares-sequence:initcpiocfg-overwrites:modules/aarch64/shellprocess-fixboot.conf"
-note = "Igual que en modules/shellprocess-fixboot.conf: los módulos virtio_* que aarch64/shellprocess-fixboot.conf añade a MODULES se pierden porque initcpiocfg reescribe esa línea después."
-
-[[issue]]
-id = "calamares-sequence:initcpiocfg-overwrites:modules/i686/shellprocess-fixboot.conf"
-note = "Igual que en modules/shellprocess-fixboot.conf (la copia i686; hoy i686 se construye sin Calamares)."
 
 [[issue]]
 id = "calamares-sim:fix-boot:x86_64:image:linux-cachyos.preset"
@@ -36,14 +26,7 @@ note = "Mismo origen: tras fix-boot el preset de linux-cachyos genera /boot/init
 
 
 # --- test_references ---
-[[issue]]
-id = "ref:niri/i686:scripts/cli/build.sh:initial_session:niri"
-note = "La ISO i686 arranca greetd con [initial_session] command = \"niri\" (SESSION_CMD de scripts/cli/build.sh), pero archlinux32 no empaqueta niri y packages.i686 no lo lista (lo dice su cabecera): la sesión Live autologin falla y la edición por defecto i686 no tiene escritorio."
 
-
-[[issue]]
-id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
-note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefox, pero packages.server.x86_64 no trae firefox: en la sesión Live de la ISO server el botón no hace nada."
 
 # --- test_rust_contract ---
 # --- test_editions / test_systemd_units ---
@@ -59,25 +42,7 @@ note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefo
 
 # --- tests/vm/boot_smoke.py ---
 
-[[issue]]
-id = "unit-enable:niri/aarch64:ananicy-cpp.service"
-note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en niri/aarch64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
 
-[[issue]]
-id = "unit-enable:niri/i686:ananicy-cpp.service"
-note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en niri/i686 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
-
-[[issue]]
-id = "unit-enable:pi/aarch64:ananicy-cpp.service"
-note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en pi/aarch64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
-
-[[issue]]
-id = "unit-enable:server/x86_64:ananicy-cpp.service"
-note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en server/x86_64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
-
-[[issue]]
-id = "unit-enable:xfce/x86_64:ananicy-cpp.service"
-note = "services.sh habilita ananicy-cpp.service en todas las ediciones, pero solo packages.x86_64 (niri) instala ananicy-cpp, del repo [cachyos] que solo existe en pacman.x86_64.conf: en xfce/x86_64 la unidad no existe y enable_unit solo avisa. Decidir si se instala también aquí o si services.sh lo habilita solo donde se instala."
 
 [[issue]]
 id = "ref:niri/x86_64:rust/preferences:gamemoded"

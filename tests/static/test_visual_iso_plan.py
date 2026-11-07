@@ -7,7 +7,11 @@ visual=true, con --container, SHA256 y continue-on-error.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
 from tests import testlib
 
@@ -17,20 +21,74 @@ NAMES = ROOT / "scripts/qa/visual/artifact-names.sh"
 WORKFLOW = ROOT / ".github/workflows/visual-qa-iso.yml"
 
 
+def fixture_repo(tmp: Path) -> Path:
+    """Repo mínimo con build-local.sh y una historia conocida.
+
+    El checkout de la CI es superficial y sin origin/main, y las copias de
+    --mutations son un git nuevo con un solo commit: la base no se puede
+    sacar del repo real. Aquí main avanza después de abrir la rama, así
+    merge-base, origin/main y HEAD^1 son tres commits distintos.
+    """
+    repo = tmp / "repo"
+    visual = repo / "scripts/qa/visual"
+    visual.mkdir(parents=True)
+    shutil.copy2(SCRIPT, visual / SCRIPT.name)
+    shutil.copy2(NAMES, visual / NAMES.name)
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@localhost",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@localhost"}
+
+    def git(*args):
+        return testlib.run(["git", *args], cwd=repo, env=env, timeout=30, check=True).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("add", "-A")
+    git("commit", "-q", "-m", "fork point")
+    git("checkout", "-q", "-b", "pr")
+    git("commit", "-q", "--allow-empty", "-m", "pr 1")
+    git("commit", "-q", "--allow-empty", "-m", "pr 2")
+    git("checkout", "-q", "main")
+    git("commit", "-q", "--allow-empty", "-m", "main sigue")
+    git("update-ref", "refs/remotes/origin/main", "main")
+    git("checkout", "-q", "pr")
+    return repo
+
+
+def git_sha(repo: Path, rev: str) -> str:
+    return testlib.run(["git", "rev-parse", rev], cwd=repo, timeout=30, check=True).stdout.strip()
+
+
 class BuildPlan(unittest.TestCase):
-    def test_dry_run_names_both_commits(self):
-        result = testlib.run(
-            ["bash", str(SCRIPT), "--dry-run", "--edition", "niri", "--role", "both"],
-            timeout=30,
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="churros-visual-plan-")
+        self.addCleanup(tmp.cleanup)
+        self.repo = fixture_repo(Path(tmp.name))
+        self.script = self.repo / "scripts/qa/visual" / SCRIPT.name
+
+    def dry_run(self, *args):
+        return testlib.run(
+            ["bash", str(self.script), "--dry-run", *args],
+            cwd=self.repo, env={**os.environ, "VISUAL_QA_BASE": ""}, timeout=30,
         )
+
+    def test_dry_run_names_both_commits(self):
+        result = self.dry_run("--edition", "niri", "--role", "both")
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
         self.assertEqual(data["edition"], "niri")
         self.assertEqual(data["role"], "both")
-        self.assertEqual(len(data["pr_sha"]), 40)
-        self.assertEqual(len(data["main_sha"]), 40)
+        self.assertEqual(data["pr_sha"], git_sha(self.repo, "HEAD"))
+        # La base es donde la rama salió de main, no la punta de origin/main.
+        self.assertEqual(data["main_sha"], git_sha(self.repo, "main~1"), "[base-merge-base]")
         self.assertFalse(data["container"])
         self.assertEqual(data["out"], "out/qa-visual")
+
+    def test_dry_run_without_origin_main_uses_first_parent(self):
+        testlib.run(["git", "update-ref", "-d", "refs/remotes/origin/main"],
+                    cwd=self.repo, timeout=30, check=True)
+        result = self.dry_run("--role", "both")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(result.stdout)["main_sha"], git_sha(self.repo, "HEAD^1"),
+                         "[base-first-parent]")
 
     def test_dry_run_honours_base_and_container(self):
         base = testlib.run(["git", "rev-parse", "HEAD"], timeout=30)
