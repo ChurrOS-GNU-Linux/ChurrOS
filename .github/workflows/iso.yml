@@ -11,15 +11,24 @@ name: ISO x86_64
 # que mkarchiso no aplica o un escritorio que se cae al arrancar solo
 # aparecen aquí.
 #
-# Cuándo corre (nunca en un pull request: no bloquea merges):
+# Cuándo corre:
+#   - en pull requests que cambian el producto ISO; `pick` limita las ediciones;
 #   - cada noche en main, las tres ediciones x86_64: Arch es rolling y la
 #     ISO se puede romper sin ningún commit nuestro. schedule solo corre
 #     en la rama por defecto;
 #   - a mano (workflow_dispatch), en cualquier rama, eligiendo edición.
-# El paso `pick` sigue sabiendo elegir ediciones a partir de un diff de PR
-# (tests/static lo ejecuta), pero este workflow ya no se dispara ahí.
 
 on:
+  pull_request:
+    paths:
+      - 'archiso/**'
+      - 'branding/**'
+      - 'installer/**'
+      - 'rust/**'
+      - 'scripts/**'
+      - 'Containerfile'
+      - 'tests/iso/**'
+      - 'tests/vm/**'
   workflow_dispatch:
     inputs:
       edition:
@@ -51,9 +60,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
-      # El workflow ya no se dispara en pull_request. La rama del case se
-      # conserva: tests/static ejecuta este paso con EVENT=pull_request
-      # (HEAD^1..HEAD sería el diff del PR).
       - id: pick
         env:
           EVENT: ${{ github.event_name }}

@@ -1,4 +1,3 @@
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,22 +12,16 @@ fn now() -> u64 {
 }
 
 pub fn init(app: &str) {
-    let _ = std::fs::create_dir_all("/tmp/churros");
-    let path = format!("/tmp/churros/{app}.log");
-    let _ = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path);
+    let path = churros_services::open_runtime_file(&format!("{app}.log"), true)
+        .map(|(path, _)| path.display().to_string())
+        .unwrap_or_default();
     let _ = LOG_PATH.set(path);
     log(&format!("inicio pid={}", std::process::id()));
 
     let path = LOG_PATH.get().cloned().unwrap_or_default();
     std::panic::set_hook(Box::new(move |info| {
-        if let Ok(mut f) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-        {
+        if let Some(name) = std::path::Path::new(&path).file_name().and_then(|name| name.to_str())
+            && let Ok((_, mut f)) = churros_services::open_runtime_file(name, true) {
             let _ = writeln!(f, "[{}] PANIC: {info}", now());
         }
     }));
@@ -36,7 +29,8 @@ pub fn init(app: &str) {
 
 pub fn log(msg: &str) {
     if let Some(path) = LOG_PATH.get() {
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        if let Some(name) = std::path::Path::new(path).file_name().and_then(|name| name.to_str())
+            && let Ok((_, mut f)) = churros_services::open_runtime_file(name, true) {
             let _ = writeln!(f, "[{}] {msg}", now());
         }
     }

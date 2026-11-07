@@ -14,11 +14,11 @@ shift
 # Only output is copied: do not pipe or redirect the installer's input.
 (
 if [ ! -f /var/lib/pacman/sync/core.db ] || [ ! -f /var/lib/pacman/sync/extra.db ]; then
-    sudo -n pacman -Sy --noconfirm >/dev/null 2>&1 || true
+    sudo pacman -Sy --noconfirm >/dev/null 2>&1 || true
 fi
 
 if ! command -v git >/dev/null 2>&1; then
-    sudo -n pacman -S --needed --noconfirm git >/dev/null 2>&1 || true
+    sudo pacman -S --needed --noconfirm git >/dev/null 2>&1 || true
 fi
 
 for pkg in "$@"; do
@@ -26,7 +26,7 @@ for pkg in "$@"; do
         gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys 4EB27DBFB8E3B61F >/dev/null 2>&1 || true
     fi
 done
-yay -S --needed --noconfirm --mflags "--skippgpcheck" --answerclean None --answerdiff None -- "$@"
+yay -S --needed --noconfirm --answerclean None --answerdiff None -- "$@"
 status=$?
 printf '%s\n' "$status" > "$report" || exit 125
 exit "$status"
@@ -176,7 +176,7 @@ mod tests {
             assert!(report.output_path().is_file());
             assert_eq!(
                 std::fs::read_to_string(&args_file).unwrap(),
-                "-S\n--needed\n--noconfirm\n--mflags\n--skippgpcheck\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\nobs-studio\n"
+                "-S\n--needed\n--noconfirm\n--answerclean\nNone\n--answerdiff\nNone\n--\nfirefox\nobs-studio\n"
             );
         }
         std::fs::remove_file(sandbox.directory.join("tee")).unwrap();

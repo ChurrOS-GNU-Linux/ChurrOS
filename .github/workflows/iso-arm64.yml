@@ -1,15 +1,24 @@
 name: ISO ARM64
 
-# Construcción de la ISO aarch64. No es un check de pull request: la imagen
-# es grande y el job corre en un runner ARM nativo, así que no bloquea merges.
-# Se dispara a mano (cualquier rama) y cada día en main. schedule solo corre
-# en la rama por defecto.
+# Construcción de la ISO aarch64. Se ejecuta en PR cuando cambia el perfil ARM,
+# además de manualmente y cada día en main.
 #
 # Usa el mismo contenedor que ./churros build --container --arch arm64
 # (Containerfile.aarch64). En ubuntu-24.04-arm ese contenedor es nativo;
 # no interviene qemu-user.
 
 on:
+  pull_request:
+    paths:
+      - 'archiso/packages.aarch64'
+      - 'archiso/packages.pi.aarch64'
+      - 'archiso/pacman.aarch64.conf'
+      - 'archiso/profiledef.sh'
+      - 'archiso/airootfs/**'
+      - 'installer/calamares/modules/aarch64/**'
+      - 'rust/**'
+      - 'scripts/**'
+      - 'Containerfile.aarch64'
   workflow_dispatch:
   # Cada día: Arch Linux ARM y el resto del árbol cambian sin un PR.
   schedule:
@@ -20,8 +29,6 @@ permissions:
 
 concurrency:
   group: iso-arm64-${{ github.ref }}-${{ github.event_name }}
-  # Ya no hay pull_request. schedule y workflow_dispatch van en grupos
-  # distintos y no se cancelan entre sí.
   cancel-in-progress: false
 
 jobs:

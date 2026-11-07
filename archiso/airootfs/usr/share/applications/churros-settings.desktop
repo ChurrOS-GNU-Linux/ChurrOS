@@ -1,15 +1,15 @@
 [Desktop Entry]
-Name=Configuración
+Name=Settings
 Name[es]=Configuración
-GenericName=Configuración del Sistema
+GenericName=System Settings
 GenericName[es]=Configuración del Sistema
-Comment=Configura ChurrOS
+Comment=Configure ChurrOS
 Comment[es]=Configura las preferencias de ChurrOS
 Exec=churros-settings
 Icon=churros-settings
 Terminal=false
 Type=Application
-Categories=Settings;DesktopSettings;Qt;KDE;GTK;
+Categories=Settings;DesktopSettings;GTK;
 StartupNotify=true
 Keywords=settings;preferences;ajustes;configuracion;
 X-KDE-Keywords=settings;preferences;ajustes;configuracion;

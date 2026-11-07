@@ -15,7 +15,7 @@ privado, dentro de dbus-run-session, con HOME (copia de /etc/skel del
 airootfs) y XDG_* temporales. churros-popup arranca una vez por cada nombre de
 POPUPS (rust/popups/src/main.rs). Falla si el proceso termina antes de
 STARTUP_SECONDS (con cualquier código o señal, SIGABRT incluido) o si su
-salida o sus logs de /tmp/churros contienen "panicked at". Un Gtk-CRITICAL
+salida o sus logs de $XDG_RUNTIME_DIR/churros contienen "panicked at". Un Gtk-CRITICAL
 solo se avisa.
 
 Cada arranque se hace dos veces, porque en la ISO los programas externos
@@ -33,10 +33,11 @@ Una app que entra en pánico en cualquiera de los dos casos tiene un fallo de
 verdad, no un fallo de la prueba.
 
 churros-popup y los logs de settings y control-center escriben en
-/tmp/churros, una ruta fija: la prueba nunca usa la del equipo. Con
-bubblewrap (bwrap) cada app corre con /tmp, /run y /sys propios o de solo
-lectura y sin red; sin él solo corre dentro del contenedor de build
-(scripts/lib/container.sh), cuyo /tmp es desechable.
+$XDG_RUNTIME_DIR/churros (churros_services::runtime_dir); la prueba da a cada
+ejecución un XDG_RUNTIME_DIR privado, así que nunca toca el del equipo. Con
+bubblewrap (bwrap) cada app corre además con /tmp, /run y /sys propios o de
+solo lectura y sin red; sin él solo corre dentro del contenedor de build
+(scripts/lib/container.sh).
 
 Uso: python3 scripts/test-gui-smoke.py [-k filtro] [-v]
 En local (en el contenedor, con la prueba del tour): ./churros test --gui
@@ -45,7 +46,6 @@ CI: rust.yml, en el contenedor (container_run), tras la prueba del tour.
 from __future__ import annotations
 
 import argparse
-from contextlib import nullcontext
 import os
 from pathlib import Path
 import re
@@ -70,8 +70,9 @@ BROADWAY_DISPLAY = ":96"
 POPUP_CRATE = "churros-popup"
 SKEL = ROOT / "archiso/airootfs/etc/skel"
 PANIC_MARK = "panicked at"
-# Ruta fija en rust/popups/src/main.rs (PIDDIR) y en los logging.rs.
-CHURROS_TMP = Path("/tmp/churros")
+# Subdirectorio de $XDG_RUNTIME_DIR que usan churros_services::runtime_dir,
+# rust/popups/src/main.rs (pidfiles) y los logging.rs.
+STATE_SUBDIR = "churros"
 # Variables de la sesión de quien lo ejecuta que no pueden llegar a la app:
 # abriría su ventana en el escritorio real o hablaría con su niri.
 SESSION_VARS = ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "NIRI_SOCKET", "SWAYSOCK",
@@ -186,20 +187,16 @@ def in_build_container() -> bool:
             and (Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()))
 
 
-def sandbox(root: Path) -> tuple[list[str], Path]:
-    """(prefijo del comando, directorio que la app ve como /tmp/churros)."""
+def sandbox(root: Path) -> list[str]:
+    """Prefijo del comando que aísla /tmp, /run, /sys y la red de cada app."""
     if bwrap_works():
-        churros_tmp = root / "tmp-churros"
-        churros_tmp.mkdir()
         return ["bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp", "--tmpfs", "/run",
                 "--ro-bind", "/sys", "/sys", "--unshare-net",
-                "--bind", str(root), str(root), "--bind", str(churros_tmp), str(CHURROS_TMP),
-                "--"], churros_tmp
+                "--bind", str(root), str(root), "--"]
     if in_build_container():
-        return [], CHURROS_TMP
-    die("sin bubblewrap (bwrap con user namespaces) no puedo darle a las apps un /tmp/churros "
-        "propio, y fuera del contenedor de build churros-popup usaría el del equipo (y mataría "
-        "el popup abierto). Instala bubblewrap o ejecútala en el contenedor: ./churros test --gui")
+        return []
+    die("sin bubblewrap (bwrap con user namespaces) las apps tendrían red y /tmp, /run y /sys "
+        "del equipo. Instala bubblewrap o ejecútala en el contenedor: ./churros test --gui")
 
 
 def snapshot(directory: Path) -> dict[Path, int]:
@@ -214,7 +211,7 @@ def new_log_text(directory: Path, before: dict[Path, int]) -> str:
             with path.open("rb") as handle:
                 handle.seek(start)
                 text = handle.read().decode("utf-8", "replace")
-            parts.append(f"--- {CHURROS_TMP / path.name}\n{text}")
+            parts.append(f"--- $XDG_RUNTIME_DIR/{STATE_SUBDIR}/{path.name}\n{text}")
     return "\n".join(parts)
 
 
@@ -257,13 +254,14 @@ def make_home(base: Path) -> Path:
 
 
 def run_one(label: str, binary: Path, args: list[str], root: Path, runtime: Path,
-            prefix: list[str], churros_tmp: Path, dbus: str | None, stubs: Path | None,
+            prefix: list[str], dbus: str | None, stubs: Path | None,
             calls_log: Path, verbose: bool) -> list[str]:
     """Arranca una app; devuelve sus fallos (vacío = arrancó y siguió viva).
     Con `stubs`, ese directorio va delante en el PATH."""
     base = root / "apps" / re.sub(r"[^\w.-]+", "-", label).strip("-")
     base.mkdir(parents=True)
     home = make_home(base)
+    churros_tmp = runtime / STATE_SUBDIR
     env = {key: value for key, value in os.environ.items() if key not in SESSION_VARS}
     env.update({
         "HOME": str(home),
@@ -385,7 +383,7 @@ def main() -> int:
     failures: dict[str, list[str]] = {}
     with tempfile.TemporaryDirectory(prefix="churros-gui-smoke-") as tmp:
         root = Path(tmp)
-        prefix, churros_tmp = sandbox(root)
+        prefix = sandbox(root)
         calls_log = root / "stub-calls.log"
         stubs = root / "fake-bin"
         count = make_stubs(stubs, calls_log)
@@ -393,34 +391,28 @@ def main() -> int:
         build({binary for _, binary, _, _ in selected}, release)
         runtime = root / "runtime"
         runtime.mkdir(mode=0o700)
+        # Cada ejecución recibe el mismo XDG_RUNTIME_DIR privado: sus logs y
+        # pidfiles quedan en runtime/churros y nunca tocan los del equipo.
+        churros_tmp = runtime / STATE_SUBDIR
+        churros_tmp.mkdir()
         where = ("bwrap: /tmp y /run propios, /sys de solo lectura, sin red" if prefix
-                 else f"contenedor de build, {CHURROS_TMP} desechable")
-        # Sin bwrap, todas las ejecuciones del contenedor comparten /tmp/churros:
-        # el popup de una mataría el de otra (pidfile) y leerían sus logs.
-        shared = nullcontext() if prefix else testlib.file_lock(CHURROS_TMP.parent / "churros-gui-smoke.lock")
-        with shared:
-            if not prefix:
-                # El pidfile de un popup que sobrevivió a una ejecución abortada
-                # (SIGKILL): el popup del mismo nombre lo apagaría (toggle) y
-                # saldría con 0 en vez de abrirse.
-                for name in ("popup.pid", "popup.name"):
-                    (CHURROS_TMP / name).unlink(missing_ok=True)
-            print(f"== {len(selected)} arranques en Broadway {BROADWAY_DISPLAY} ({where}), "
-                  f"{STARTUP_SECONDS:.0f} s cada uno; {FAILING_TOOLS}: {count} programas externos "
-                  f"que fallan en {stubs}", flush=True)
-            server = start_broadway(runtime, root / "broadway.log")
-            try:
-                for label, binary, args, failing in selected:
-                    if server.poll() is not None:
-                        die("gtk4-broadwayd murió durante la prueba:\n"
-                            + (root / "broadway.log").read_text(errors="replace"))
-                    problems = run_one(label, release / binary, args, root, runtime, prefix, churros_tmp,
-                                       dbus, stubs if failing else None, calls_log, options.verbose)
-                    if problems:
-                        failures[label] = problems
-                    sys.stdout.flush()
-            finally:
-                stop(server)
+                 else "contenedor de build, runtime privado por ejecución")
+        print(f"== {len(selected)} arranques en Broadway {BROADWAY_DISPLAY} ({where}), "
+              f"{STARTUP_SECONDS:.0f} s cada uno; {FAILING_TOOLS}: {count} programas externos "
+              f"que fallan en {stubs}", flush=True)
+        server = start_broadway(runtime, root / "broadway.log")
+        try:
+            for label, binary, args, failing in selected:
+                if server.poll() is not None:
+                    die("gtk4-broadwayd murió durante la prueba:\n"
+                        + (root / "broadway.log").read_text(errors="replace"))
+                problems = run_one(label, release / binary, args, root, runtime, prefix,
+                                   dbus, stubs if failing else None, calls_log, options.verbose)
+                if problems:
+                    failures[label] = problems
+                sys.stdout.flush()
+        finally:
+            stop(server)
 
     print()
     if failures:

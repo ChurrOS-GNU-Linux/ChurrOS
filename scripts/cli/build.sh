@@ -147,6 +147,15 @@ if [ "$USE_CONTAINER" -eq 1 ] && ! churros_in_container; then
     exit 0
 fi
 
+# El build real muta overlays, listas de paquetes, work/, out/ y una ruta
+# global del host. Se toma el cerrojo después del salto al contenedor para que
+# el wrapper exterior no bloquee a su propio build interior.
+exec 9<.
+if ! flock -n 9; then
+    echo "Error: ya hay otro build de ChurrOS ejecutándose en este checkout." >&2
+    exit 1
+fi
+
 # x86_64 sigue en archiso/packages/. aarch64 tiene su propio directorio para
 # que un paquete -x86_64 no entre en el repo que pacstrap de la ISO ARM.
 if [ "$TARGET_ARCH" = aarch64 ]; then
@@ -502,13 +511,14 @@ echo "[5/5] Building ISO...";
 # el repo local en /root/packages del host para que el build lo encuentre.
 LOCAL_REPO_LINK="$(cd "$LOCAL_REPO" && pwd)"
 if sudo test -L /root/packages && [ "$(sudo readlink /root/packages)" = "$LOCAL_REPO_LINK" ]; then
-    echo "  /root/packages symlink already in place."
+    echo "  Reusing the expected stale /root/packages symlink."
     HOST_REPO_SYMLINK=1
 elif sudo test -e /root/packages || sudo test -L /root/packages; then
-    echo "  WARNING: /root/packages exists but is not our symlink — leaving as is."
+    echo "Error: /root/packages ya existe; se rechaza usar un repositorio que este build no creó." >&2
+    exit 1
 else
     echo "  Exposing local repo at host /root/packages..."
-    sudo ln -sfn "$LOCAL_REPO_LINK" /root/packages
+    sudo ln -s "$LOCAL_REPO_LINK" /root/packages
     HOST_REPO_SYMLINK=1
 fi
 

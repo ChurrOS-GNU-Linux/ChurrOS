@@ -2,7 +2,9 @@
 Version=1.0
 Type=Application
 Name=Churros Welcome
+Name[es]=Bienvenida a ChurrOS
 Comment=Welcome to ChurrOS
+Comment[es]=Primeros pasos con ChurrOS
 Exec=churros-welcome --force
 Icon=churros-welcome
 Terminal=false

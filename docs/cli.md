@@ -174,7 +174,7 @@ Las capas se pueden combinar (`./churros test --iso --boot`). Detalle de cada un
 
 `--gui` es lo que `./churros rust` no ve: `cargo test` no abre ninguna ventana. Arranca cada app desplegada y cada popup compilados en release, como en la ISO, y ejecuta los tests de widgets del recorrido, sobre un `gtk4-broadwayd` privado. Si tocas `rust/`, ejecuta las dos.
 
-En cada pull request, `ci.yml` ejecuta `./churros test` y `./churros test --mutations`. `rust.yml` ejecuta `./churros rust`, `./churros test --gui` y `./churros test --container` (en x86_64 y en arm64). `iso.yml` construye la ISO y ejecuta `--iso` y `--boot` cuando el PR toca lo que entra en la ISO.
+En cada pull request, `ci.yml` ejecuta `./churros test` y `./churros test --mutations`. `rust.yml` ejecuta `./churros rust`, las pruebas GUI en Broadway y `./churros test --container` (x86_64 y ARM64). `polkit.yml` prueba la regla con polkitd/pkexec reales. Los workflows de ISO no corren en PR: `iso.yml` construye, audita y arranca x86_64 diariamente en `main` o manualmente; `iso-arm64.yml` construye y audita ARM64 diariamente o manualmente, sin arranque ni instalación.
 
 ---
 

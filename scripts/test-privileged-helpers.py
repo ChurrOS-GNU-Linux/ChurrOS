@@ -355,8 +355,9 @@ cmp -s "$msg" "{self.signed}"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Firma del manifiesto verificada", result.stdout)
         log = self.log.read_text().splitlines()
-        self.assertEqual(log[0], "curl https://download.churroslinux.org/churros/updates.json")
-        self.assertEqual(log[1], "curl https://download.churroslinux.org/churros/updates.json.minisig")
+        base = update_utils('printf "%s" "$BASE"').stdout
+        self.assertEqual(log[0], f"curl {base}updates.json")
+        self.assertEqual(log[1], f"curl {base}updates.json.minisig")
         self.assertEqual(log[2], f"minisign {len(self.MANIFEST.encode())}")
 
     def test_bad_signature_aborts(self):
@@ -366,10 +367,10 @@ cmp -s "$msg" "{self.signed}"
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("firma minisign inválida", result.stderr)
 
-    def test_without_pubkey_only_warns(self):
+    def test_without_pubkey_aborts(self):
         result = self.fetch(self.tmp / "no-existe.pubkey")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("AVISO", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("falta la clave pública", result.stderr)
         self.assertNotIn("minisign", self.log.read_text())
 
     @unittest.skipIf(shutil.which("minisign", path="/usr/bin:/bin"), "minisign instalado en el host")
@@ -383,12 +384,31 @@ cmp -s "$msg" "{self.signed}"
     def test_parse_manifest(self):
         manifest = self.tmp / "m.json"
         manifest.write_text(
-            '{"version": "1.3", "editions": {"niri": {"file": "churros-utils-niri-1.3.tar.zst", '
+            '{"version": "1.3", "arch": "x86_64", "editions": {"niri": {"file": "churros-utils-niri-1.3.tar.zst", '
             '"sha256": "%s"}}}' % ("b" * 64))
         result = update_utils('parse_manifest "$1" niri', manifest)
         self.assertEqual(result.stdout.strip(), f"1.3|churros-utils-niri-1.3.tar.zst|{'b' * 64}")
-        manifest.write_text('{"version": "1.3", "file": "../../etc/x.tar.zst", "sha256": "%s"}' % ("b" * 64))
+        manifest.write_text(manifest.read_text().replace('"x86_64"', '"aarch64"'))
+        wrong_arch = update_utils('parse_manifest "$1" niri', manifest)
+        self.assertNotEqual(wrong_arch.returncode, 0)
+        self.assertIn("arquitectura inválida", wrong_arch.stderr)
+        manifest.write_text('{"version": "1.3", "arch": "x86_64", "file": "../../etc/x.tar.zst", "sha256": "%s"}' % ("b" * 64))
         self.assertNotEqual(update_utils('parse_manifest "$1" niri', manifest).returncode, 0)
+
+
+class PackageManagerPrivileges(unittest.TestCase):
+    """Un gestor de paquetes nunca debe quedar disponible sin autenticación."""
+
+    def test_pacman_requires_authentication(self):
+        sudoers = (OVERLAY / "etc/sudoers.d/99-churros-pacman").read_text()
+        self.assertNotIn("NOPASSWD", "\n".join(
+            line for line in sudoers.splitlines() if not line.lstrip().startswith("#")))
+        self.assertIn("PASSWD: /usr/bin/pacman", sudoers)
+
+    def test_tour_does_not_bypass_authentication_or_pgp(self):
+        source = (ROOT / "rust/churros-tour/src/installation.rs").read_text()
+        self.assertNotIn("sudo -n pacman", source)
+        self.assertNotIn("--skippgpcheck", source)
 
 
 @unittest.skipUnless(HAS_ZSTD, "zstd no está instalado")
@@ -427,7 +447,20 @@ for toml in "$rust_dir"/*/Cargo.toml; do
     chmod 755 "$rust_dir/target/release/$name"
 done
 ''')
-        env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}"}
+        executable(tmp / "bin/minisign", '''#!/usr/bin/env bash
+set -e
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -x) signature="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'firma de prueba\n' > "$signature"
+''')
+        secret_key = tmp / "release-test.key"
+        secret_key.write_text("clave privada de prueba\n")
+        env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}",
+               "CHURROS_RELEASE_SECRET_KEY": str(secret_key)}
         build = subprocess.run(["bash", str(project / "scripts/build-churros-release.sh")],
                                capture_output=True, text=True, env=env)
         self.assertEqual(build.returncode, 0, build.stdout + build.stderr)

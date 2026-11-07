@@ -44,7 +44,7 @@ Otro nombre → exit 64.
 ## Funcionamiento
 
 1. Alguien ejecuta `churros-popup <nombre>`.
-2. El binario lee `/tmp/churros/popup.pid` y `/tmp/churros/popup.name`.
+2. El binario lee `$XDG_RUNTIME_DIR/churros/popup.pid` y `$XDG_RUNTIME_DIR/churros/popup.name`.
 3. Si no hay popup → abre el solicitado (app id `org.churros.popup.<nombre>`).
 4. Si el activo es el mismo → lo mata (toggle off) y sale.
 5. Si hay otro → lo mata y abre el nuevo.
@@ -54,8 +54,8 @@ Antes de matar un PID comprueba en `/proc/<pid>/cmdline` que es un `churros-popu
 ### Estado en disco
 
 ```text
-/tmp/churros/popup.pid     # PID del popup actual
-/tmp/churros/popup.name    # Nombre del popup activo
+$XDG_RUNTIME_DIR/churros/popup.pid     # PID del popup actual
+$XDG_RUNTIME_DIR/churros/popup.name    # Nombre del popup activo
 ```
 
 Si el PID murió, limpia los archivos antes de lanzar uno nuevo. Al cerrar la ventana también los borra. Escape cierra el popup.

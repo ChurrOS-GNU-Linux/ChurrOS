@@ -2,6 +2,7 @@
 // window.rs — ventana del control center (port de window.py)
 // ==========================================
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::thread;
 
@@ -30,6 +31,7 @@ pub struct ControlCenterWindow {
     brightness: BrightnessCard,
     battery: BatteryCard,
     audio: AudioCard,
+    refresh_in_flight: Cell<bool>,
     #[allow(dead_code)]
     theme_settings: Option<gio::Settings>,
 }
@@ -122,25 +124,6 @@ impl ControlCenterWindow {
         let battery = BatteryCard::new(&window);
         let audio = AudioCard::new();
 
-        // Estado inicial inmediato (< 2ms) para que no haya parpadeo ni "Loading..."
-        let initial_bat = battery::get();
-        let initial_bright = brightness::get();
-        let (initial_vol, initial_muted) = audio::get_volume_status();
-        let initial_info = SystemInfo {
-            brightness_percent: initial_bright.brightness,
-            battery_percent: initial_bat.percentage,
-            battery_charging: matches!(
-                initial_bat.state.as_str(),
-                "charging" | "fully-charged" | "pending-charge"
-            ),
-            volume: initial_vol,
-            muted: initial_muted,
-            ..Default::default()
-        };
-        brightness.apply_info(&initial_info);
-        battery.apply_info(&initial_info);
-        audio.apply_info(&initial_info);
-
         let root = gtk::Box::new(gtk::Orientation::Vertical, 20);
         root.set_margin_top(20);
         root.set_margin_bottom(20);
@@ -180,6 +163,7 @@ impl ControlCenterWindow {
             brightness,
             battery,
             audio,
+            refresh_in_flight: Cell::new(false),
             theme_settings,
         });
 
@@ -252,13 +236,20 @@ impl ControlCenterWindow {
         });
         self.window.add_controller(controller);
 
-        glib::timeout_add_seconds_local(1, glib::clone!(#[strong(rename_to = this)] self, move || {
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_seconds_local(1, move || {
+            let Some(this) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
             this.refresh_async();
             glib::ControlFlow::Continue
-        }));
+        });
     }
 
     fn refresh_async(self: &Rc<Self>) {
+        if self.refresh_in_flight.replace(true) {
+            return;
+        }
         let this = self.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         thread::spawn(move || {
@@ -268,12 +259,16 @@ impl ControlCenterWindow {
         glib::timeout_add_local(std::time::Duration::from_millis(25), glib::clone!(#[strong] this, move || {
             match rx.try_recv() {
                 Ok(info) => {
+                    this.refresh_in_flight.set(false);
                     this.apply_system_info(&info);
                     glib::ControlFlow::Break
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
                 // El hilo murió sin enviar: no reprogramar para siempre.
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    this.refresh_in_flight.set(false);
+                    glib::ControlFlow::Break
+                }
             }
         }));
     }

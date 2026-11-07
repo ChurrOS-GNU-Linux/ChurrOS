@@ -45,6 +45,17 @@ class TestSupplyChainAndReproducibility(unittest.TestCase):
         self.assertRegex(content, r'sudo\s+env\s+.*?SOURCE_DATE_EPOCH=.*?mkarchiso',
                          "[reproducible:build-sudo-env] build.sh debe pasar SOURCE_DATE_EPOCH a mkarchiso por sudo env")
 
+    def test_remote_pkgbuilds_are_pinned_and_keep_signature_checks(self) -> None:
+        scripts = ["scripts/build-aur.sh", "scripts/build-calamares.sh", "scripts/build-bazaar.sh"]
+        for name in scripts:
+            content = (ROOT / name).read_text(encoding="utf-8")
+            self.assertNotIn("--skippgpcheck", content, f"{name} desactiva firmas PGP")
+            self.assertNotRegex(content, r"/-/raw/(?:main|master)/", f"{name} descarga una rama mutable")
+        aur = (ROOT / "scripts/build-aur.sh").read_text(encoding="utf-8")
+        calamares = (ROOT / "scripts/build-calamares.sh").read_text(encoding="utf-8")
+        self.assertRegex(aur, r"git checkout --detach \"\$\{AUR_COMMITS\[\$name\]\}\"")
+        self.assertRegex(calamares, r"git -C \"\$WORK_DIR\" checkout --detach \"\$CALAMARES_AUR_COMMIT\"")
+
 
 if __name__ == "__main__":
     unittest.main()
