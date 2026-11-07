@@ -199,8 +199,10 @@ No forma parte de `./churros test` y no es un check requerido.
 `.github/workflows/visual-qa-iso.yml` construye la ISO del PR y la de main
 solo cuando `visual=true`, y `scripts/qa/visual/build-local.sh` hace lo mismo
 fuera del runner. `.github/workflows/visual-qa-capture.yml` arranca esas ISO
-y deja las capturas en `out/before` y `out/after`. El detalle está en
-[qa-visual.md](qa-visual.md).
+y deja las capturas en `out/before` y `out/after`.
+`.github/workflows/visual-qa-report.yml` las compara, sube el informe y
+comenta la pull request, sin un status que bloquee el merge. El detalle
+está en [qa-visual.md](qa-visual.md).
 
 ## Reglas para cambios hechos con ayuda de IA
 

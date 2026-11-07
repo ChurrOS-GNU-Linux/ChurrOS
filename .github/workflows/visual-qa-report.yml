@@ -1,0 +1,91 @@
+name: Visual QA report
+
+# Empareja out/before y out/after, sube el informe y comenta la pull
+# request. No publica un commit status y no es un check requerido:
+# continue-on-error para no impedir el merge.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: visual-qa-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    outputs:
+      visual: ${{ steps.gate.outputs.visual }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether to report
+        id: gate
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VISUAL_QA_JEV_MODEL: ${{ vars.VISUAL_QA_JEV_MODEL }}
+          VISUAL_QA_JEV_THRESHOLD: ${{ vars.VISUAL_QA_JEV_THRESHOLD }}
+          VISUAL_QA_MODEL: ${{ vars.VISUAL_QA_MODEL }}
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff --unified=1 HEAD^1 HEAD > "$RUNNER_TEMP/diff.txt"
+          python3 scripts/qa/visual/classify.py \
+            --paths-file "$RUNNER_TEMP/changed.txt" \
+            --diff-file "$RUNNER_TEMP/diff.txt" \
+            --github-output "$GITHUB_OUTPUT"
+
+  report:
+    name: Compare and comment
+    needs: gate
+    if: needs.gate.outputs.visual == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Wait for screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VISUAL_QA_WAIT_SECONDS: ${{ vars.VISUAL_QA_WAIT_SECONDS }}
+        run: scripts/qa/visual/wait-shots.sh --sha "$GITHUB_SHA" --dest "$RUNNER_TEMP/shots"
+
+      - name: Build the report
+        env:
+          VISUAL_QA_DIFF_RATIO: ${{ vars.VISUAL_QA_DIFF_RATIO }}
+        run: |
+          set -euo pipefail
+          python3 scripts/qa/visual/report.py \
+            --before "$RUNNER_TEMP/shots/before" \
+            --after "$RUNNER_TEMP/shots/after" \
+            --out out/qa-visual/report
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-qa-report-${{ github.sha }}
+          path: out/qa-visual/report/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Comment on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: scripts/qa/visual/pr-comment.sh out/qa-visual/report/summary.md
