@@ -102,8 +102,6 @@ elif git rev-parse --verify --quiet origin/main >/dev/null; then
   main_sha="$(git merge-base HEAD origin/main)"
 elif git rev-parse --verify --quiet 'HEAD^1' >/dev/null; then
   main_sha="$(git rev-parse 'HEAD^1')"
-elif git rev-parse --verify --quiet HEAD >/dev/null; then
-  main_sha="$(git rev-parse HEAD)"
 else
   echo "visual-qa: no se pudo resolver la base (origin/main, HEAD^1 o --base)" >&2
   exit 2
