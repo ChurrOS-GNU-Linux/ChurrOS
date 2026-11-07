@@ -104,9 +104,14 @@ rm -rf /home/*/.config/autostart 2>/dev/null || true
 sed -i '/spawn-at-startup/d; /churros-welcome/d; /churros-tour/d' \
     /etc/skel/.config/niri/config.kdl /home/*/.config/niri/config.kdl 2>/dev/null || true
 
-# El skel ya no debe Propagar un escritorio a los usuarios nuevos.
+# El skel ya no debe propagar un escritorio ni el timer de usuario redundante.
 rm -rf /etc/skel/.config/xfce4 2>/dev/null || true
 rm -f /etc/skel/.config/autostart/*.desktop 2>/dev/null || true
+# Server usa churros-update.timer de sistema (habilitado arriba). El timer de
+# usuario heredado del skel no tiene agente polkit en sesión server (#328).
+rm -f /etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer \
+      /etc/skel/.config/systemd/user/churros-update.timer 2>/dev/null || true
+rm -f /home/*/.config/systemd/user/timers.target.wants/churros-update.timer 2>/dev/null || true
 
 log "limpieza de configuración del escritorio completada"
 log "resumen: servidor sin display manager, con SSH y sincronización horaria"
