@@ -169,13 +169,21 @@ esac
 
 ARCH_STUB = '#!/bin/sh\nprintf \'%s\\n\' "$CHURROS_TEST_ARCH"\n'
 
-# minisign falso (solo si el repo publica clave): acepta una firma no vacía.
+# minisign falso: el publicador deja una firma no vacía y el cliente la exige.
 MINISIGN_STUB = r'''#!/usr/bin/env bash
-sig=""
+mode=""; sig=""
 while [ "$#" -gt 0 ]; do
-    case "$1" in -x) sig="$2"; shift 2 ;; *) shift ;; esac
+    case "$1" in
+        -S|-V) mode="$1"; shift ;;
+        -x) sig="$2"; shift 2 ;;
+        *) shift ;;
+    esac
 done
-[ -s "$sig" ]
+case "$mode" in
+    -S) printf 'firma de prueba\n' > "$sig" ;;
+    -V) [ -s "$sig" ] ;;
+    *) exit 2 ;;
+esac
 '''
 
 # main real de churros-update-utils contra un root falso: se carga con
@@ -369,6 +377,7 @@ class ReleaseBundle(unittest.TestCase):
                   .replace("@HOST@", repr(RELEASE_HOST))
                   .replace("@MACHINES@", repr(json.dumps(ELF_MACHINES))))
         executable(bin_dir / "cargo", source)
+        executable(bin_dir / "minisign", MINISIGN_STUB)
         return bin_dir
 
     def release_env(self, **extra) -> dict:
@@ -377,8 +386,11 @@ class ReleaseBundle(unittest.TestCase):
         env = {key: value for key, value in os.environ.items() if not key.startswith("CARGO_")}
         stage_tmp = self.tmp / "stage-tmp"
         stage_tmp.mkdir(exist_ok=True)
+        secret_key = self.tmp / "release-test.key"
+        secret_key.write_text("clave privada de prueba\n")
         env.update(PATH=f"{self._bins_dir}{os.pathsep}{os.environ.get('PATH', '')}",
-                   TMPDIR=str(stage_tmp), PS4="+ ", LC_ALL="C")
+                   TMPDIR=str(stage_tmp), PS4="+ ", LC_ALL="C",
+                   CHURROS_RELEASE_SECRET_KEY=str(secret_key))
         env.update(extra)
         return env
 
@@ -451,6 +463,7 @@ class ReleaseBundle(unittest.TestCase):
         editions = sorted({item.name for item in testlib.EDITIONS} | {"niri"})
         for manifest in manifests:
             rel = manifest.relative_to(out).as_posix()
+            manifest_arch = Path(rel).parent.name
             try:
                 data = json.loads(manifest.read_text(), object_pairs_hook=no_duplicate_keys)
                 if not isinstance(data, dict):
@@ -463,7 +476,7 @@ class ReleaseBundle(unittest.TestCase):
             # Lo que saca el cliente, con su propio parse_manifest, para cada
             # edición que puede tener /etc/churros-edition.
             for edition in editions:
-                result = client('parse_manifest "$1" "$2"', manifest, edition)
+                result = client('parse_manifest "$1" "$2" "$3"', manifest, edition, manifest_arch)
                 if result.returncode != 0:
                     findings[f"release:manifest:client:{rel}"] = (
                         f"parse_manifest de churros-update-utils rechaza release/{rel} (edición {edition}): "
@@ -493,10 +506,9 @@ class ReleaseBundle(unittest.TestCase):
                     f"release/{rel}: el cliente descarga ${{BASE}}<file> junto al manifiesto y "
                     f"comprueba su sha256: " + "; ".join(problems))
             # Manifiesto de una arquitectura: su campo arch es esa.
-            arch = Path(rel).parent.name
-            if arch in ELF_MACHINES and data.get("arch") != arch:
+            if manifest_arch in ELF_MACHINES and data.get("arch") != manifest_arch:
                 findings[f"release:manifest:arch:{rel}"] = (
-                    f"release/{rel} dice arch={data.get('arch')!r}, no {arch!r}")
+                    f"release/{rel} dice arch={data.get('arch')!r}, no {manifest_arch!r}")
         testlib.assert_findings(self, "release:manifest", findings)
 
     # ---------------------------------------------------------------- bundles
@@ -781,10 +793,8 @@ class ReleaseBundle(unittest.TestCase):
     def test_manifest_signing(self):
         """Si hay clave pública, la firma se puede verificar de punta a punta.
 
-        verify_manifest (churros-update-utils) sin el fichero $PUBKEY solo
-        avisa por stdout y sigue: el manifiesto, y con él el sha256 del bundle
-        que root instala, queda sin autenticar. Con clave, exige minisign y
-        ${BASE}updates.json.minisig.
+        verify_manifest exige el fichero $PUBKEY, minisign y
+        ${BASE}updates.json.minisig antes de leer el manifiesto.
         """
         built = self.release()
         pubkey = client_var("PUBKEY").lstrip("/")
@@ -794,7 +804,7 @@ class ReleaseBundle(unittest.TestCase):
         if not shipped:
             findings["release:signing:unsigned-manifest"] = (
                 f"no hay clave pública de releases (/{pubkey}) ni en el airootfs ni en el bundle: "
-                f"verify_manifest solo avisa y el cliente instala como root lo que sirva el servidor")
+                f"el cliente no puede autenticar updates.json")
         else:
             for item in testlib.EDITIONS:
                 if "minisign" not in testlib.installed(item):

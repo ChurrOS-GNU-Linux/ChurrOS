@@ -75,7 +75,7 @@ Estado de cada servicio en el sistema instalado. Lo decide `archiso/airootfs/usr
 2. `flatpak update -y`
 3. `churros-update-utils`, que descarga e instala el paquete de utilidades de ChurrOS si el manifiesto anuncia una versión distinta de la instalada ([privileged-execution.md](privileged-execution.md)).
 
-Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). La salida va a `/tmp/churros-update.log`; `journalctl -u churros-update.service` muestra cuándo se ejecutó. El script intenta avisar con una notificación de escritorio, que en un servidor no llega a ninguna parte.
+Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). La salida va a `/var/log/churros-update.log`; `journalctl -u churros-update.service` muestra cuándo se ejecutó. El script intenta avisar con una notificación de escritorio, que en un servidor no llega a ninguna parte.
 
 Si prefieres actualizar a mano:
 
@@ -164,7 +164,7 @@ El paquete de Arch ya lee los registros de `sshd` desde el journal (`sshd_backen
 1. **El instalador sigue siendo gráfico.** No hay instalación por consola. En servidores sin pantalla ni teclado hay que instalar por otros medios (instalación manual, `mkarchiso` con una imagen propia o provisionado).
 2. **La ISO es más grande de lo que sugiere el resultado.** Lleva el escritorio solo para el instalador.
 3. **Sin remoto gráfico.** No hay VNC ni RDP configurados. Para acceso gráfico hay que añadir `tigervnc`/`xrdp` a la lista y documentar su endurecimiento.
-4. **No se prueba en CI.** La CI solo construye la ISO aarch64 (`iso-arm64.yml`); `rust.yml` compila las apps y `ci.yml` pasa los chequeos estáticos. El build y el arranque de esta edición no se prueban automáticamente y en el repositorio no hay constancia de una instalación probada en QEMU o en hardware.
+4. **No hay instalación automatizada en CI.** `iso.yml` construye, audita y arranca la edición server x86_64 en QEMU durante el nightly de `main` y manualmente. Esto comprueba el Live, no que Calamares instale o que el sistema instalado arranque; esa prueba end-to-end sigue pendiente (#297).
 5. **SSH con contraseña.** Es lo que deja Calamares. Pasar a solo claves (`PasswordAuthentication no`) es una decisión que no se ha tomado todavía.
 6. **Actualización desatendida.** El timer actualiza sin ventana de mantenimiento ni aviso (ver [Actualizaciones automáticas](#actualizaciones-automáticas)).
 

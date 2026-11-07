@@ -1304,6 +1304,7 @@ class IsoMatrixTest(unittest.TestCase):
         found = dict(workflows()).get("iso.yml")
         if found is None:
             self.fail("no existe .github/workflows/iso.yml")
+        self.workflow = found
         self.jobs = jobs(found)
         self.matrix_id = next((job_id for job_id, job in self.jobs.items()
                                if any(isinstance(step, dict) and step.get("id") == "pick"
@@ -1326,6 +1327,12 @@ class IsoMatrixTest(unittest.TestCase):
             return dict(line.split("=", 1) for line in output.read_text().splitlines() if "=" in line)
 
     def test_pull_request_feeds_the_diff_to_pick_editions(self):
+        self.assertIn("pull_request", triggers(self.workflow),
+                      "iso.yml no se ejecuta en pull requests")
+        arm = dict(workflows()).get("iso-arm64.yml")
+        self.assertIsNotNone(arm, "no existe .github/workflows/iso-arm64.yml")
+        self.assertIn("pull_request", triggers(arm),
+                      "iso-arm64.yml no se ejecuta en pull requests que afectan ARM")
         outputs = self.run_pick("pull_request", ["archiso/packages.xfce.x86_64", "archiso/syslinux/archiso_sys-linux.cfg"])
         self.assertIn("xfce", json.loads(outputs.get("editions", "[]")),
                       f"un PR que toca la lista de XFCE no construye XFCE (salida del paso pick: {outputs})")

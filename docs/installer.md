@@ -135,7 +135,7 @@ La edición pi no entra en este control, porque su lista es `packages.pi.aarch64
 1. **El instalador no es propio.** Es Calamares con parches, branding y post-instalación. Sustituirlo implica escribir particionado, subvolúmenes de btrfs, bootloader, usuarios y recuperación de errores, y tendría que cumplir la regla para programas nuevos (ver arriba).
 2. **La edición server no se puede instalar por consola**, porque el instalador es gráfico.
 3. **Añadir una edición toca varios sitios**: `build.sh`, `branding/stamp-os-release.sh`, `edition-session.sh` y `churros-xsession`. `./churros check` cubre los tres primeros (ver arriba).
-4. **Ninguna CI ejecuta una instalación.** `ci.yml` pasa los chequeos estáticos, `rust.yml` compila las apps, `polkit.yml` prueba la regla polkit con un polkitd real e `iso-arm64.yml` construye la ISO aarch64 (a mano o en los PR que tocan ese perfil) sin instalarla. La secuencia real de instalación solo se verifica a mano, con `./churros build` y `./churros run`.
+4. **Ninguna CI ejecuta una instalación completa.** `ci.yml` pasa tests estáticos y autoprueba de mutaciones; `rust.yml` valida las apps; `polkit.yml` prueba la regla con polkitd real. `iso.yml` construye, audita y arranca ediciones x86_64 en QEMU cada noche y manualmente. `iso-arm64.yml` construye y audita aarch64, sin arranque ni instalación. Calamares y el primer arranque desde el disco siguen siendo pruebas manuales; la automatización se sigue en [#297](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/297).
 
 ---
 

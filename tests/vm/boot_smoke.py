@@ -177,10 +177,60 @@ def capture(vm: VM, artifacts: Path, name: str) -> tuple[float, int] | None:
 
 # ------------------------------------------------------------- comprobaciones
 
+def zram_is_active(swaps: str) -> bool:
+    """True if /proc/swaps reports /dev/zram0 as an active swap device."""
+    return any(line.split()[:1] == ["/dev/zram0"] for line in swaps.splitlines()[1:])
+
+
+def check_zram(agent, report: Report) -> None:
+    """The Live session must activate the zram swap configured in its profile."""
+    _, swaps = guest_sh(agent, "cat /proc/swaps")
+    active = zram_is_active(swaps)
+    _, zram = guest_sh(agent, "cat /sys/block/zram0/mm_stat 2>/dev/null || true")
+    report.facts["zram"] = {"active": active, "proc_swaps": swaps, "mm_stat": zram}
+    report.check("zram0 swap active", active, swaps or "no active swap")
+
+
+def parse_memory_profile(meminfo_text: str, swaps_text: str, zram_stat: str, process_text: str,
+                         qemu_memory_mib: int, edition: str | None) -> dict:
+    """Normalize procfs and ps readings to bytes for report.json."""
+    meminfo = {}
+    for line in meminfo_text.splitlines():
+        match = re.match(r"([^:]+):\s+(\d+)(?:\s+(kB))?", line)
+        if match:
+            meminfo[match.group(1)] = int(match.group(2)) * (1024 if match.group(3) else 1)
+    swaps = []
+    for line in swaps_text.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) >= 5:
+            swaps.append({"name": fields[0], "type": fields[1], "size_bytes": int(fields[2]) * 1024,
+                          "used_bytes": int(fields[3]) * 1024, "priority": int(fields[4])})
+    processes = []
+    for line in process_text.splitlines()[1:]:
+        fields = line.split(None, 2)
+        if len(fields) == 3 and fields[0].isdigit() and fields[2].isdigit():
+            processes.append({"pid": int(fields[0]), "name": fields[1], "rss_bytes": int(fields[2]) * 1024})
+    return {"qemu_memory_mib": qemu_memory_mib, "edition": edition, "meminfo_bytes": meminfo,
+            "swap": swaps, "zram_mm_stat": zram_stat, "top_rss_processes": processes}
+
+
+def collect_memory_profile(agent, report: Report, qemu_memory_mib: int) -> None:
+    """Capture RAM, swap/zram and largest RSS processes after login."""
+    _, meminfo_text = guest_sh(agent, "cat /proc/meminfo")
+    _, swaps_text = guest_sh(agent, "cat /proc/swaps")
+    _, zram_stat = guest_sh(agent, "cat /sys/block/zram0/mm_stat 2>/dev/null || true")
+    _, process_text = guest_sh(agent, "ps -eo pid,comm,rss --sort=-rss | head -21")
+    profile = parse_memory_profile(meminfo_text, swaps_text, zram_stat, process_text,
+                                   qemu_memory_mib, report.facts.get("edition"))
+    report.facts["memory_profile"] = profile
+    report.check("memory profile collected", bool(profile["meminfo_bytes"]), "could not read /proc/meminfo")
+
+
 def check_system(agent, report: Report, timeout: float) -> None:
     code, state = guest_sh(agent, f"timeout {int(timeout)} systemctl is-system-running --wait", timeout=timeout + 30)
     report.facts["system_state"] = state
     report.check("systemd terminó el arranque", state in ("running", "degraded"), state)
+    check_zram(agent, report)
 
     _, failed = guest_sh(agent, "systemctl list-units --state=failed --plain --no-legend --no-pager | awk '{print $1}'")
     failed_units = [unit for unit in failed.split() if unit]
@@ -437,9 +487,12 @@ def main() -> int:
             report.check("edición conocida", False, f"{edition_name}/{arch} no está en testlib.EDITIONS")
             item = None
         check_system(agent, report, timeout)
+        if item and item.desktop is None:
+            collect_memory_profile(agent, report, args.memory)
         if item and item.desktop:
             uid = check_session(agent, report, item.desktop, timeout)
             check_user_units(agent, report, uid, timeout)
+            collect_memory_profile(agent, report, args.memory)
             if item.desktop == "niri":
                 check_niri(agent, report, uid, timeout=min(timeout, 300))
         check_journal(agent, report, artifacts)

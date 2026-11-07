@@ -16,8 +16,8 @@
 #
 # Controles aplicados:
 #   - origen fijo (https), sin overrides;
-#   - el manifiesto se descarga primero y, si hay clave pública de releases,
-#     se verifica su firma minisign antes de leerlo;
+#   - el manifiesto se descarga primero y su firma minisign se verifica antes
+#     de leerlo; sin clave, firma o verificador la actualización se rechaza;
 #   - versión y nombre de fichero validados con expresiones regulares;
 #   - el sha256 anunciado en el manifiesto debe coincidir con el descargado;
 #   - el tarball solo puede traer ficheros regulares y directorios, sin rutas
@@ -27,10 +27,6 @@
 #     rename atómico). Nunca se copian atributos de directorio sobre /, /usr
 #     o /etc (#130).
 #
-# TODO(#139, #141): la firma tendría que ser obligatoria. Hoy no hay clave
-# publicada, minisign no está en los perfiles y build-churros-release.sh no
-# firma, así que sin clave solo se avisa.
-#
 # Las funciones se pueden cargar con `source` para probarlas
 # (scripts/test-privileged-helpers.py); main solo corre al ejecutar el script.
 
@@ -38,7 +34,13 @@ set -euo pipefail
 export LC_ALL=C
 umask 022
 
-BASE="https://download.churroslinux.org/churros/"
+case "$(uname -m)" in
+    x86_64) UPDATE_ARCH=x86_64 ;;
+    aarch64|arm64) UPDATE_ARCH=aarch64 ;;
+    i386|i486|i586|i686) UPDATE_ARCH=i686 ;;
+    *) printf 'ERROR: arquitectura no soportada para actualizaciones: %s\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+BASE="https://download.churroslinux.org/churros/${UPDATE_ARCH}/"
 PUBKEY=/usr/share/churros/churros-release.pubkey
 
 VERSION_FILE=/etc/churros-version
@@ -118,14 +120,9 @@ detect_edition() {
 # habría validado nunca (#139).
 verify_manifest() {
     local manifest="$1"
-    if [ ! -f "$PUBKEY" ]; then
-        echo "AVISO: sin clave pública de releases ($PUBKEY): el manifiesto solo se"
-        echo "       comprueba por integridad (sha256), no por autenticidad."
-        return 0
-    fi
-    # Con clave publicada, la firma se exige: sin minisign no se sigue.
+    [ -r "$PUBKEY" ] || die "falta la clave pública de releases: $PUBKEY"
     command -v minisign >/dev/null 2>&1 \
-        || die "hay clave pública de releases pero falta minisign para verificar la firma"
+        || die "falta minisign para verificar la firma del manifiesto"
     download "$manifest.minisig" "${BASE}updates.json.minisig" \
         || die "no se pudo obtener la firma minisign del manifiesto"
     minisign -V -p "$PUBKEY" -m "$manifest" -x "$manifest.minisig" >/dev/null 2>&1 \
@@ -142,11 +139,16 @@ fetch_manifest() {
 # parse_manifest MANIFIESTO EDICION — imprime "versión|fichero|sha256".
 # La edición se pasa por entorno, no interpolada en el source de python.
 parse_manifest() {
-    CHURROS_EDITION="$2" python3 -c '
+    CHURROS_EDITION="$2" CHURROS_ARCH="${3:-$UPDATE_ARCH}" python3 -c '
 import json, os, re, sys
 
 edition = os.environ["CHURROS_EDITION"]
+expected_arch = os.environ["CHURROS_ARCH"]
 data = json.load(sys.stdin)
+
+actual_arch = data.get("arch")
+if actual_arch != expected_arch:
+    sys.exit(f"arquitectura inválida en el manifiesto: {actual_arch!r} != {expected_arch!r}")
 
 version = data.get("version", "")
 if not isinstance(version, str) or not re.fullmatch(r"[0-9]+(\.[0-9]+)*", version):

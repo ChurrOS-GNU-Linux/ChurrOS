@@ -146,7 +146,7 @@ Documentación del proyecto, en español. El índice es [docs/README.md](README.
 Cada cambio va en una rama y llega a `main` por pull request:
 
 ```text
-cambio -> ./churros check -> ./churros build -> ./churros run -> commit en una rama -> pull request
+cambio -> ./churros test -> pruebas apropiadas al alcance -> commit en una rama -> pull request
 ```
 
 Detalle en [Contributing](contributing.md).

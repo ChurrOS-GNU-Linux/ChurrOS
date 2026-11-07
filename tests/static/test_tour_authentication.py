@@ -121,7 +121,7 @@ exit "$TOUR_TEST_EXIT"
                     self.assertEqual(report.read_text(), f"{code}\n", "tour:report:exact-status")
                     self.assertEqual(args_file.read_bytes().split(b"\0")[:-1],
                                      [arg.encode() for arg in [
-                                         "-S", "--needed", "--noconfirm", "--mflags", "--skippgpcheck",
+                                         "-S", "--needed", "--noconfirm",
                                          "--answerclean", "None", "--answerdiff", "None", "--", *packages,
                                      ]], "tour:arguments:exact")
                     self.assertIn("final detail without newline", log.read_text())

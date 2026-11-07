@@ -1,0 +1,4 @@
+#!/bin/sh
+#
+# Arrancado por labwc tras inicializar el compositor: el socket Wayland ya existe.
+waybar --config /usr/share/churros/pi/waybar/config.jsonc --style /usr/share/churros/pi/waybar/style.css &

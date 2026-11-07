@@ -1,8 +1,10 @@
 [Desktop Entry]
 Name=ChurrOS Control Center
+Name[es]=Centro de control de ChurrOS
 Comment=Control Center
+Comment[es]=Controles rápidos del sistema
 Exec=churros-control-center
-Icon=preferences-system
+Icon=churros-settings
 Terminal=false
 Type=Application
 Categories=Settings;
