@@ -2,8 +2,8 @@
 
 Flujo para ver, en una pull request, si el diff cambia la interfaz de
 ChurrOS. El clasificador decide. Si el diff es visual, se construyen la ISO
-del PR y la de `main`. Las capturas y el informe de comparación se documentan
-aquí cuando existen.
+del PR y la de `main`, y se capturan las mismas pantallas de las dos. El
+informe de comparación se documenta aquí cuando existe.
 
 El clasificador no sustituye a `./churros test`. Un diff que no es visual
 sigue solo con la CI habitual.
@@ -102,3 +102,88 @@ scripts/qa/visual/build-local.sh --container --edition niri
 
 `--role pr`, `--role main` o `--role both` (el defecto). `--base <sha>` fija
 el commit de main. `--dry-run` escribe el plan en JSON y no construye nada.
+
+## Capturas
+
+`.github/workflows/visual-qa-capture.yml` corre en cada pull request. Si
+`visual=true`, espera los artefactos de la ISO (por defecto 90 minutos,
+`VISUAL_QA_WAIT_SECONDS`) y arranca cada una con
+`scripts/qa/visual/capture.sh`.
+
+- `out/before` es la ISO de main. `out/after` es la del PR.
+- El plan sale de `scripts/qa/visual/screens.py`: las rutas eligen, en un
+  orden fijo, `grub`, `plymouth`, `desktop`, `bar`, `launcher`,
+  `session-menu` e `installer`. Un diff visual que no casa con ninguna
+  pide el escritorio.
+- KVM si `/dev/kvm` se puede abrir; si no, TCG. La sesión gráfica es
+  virgl en un Xvfb: `virtio-vga-gl` a 1920×1080 (EDID) y SDL con GL. VNC
+  no se combina con ese contexto GL (QEMU muere al crear el socket). QMP
+  sigue abierto; si el proceso no sigue vivo un segundo después, se
+  reintenta sin GL. Sin 3D niri no pinta y el manifiesto queda
+  `capture-failed`.
+- GRUB y Plymouth no usan una espera fija. Se muestrean fotogramas hasta
+  ver el menú (el timeout del menú en la ISO es 15 s) y, si aparece, un
+  splash. Si la línea de órdenes del kernel no lleva `splash` ni
+  `plymouth`, o el fotograma siguiente ya es texto del kernel, Plymouth
+  queda `not-in-boot` en vez de una toma tardía.
+- El escritorio, la barra y el menú de sesión los toma el script cuando
+  el plan los pide. OpenCode entra después, y solo para las pantallas del
+  diff que no son esas ni el arranque (`launcher`, `installer`, …). No
+  arranca hasta que el escritorio está listo: texto del kernel, una barra
+  distinta del fondo y varios fotogramas seguidos casi iguales
+  (`VISUAL_QA_DESKTOP_TIMEOUT`, 600 s). Si no hay clave o no hay pantallas
+  propias del diff, el manifiesto queda en `agent.status=not-run` y dice
+  la razón (`no-key` o `no-diff-screens`). Cada PNG, también los de
+  OpenCode, tiene que ser gráfico, medir 1920×1080 y distinguirse del
+  escritorio de base: un `desktop.png` renombrado no vale. Antes de esa
+  base se pulsa Escape para cerrar el overlay de atajos de niri. El menú
+  de sesión se abre con `meta_l+shift+e` y se sondea hasta ver la rejilla
+  de botones de wlogout (`VISUAL_QA_MENU_TIMEOUT`, 90 s en TCG). Luego se
+  cierra con Escape, antes de OpenCode. `initial.png` no se queda en `out/`.
+- La barra se distingue del fondo: una franja superior o inferior cuyo
+  color medio contrasta con el dominante del centro y, o tiene borde, o
+  coincide con un color de barra. Si existe `design-tokens.json` junto al
+  script, usa sus roles panel, fondo, primario y secundario; si no, la
+  paleta fija. Un gris plano, incluido el `#404040` de niri, no cuenta.
+- SDL arranca con `SDL_VIDEO_WINDOW_POS=0,0`. Hace falta `xdotool` para
+  mover la ventana a 0,0 antes de cada `xwd -name`; si falta, la captura
+  falla con un error claro. No hace falta `xwininfo`. QMP se usa cuando la
+  superficie existe. El Xvfb es 2560×1600. La imagen base del escritorio
+  se queda en el directorio temporal y no entra en `out/`.
+- El prompt usa `scripts/qa/visual/vmctl.py`. La tecla Mod es el qcode
+  `meta_l`. La clave no entra en el prompt; si el log la repite, el script
+  la tapa.
+- `manifest.json` lista el plan, el acelerador, VNC y cada toma. Si la ISO
+  no llegó, el estado es `iso-missing` y no se arranca QEMU.
+
+Los artefactos son `visual-qa-before-<sha>` y `visual-qa-after-<sha>`. El
+job lleva `continue-on-error` y no es un check requerido.
+
+niri 26.04 no pinta sin 3D. Con `VISUAL_QA_GPU=auto` (el defecto) se usa
+virgl si hay un nodo DRM o Xvfb; si no, la VGA es plana y el escritorio
+puede salir negro. Las pantallas de arranque siguen saliendo por QMP.
+
+El workflow instala OpenCode 1.19.5 con el instalador oficial
+(`curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5`)
+antes de capturar. Es la versión en la que `opencode run` está
+comprobado. El binario queda en `~/.opencode/bin` y el job lo pone en
+`GITHUB_PATH`. En la máquina donde se construye la ISO con
+`build-local.sh` y luego se capturan las pantallas, hace falta el mismo
+pin y `ANTHROPIC_API_KEY` en el entorno: sin el binario las pantallas
+propias del diff quedan en `opencode-missing`.
+
+```bash
+curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5
+export PATH="$HOME/.opencode/bin:$PATH"
+opencode --version
+```
+
+El instalador es el de OpenCode 1 y rechaza una 2.x. En CI se pasa
+`--no-modify-path` porque el runner no lee `.bashrc`.
+
+```bash
+python3 scripts/qa/visual/screens.py --paths-file changed.txt --out plan.json
+scripts/qa/visual/capture.sh --dry-run --plan plan.json --out out/before --role before
+scripts/qa/visual/capture.sh --iso out/qa-visual/main/*.iso --plan plan.json --out out/before --role before
+scripts/qa/visual/capture.sh --iso out/qa-visual/pr/*.iso --plan plan.json --out out/after --role after
+```
