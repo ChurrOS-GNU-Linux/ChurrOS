@@ -4,7 +4,7 @@
 # That shows up as: premature end of file /@/boot/vmlinuz-linux
 # (then "you need to load the kernel first" for the initramfs).
 #
-# Mark /boot No_COW + compression=none. Rewrite each image into a new
+# Mark /boot No_COW + no compression (chattr +C +m). Rewrite each image into a new
 # empty +C inode with a full copy. `cp -a` on btrfs reflinks by default
 # and keeps the compressed extents, so GRUB still fails.
 # A pacman hook re-runs this after kernel/initramfs updates.
@@ -30,18 +30,13 @@ case "$boot_fstype" in
 esac
 
 if [ -d /boot ]; then
-    command -v btrfs >/dev/null 2>&1 || {
-        echo "make-boot-grub-readable: falta btrfs para proteger /boot" >&2
-        exit 1
-    }
-    chattr +C /boot
-    btrfs property set /boot compression none
+    # +C (No_COW) already rules out compression; +m makes it explicit.
+    # Never `btrfs property set /boot compression ...`: on a No_COW inode
+    # the kernel rejects it with EINVAL and Calamares aborts the install.
+    # Fall back to +C alone if this chattr/kernel does not know +m.
+    chattr +C +m /boot || chattr +C /boot
     lsattr -d /boot | awk '{print $1}' | grep -q C || {
         echo "make-boot-grub-readable: /boot no tiene el atributo No_COW" >&2
-        exit 1
-    }
-    btrfs property get /boot compression | grep -Eq 'compression[= ]+none' || {
-        echo "make-boot-grub-readable: la compresión de /boot sigue activa" >&2
         exit 1
     }
 fi

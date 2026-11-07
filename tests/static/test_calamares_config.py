@@ -1144,6 +1144,13 @@ class CalamaresConfigTest(unittest.TestCase):
         self.assertFalse(ignored, "boot-nocow ignora el fallo completo")
         self.assertIn('= btrfs', command, "chattr debe ser obligatorio solo en btrfs")
         self.assertNotIn("|| true", command, "boot-nocow ignora un fallo de chattr o btrfs property")
+        # Tras chattr +C el inodo es NODATACOW y el kernel rechaza cualquier
+        # 'btrfs property set ... compression' con EINVAL: abortaba la instalación.
+        for other in commands:
+            self.assertIsNone(
+                re.search(r"btrfs\s+property\s+set\b[^;&|]*\bcompression\b", other),
+                "boot-nocow no puede fijar la propiedad compression en /boot (+C la vuelve EINVAL); +m basta",
+            )
 
     def simulate_live_access_cleanup(self, arch, files, conf_name, root, category):
         """post-install quita el acceso del Live: el sudoers de churros y la cuenta.

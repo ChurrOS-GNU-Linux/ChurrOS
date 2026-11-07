@@ -1005,6 +1005,8 @@ elif [ ! -f "$GRUB_THEME_CONF" ] || ! grep -q 'make-boot-grub-readable' "$GRUB_T
     fail "$GRUB_THEME_CONF does not run make-boot-grub-readable after grub-mkconfig"
 elif ! grep -q 'conv=fsync' "$BOOT_GRUB_SCRIPT" || grep -qE 'cp -a --' "$BOOT_GRUB_SCRIPT"; then
     fail "$BOOT_GRUB_SCRIPT must full-copy into a +C inode (cp -a reflinks zstd extents on btrfs)"
+elif grep -vE '^[[:space:]]*#' "$BOOT_GRUB_SCRIPT" | grep -qE 'btrfs[[:space:]]+property[[:space:]]+set\b.*compression'; then
+    fail "$BOOT_GRUB_SCRIPT sets the btrfs compression property on /boot (EINVAL after chattr +C; use chattr +C +m)"
 elif [ ! -f "$BOOT_GRUB_HOOK" ]; then
     fail "$BOOT_GRUB_HOOK missing (kernel updates would rewrite compressed /boot images)"
 elif grep -q 'remove from airootfs' "$BOOT_GRUB_HOOK"; then
