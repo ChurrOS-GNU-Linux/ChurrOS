@@ -187,7 +187,7 @@ const CALLERS = [
         file: "rust/preferences/src/services/update.rs",
         source: ['"churros-pkexec", "/usr/local/bin/churros-snapshot", "create", "manual"'],
         argv: ["/usr/local/bin/churros-snapshot", "create", "manual"],
-        expect: YES,
+        expect: KEEP,
     },
     {
         file: "rust/preferences/src/services/update.rs",

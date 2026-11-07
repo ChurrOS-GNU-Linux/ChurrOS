@@ -1121,6 +1121,30 @@ class CalamaresConfigTest(unittest.TestCase):
                 findings.update(self.simulate_live_access_cleanup(arch, files, cleanup_conf, Path(tmp), category))
         testlib.assert_findings(self, category, findings)
 
+    def test_server_and_install_verification_fail_closed(self):
+        cleanup = self.load(CALAMARES / "modules/shellprocess-cleanup.conf")
+        commands = [command for command, _ in command_entries(cleanup.get("script")) if command]
+        for helper in ("configure-server", "verify-install"):
+            matches = [command for command in commands if command.endswith(f"/{helper}")]
+            self.assertEqual(len(matches), 1, f"shellprocess-cleanup.conf: falta {helper}")
+            _, ignored = strip_ignore(matches[0])
+            self.assertFalse(ignored, f"shellprocess-cleanup.conf ignora el fallo de {helper}")
+        verifier = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/verify-install")
+        self.assertIsNotNone(
+            re.search(r'if \[ "\$FAILURES" -eq 0 \].*?else.*?exit 1', verifier, re.S),
+            "verify-install no devuelve error cuando hay invariantes fallidas",
+        )
+
+    def test_boot_nocow_fails_closed_only_on_btrfs(self):
+        config = self.load(CALAMARES / "modules/shellprocess-boot-nocow.conf")
+        commands = [command for command, _ in command_entries(config.get("script")) if command]
+        nocow = [command for command in commands if "chattr +C +m" in command]
+        self.assertEqual(len(nocow), 1, "boot-nocow debe aplicar No_COW una sola vez")
+        command, ignored = strip_ignore(nocow[0])
+        self.assertFalse(ignored, "boot-nocow ignora el fallo completo")
+        self.assertIn('= btrfs', command, "chattr debe ser obligatorio solo en btrfs")
+        self.assertNotIn("|| true", command, "boot-nocow ignora un fallo de chattr o btrfs property")
+
     def simulate_live_access_cleanup(self, arch, files, conf_name, root, category):
         """post-install quita el acceso del Live: el sudoers de churros y la cuenta.
 

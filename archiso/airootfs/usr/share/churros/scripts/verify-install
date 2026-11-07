@@ -4,9 +4,8 @@
 # edición, y deja constancia en /var/log/churros-install-verify.log.
 #
 # Se ejecuta desde shellprocess@post-install, después de configure-greetd-session
-# y configure-server. No falla la instalación: avisa. Un instalador que se
-# traga sus propios errores deja al usuario con un sistema que no arranca y
-# ningún sitio donde mirar.
+# y configure-server. Las invariantes incumplidas abortan la instalación para
+# no entregar un sistema que no arranca; el detalle queda en el log.
 #
 # Lo que se comprueba por edición:
 #   niri / xfce       -> existe el lanzador de sesión y greetd está habilitado
@@ -147,7 +146,8 @@ esac
 if [ "$FAILURES" -eq 0 ]; then
     log "--- todo correcto ---"
 else
-    log "--- $FAILURES comprobaciones con aviso; revisar $LOG ---"
+    log "--- $FAILURES comprobaciones fallidas; revisar $LOG ---"
+    exit 1
 fi
 
 exit 0

@@ -1,4 +1,3 @@
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,13 +12,8 @@ fn now() -> u64 {
 }
 
 pub fn init(app: &str) {
-    let _ = std::fs::create_dir_all("/tmp/churros");
-    let path = format!("/tmp/churros/{app}.log");
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path);
-    let _ = LOG_PATH.set(path);
+    let file = churros_services::open_runtime_file(&format!("{app}.log"), true);
+    let _ = LOG_PATH.set(file.as_ref().map(|(path, _)| path.display().to_string()).unwrap_or_default());
 
     // 1. Ignorar SIGPIPE para evitar muerte por descriptores de salida rotos
     unsafe {
@@ -27,7 +21,7 @@ pub fn init(app: &str) {
     }
 
     // 2. Redirigir stdout (1) y stderr (2) al archivo de log si está abierto
-    if let Ok(f) = file {
+    if let Ok((_, f)) = file {
         use std::os::unix::io::AsRawFd;
         let fd = f.as_raw_fd();
         unsafe {
@@ -40,11 +34,8 @@ pub fn init(app: &str) {
 
     let path = LOG_PATH.get().cloned().unwrap_or_default();
     std::panic::set_hook(Box::new(move |info| {
-        if let Ok(mut f) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-        {
+        if let Some(name) = std::path::Path::new(&path).file_name().and_then(|name| name.to_str())
+            && let Ok((_, mut f)) = churros_services::open_runtime_file(name, true) {
             let _ = writeln!(f, "[{}] PANIC: {info}", now());
         }
     }));
@@ -52,7 +43,8 @@ pub fn init(app: &str) {
 
 pub fn log(msg: &str) {
     if let Some(path) = LOG_PATH.get() {
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        if let Some(name) = std::path::Path::new(path).file_name().and_then(|name| name.to_str())
+            && let Ok((_, mut f)) = churros_services::open_runtime_file(name, true) {
             let _ = writeln!(f, "[{}] {msg}", now());
         }
     }

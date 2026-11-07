@@ -26,7 +26,7 @@
 //
 //   programa                                  argumentos                  resultado
 //   /usr/local/bin/churros-snapshot           list --json                 YES
-//                                             create manual               YES (1)
+//                                             create manual               AUTH_ADMIN_KEEP (1)
 //                                             delete AAAAMMDD-HHMMSS      AUTH_ADMIN_KEEP
 //   /usr/bin/timedatectl                      set-timezone <Zona/Ciudad>  YES
 //                                             set-ntp true|false          YES
@@ -45,8 +45,8 @@
 //   ese proceso sea la app que llama y la contraseña sirva para varios pasos.
 // NOT_HANDLED: política por defecto de pkexec (auth_admin, contraseña cada vez).
 // (1) `create` rota los snapshots: conserva los 5 más recientes y borra el
-//     resto. Si no se quiere que un proceso del usuario pueda descartar puntos
-//     de restauración sin contraseña, hay que pasarlo a AUTH_ADMIN_KEEP.
+//     resto. Pide contraseña para que un proceso del usuario no pueda
+//     sustituir puntos de restauración sanos por otros ya comprometidos.
 //
 // La regla tiene que seguir siendo ES5 (polkitd usa duktape): ni `let`, ni
 // `const`, ni funciones flecha.
@@ -77,7 +77,7 @@ polkit.addRule(function(action, subject) {
     var ALLOWED = {
         "/usr/local/bin/churros-snapshot": [
             [/^list --json$/, YES],
-            [/^create manual$/, YES],
+            [/^create manual$/, ADMIN_KEEP],
             [/^delete [0-9]{8}-[0-9]{6}$/, ADMIN_KEEP]
         ],
         "/usr/bin/timedatectl": [

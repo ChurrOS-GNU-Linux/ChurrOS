@@ -1,7 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=ChurrOS Tour
+Name[es]=Recorrido de ChurrOS
+Comment=Discover ChurrOS and install optional applications
+Comment[es]=Descubre ChurrOS e instala aplicaciones opcionales
 Exec=churros-tour
-Icon=org.churros.Welcome
+Icon=churros-welcome
 Terminal=false
 Categories=System;

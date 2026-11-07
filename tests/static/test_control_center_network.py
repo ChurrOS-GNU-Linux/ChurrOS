@@ -54,3 +54,38 @@ class ControlCenterNetworkTests(unittest.TestCase):
             "[services-wifi:no-wlan0-fallback] wifi::get_active() no debe asumir wlan0 "
             "si no hay interfaces inalámbricas disponibles.",
         )
+
+    def test_window_never_blocks_startup_or_overlaps_refreshes(self):
+        source = testlib.read_text(testlib.ROOT / "rust/control-center/src/widgets/window.rs")
+        code, _ = lex_rust(source)
+        clean = re.sub(r"\s+", " ", code)
+        constructor = clean.split("pub fn new", 1)[1].split("fn build_header", 1)[0]
+        self.assertNotIn("battery::get()", constructor,
+                         "[control-center:startup-blocking] la ventana consulta upower en el main loop")
+        self.assertNotIn("brightness::get()", constructor,
+                         "[control-center:startup-blocking] la ventana consulta brightnessctl en el main loop")
+        self.assertNotIn("audio::get_volume_status()", constructor,
+                         "[control-center:startup-blocking] la ventana consulta wpctl en el main loop")
+        self.assertIn("if self.refresh_in_flight.replace(true) { return; }", clean,
+                      "[control-center:refresh-overlap] falta exclusión de refrescos lentos")
+        self.assertIn("Rc::downgrade(self)", clean,
+                      "[control-center:timer-lifetime] el timer mantiene viva la ventana")
+
+    def test_update_page_serializes_operations_and_bounds_output(self):
+        source = testlib.read_text(testlib.ROOT / "rust/preferences/src/pages/update.rs")
+        code, _ = lex_rust(source)
+        clean = re.sub(r"\s+", " ", code)
+        update_fn = clean.split("fn run_update", 1)[1].split("fn set_log", 1)[0]
+        self.assertIn("button.set_sensitive(false)", update_fn,
+                      "[updates:concurrent] el botón permite lanzar varias actualizaciones")
+        self.assertIn("button.set_sensitive(true)", update_fn,
+                      "[updates:lifecycle] el botón no se recupera al terminar")
+        self.assertIn("sync_channel::<String>(256)", update_fn,
+                      "[updates:unbounded-output] la salida usa un canal sin límite")
+        service = testlib.read_text(testlib.ROOT / "rust/preferences/src/services/update.rs")
+        service_code, _ = lex_rust(service)
+        service_clean = re.sub(r"\s+", " ", service_code)
+        self.assertIn("recv_timeout(Duration::from_millis(100))", service_clean,
+                      "[updates:no-deadline] los procesos de actualización pueden esperar indefinidamente")
+        self.assertIn("libc::kill(-(child.id() as i32), libc::SIGKILL)", service_clean,
+                      "[updates:descendants] el timeout no detiene descendientes")

@@ -10,10 +10,10 @@
 # ventana del instalador. Ese escritorio no tiene sentido en el destino, así
 # que aquí se quita.
 #
-# Todo es tolerante a fallos (|| true): si algo falla, la instalación
-# termina igual y queda registrado en el log.
+# Las invariantes de arranque, paquetes y servicios son obligatorias. Solo la
+# limpieza cosmética es tolerante a fallos.
 
-set -uo pipefail
+set -euo pipefail
 
 LOG=/var/log/churros-server.log
 
@@ -39,8 +39,8 @@ log "edición server detectada; dejando el sistema sin escritorio"
 
 # greetd y graphical.target los habilita el módulo services-systemd de
 # Calamares, con mandatory: true. Aquí se revierten.
-systemctl disable greetd.service >> "$LOG" 2>&1 || true
-systemctl set-default multi-user.target >> "$LOG" 2>&1 || true
+systemctl disable greetd.service >> "$LOG" 2>&1
+systemctl set-default multi-user.target >> "$LOG" 2>&1
 log "display manager desactivado; target por defecto multi-user"
 
 # ---------------------------------------------------- 2. quitar escritorio
@@ -57,7 +57,7 @@ log "display manager desactivado; target por defecto multi-user"
 DESKTOP_PKGS="xfce4-session xfce4-panel xfce4-settings xfce4-notifyd \
 xfce4-power-manager xfce4-pulseaudio-plugin xfce4-screenshooter \
 xfce4-taskmanager xfce4-terminal xfce4-whiskermenu-plugin xfconf xfdesktop \
-xfwm4 mousepad ristretto light-locker picom redshift \
+    xfwm4 mousepad ristretto xfce4-screensaver picom redshift \
 thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp \
 cage greetd greetd-regreet"
 
@@ -66,9 +66,16 @@ CHURROS_APPS="/usr/bin/churros-welcome /usr/bin/churros-settings \
 /usr/bin/churros-control-center /usr/bin/churros-popup /usr/bin/churros-tour \
 /usr/bin/churros-apply-wallpaper /usr/bin/churros-pick-image"
 
-log "quitando paquetes de escritorio: $DESKTOP_PKGS"
-pacman -Rns --noconfirm $DESKTOP_PKGS >> "$LOG" 2>&1 || \
-    log "pacman -Rns devolvió error; se continúa (ver $LOG)"
+installed_desktop=()
+for package in $DESKTOP_PKGS; do
+    if pacman -Qq "$package" >/dev/null 2>&1; then
+        installed_desktop+=("$package")
+    fi
+done
+if [ "${#installed_desktop[@]}" -gt 0 ]; then
+    log "quitando paquetes de escritorio: ${installed_desktop[*]}"
+    pacman -Rns --noconfirm "${installed_desktop[@]}" >> "$LOG" 2>&1
+fi
 
 for app in $CHURROS_APPS; do
     [ -e "$app" ] || continue
@@ -83,11 +90,11 @@ rm -rf /home/*/.config/xfce4/panel/launcher-* 2>/dev/null || true
 
 # sshd y chrony solo se habilitan aquí: en una edición de escritorio no tiene
 # sentido dejar SSH escuchando a nadie.
-systemctl enable sshd.service >> "$LOG" 2>&1 || true
-systemctl enable chronyd.service >> "$LOG" 2>&1 || true
-systemctl enable NetworkManager.service >> "$LOG" 2>&1 || true
-systemctl enable ufw.service >> "$LOG" 2>&1 || true
-systemctl enable churros-update.timer >> "$LOG" 2>&1 || true
+systemctl enable sshd.service >> "$LOG" 2>&1
+systemctl enable chronyd.service >> "$LOG" 2>&1
+systemctl enable NetworkManager.service >> "$LOG" 2>&1
+systemctl enable ufw.service >> "$LOG" 2>&1
+systemctl enable churros-update.timer >> "$LOG" 2>&1
 log "sshd, chronyd, NetworkManager, ufw y churros-update.timer habilitados"
 
 # --------------------------------------------------------- 4. restos de config

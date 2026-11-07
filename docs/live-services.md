@@ -462,7 +462,7 @@ Actualiza el sistema **sin preguntar**. Ejecuta, a través de `churros-pkexec`:
 2. `flatpak update -y`
 3. `churros-update-utils`
 
-Escribe la salida en `/tmp/churros-update.log` y al terminar envía una notificación de escritorio con el resultado.
+Escribe la salida en `/var/log/churros-update.log` y al terminar envía una notificación de escritorio con el resultado.
 
 Lo lanzan dos timers con el mismo horario (cada día a las 04:00, con hasta 30 minutos de retraso aleatorio y `Persistent=true`):
 

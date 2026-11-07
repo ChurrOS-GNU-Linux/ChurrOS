@@ -190,11 +190,13 @@ Revisa su salida: suele ser un paquete que ya no existe en los repositorios, una
 
 | Workflow | Dónde corre | Cuándo | Qué hace |
 |----------|-------------|--------|----------|
-| `ci.yml` | `ubuntu-latest` | push a `main` y PR | `./churros check`, `node scripts/test-polkit-rules.js`, `python3 scripts/test-privileged-helpers.py` y `cargo test -p churros-services` (sin GTK) |
+| `ci.yml` | `ubuntu-latest` | push a `main` y PR | `./churros test` y `./churros test --mutations`, en modo estricto |
 | `polkit.yml` | `ubuntu-latest`, contenedor `archlinux:latest` | push a `main` y PR | `scripts/test-polkit-pkexec.sh` contra polkitd y pkexec reales |
-| `rust.yml` | imagen del `Containerfile` en `ubuntu-latest` (`archlinux:latest`) y en `ubuntu-24.04-arm` (`menci/archlinuxarm`) | push a `main`, PR, cada lunes y a mano | Construye la imagen, comprueba que trae las herramientas del build de la ISO (solo x86_64) y ejecuta `./churros rust`: build, tests y clippy (los avisos de clippy no hacen fallar el job) |
-| `iso-arm64.yml` | `ubuntu-24.04-arm`, `Containerfile.aarch64` | a mano y en PR que tocan el perfil arm64 | `./churros build --container --arch arm64` y sube la ISO como artefacto (7 días). No es un check obligatorio |
+| `rust.yml` | imagen del `Containerfile` x86_64 y `menci/archlinuxarm` en runner ARM64 | push a `main`, PR, semanal y manual | Build, tests, clippy, GUI smoke/tour y tests de paquetes/configuración; las mutaciones del contenedor corren fuera de PR |
+| `iso.yml` | `ubuntu-latest`, contenedor de build | diaria en `main` y manual | Construye y audita ISO x86_64 y arranca el Live en QEMU; guarda artefactos temporales |
+| `iso-arm64.yml` | `ubuntu-24.04-arm`, `Containerfile.aarch64` | diaria en `main` y manual | Construye y audita ISO ARM64; no comprueba arranque ni instalación |
+| `visual-qa-classify.yml` | `ubuntu-latest` | pull requests | Clasifica diffs de interfaz; no es prueba visual ni check bloqueante |
 
-Las apps GTK no se compilan directamente en `ubuntu-latest`: activan la feature `v4_18` de gtk4-rs, que exige GTK ≥ 4.18, y Ubuntu 24.04 trae GTK 4.14. Por eso `rust.yml` usa la imagen Arch, el mismo entorno en el que se construye la ISO x86_64.
+Las apps GTK no se compilan directamente en `ubuntu-latest`: requieren bibliotecas GTK recientes, por eso `rust.yml` usa el contenedor Arch para compilar y probar el workspace. El workflow ISO x86_64 también construye en contenedor, pero es nightly/manual, no parte de la CI de PR.
 
 La compilación ARM64 corre en un runner arm64 nativo y no con `cargo check --target aarch64-unknown-linux-gnu` desde x86_64, porque glib-sys y gtk4-sys buscan con pkg-config las bibliotecas de aarch64.

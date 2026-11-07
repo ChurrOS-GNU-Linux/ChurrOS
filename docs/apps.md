@@ -21,8 +21,8 @@ En desarrollo, si no existe `/usr/share/churros/<binario>/`, cada crate usa sus 
 |-----|---------|--------------|-----|---------------|
 | Bienvenida | `churros-welcome` | Autostart en el Live; `Mod+W` en Niri | — | [abajo](#churros-welcome) |
 | Tour | `churros-tour` | Primer inicio del sistema instalado | — | [churros-tour.md](churros-tour.md) |
-| Ajustes | `churros-settings` | `Mod+P` (Niri); `Super+I` / `Super+S` (XFCE) | `/tmp/churros/settings.log` | [preferences.md](preferences.md) |
-| Centro de control | `churros-control-center` | Lanzador; `Super+A` / `Super+C` (XFCE) | `/tmp/churros/control-center.log` | [abajo](#churros-control-center) |
+| Ajustes | `churros-settings` | `Mod+P` (Niri); `Super+I` / `Super+S` (XFCE) | `$XDG_RUNTIME_DIR/churros/settings.log` | [preferences.md](preferences.md) |
+| Centro de control | `churros-control-center` | Lanzador; `Super+A` / `Super+C` (XFCE) | `$XDG_RUNTIME_DIR/churros/control-center.log` | [abajo](#churros-control-center) |
 | Popups | `churros-popup <nombre>` | Centro de control, Waybar o a mano | — | [popups.md](popups.md) |
 
 En la sesión Niri por defecto, según los comentarios de `config.kdl`, el centro de control de Noctalia (`Mod+C`) ya cubre red, audio, bluetooth, brillo y batería; `churros-control-center` y `churros-popup` siguen en la ISO y se abren desde el lanzador, sin atajo. `./churros check` falla si alguna línea no comentada de `config.kdl` los nombra.
@@ -157,7 +157,7 @@ Al abrir un popup, la ventana del centro de control se cierra.
 
 Usa el crate `churros_services` (`rust/services/`): wifi, ethernet, bluetooth, brightness, battery, audio. Detalle en [services.md](services.md).
 
-Logs de arranque: `/tmp/churros/control-center.log`.
+Logs de arranque: `$XDG_RUNTIME_DIR/churros/control-center.log`.
 
 ---
 
@@ -169,7 +169,7 @@ Logs de arranque: `/tmp/churros/control-center.log`.
 
 App de configuración principal, estilo System Settings con colores ChurrOS. Documentación en [preferences.md](preferences.md).
 
-Logs: `/tmp/churros/settings.log` (incluye stdout/stderr del proceso).
+Logs: `$XDG_RUNTIME_DIR/churros/settings.log` (incluye stdout/stderr del proceso).
 
 ---
 
@@ -178,7 +178,7 @@ Logs: `/tmp/churros/settings.log` (incluye stdout/stderr del proceso).
 **Path:** `rust/popups/`
 **Binario:** `/usr/bin/churros-popup`
 
-Un solo binario con los seis popups (`volume` es alias de `audio`) y toggle nativo (pidfiles en `/tmp/churros/`). Documentación en [popups.md](popups.md).
+Un solo binario con los seis popups (`volume` es alias de `audio`) y toggle nativo (pidfiles en `$XDG_RUNTIME_DIR/churros/`). Documentación en [popups.md](popups.md).
 
 ---
 

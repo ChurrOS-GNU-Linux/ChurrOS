@@ -21,9 +21,9 @@ reboot = ["systemctl", "reboot"]
 poweroff = ["systemctl", "poweroff"]
 
 [appearance]
-greeting_msg = "Bienvenido a ChurrOS"
+greeting_msg = "ChurrOS"
 
 [widget.clock]
-format = "%A, %d de %B  -  %H:%M"
+format = "%A, %d %B - %H:%M"
 resolution = "1s"
 label_width = 300

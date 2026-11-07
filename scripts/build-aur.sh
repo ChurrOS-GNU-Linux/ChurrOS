@@ -6,6 +6,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=scripts/lib/local-repo.sh
 source "$SCRIPT_DIR/lib/local-repo.sh"
 PACKAGE_DIR="$(churros_local_repo_dir)"
+declare -A AUR_COMMITS=(
+    [python-pywal]=2c8031192b9b1b05136d06653b6ec4dfcd467725
+    [yay]=a856562dc26bb1ea060e167983cd22ca6bcac9ec
+    [wlogout]=9904ef2a49026b70e5288965423ee503c95f09cd
+)
 
 choose_work_dir() {
     local parent="$PROJECT_DIR/work"
@@ -36,13 +41,33 @@ build_aur() {
 
     echo "[build] $name from AUR..."
     rm -rf "$package_dir"
-    git clone "https://aur.archlinux.org/${name}.git" "$package_dir"
+    git clone --no-checkout "https://aur.archlinux.org/${name}.git" "$package_dir"
     (
         cd "$package_dir"
+        git checkout --detach "${AUR_COMMITS[$name]}"
+        [ "$(git rev-parse HEAD)" = "${AUR_COMMITS[$name]}" ]
         churros_pkgbuild_allow_arch PKGBUILD
+        # Importar las claves PGP de los mantenedores declaradas en validpgpkeys
+        # para que makepkg verifique las firmas de los tarballs de origen.
+        gpgconf --launch dirmngr 2>/dev/null || true
+        mapfile -t PGP_KEYS < <(grep -oP 'validpgpkeys=\(\K[^)]+' PKGBUILD | tr -d '"' | tr ' ' '\n' | grep -v '^$' || true)
+        for key in "${PGP_KEYS[@]}"; do
+            imported=0
+            for hk in hkps://keyserver.ubuntu.com hkps://keys.openpgp.org hkps://pgp.mit.edu; do
+                if gpg --keyserver "$hk" --recv-keys "$key"; then
+                    imported=1
+                    break
+                fi
+                echo "[warn] no se pudo recibir la clave $key desde $hk" >&2
+            done
+            if [ "$imported" -ne 1 ]; then
+                echo "[error] no se pudo importar la clave PGP $key para $name; makepkg no verificará firmas" >&2
+                exit 1
+            fi
+        done
         success=0
         for attempt in 1 2 3 4; do
-            if makepkg -sf --noconfirm --skippgpcheck; then
+            if makepkg -sf --noconfirm; then
                 success=1
                 break
             fi

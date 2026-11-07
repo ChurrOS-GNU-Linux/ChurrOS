@@ -246,7 +246,7 @@ decide() {
 S="$STUBS/usr/bin"
 L="$STUBS/usr/local/bin"
 decide YES "$L/churros-snapshot" list --json
-decide YES "$L/churros-snapshot" create manual
+decide KEEP "$L/churros-snapshot" create manual
 decide YES "$S/timedatectl" set-timezone America/Argentina/Buenos_Aires
 decide YES "$S/timedatectl" set-ntp false
 decide KEEP "$S/pacman" -Syu --noconfirm

@@ -70,7 +70,7 @@ Cinco binarios en Rust: `churros-welcome`, `churros-settings`, `churros-control-
 ## Actualizaciones y rollback
 
 - Paquetes del sistema: pacman contra los repositorios de Arch.
-- Apps y scripts de ChurrOS: `churros-update-utils` descarga un bundle (`churros-utils-<versión>-<arch>.tar.zst`) de download.churroslinux.org y solo instala ficheros en rutas permitidas. Hoy solo hay bundle x86_64 y el manifiesto no va firmado (ver [docs/release.md](docs/release.md)).
+- Apps y scripts de ChurrOS: `churros-update-utils` descarga un bundle (`churros-utils-<versión>-<arch>.tar.zst`) de download.churroslinux.org y solo instala ficheros en rutas permitidas. El flujo actual de bundles OTA es x86_64; la firma del manifiesto es condicional a que haya clave local y todavía no se exige cuando falta. No hay clave pública de release distribuida de forma verificable (ver [docs/release.md](docs/release.md)).
 - Snapshots: el hook de pacman `50-churros-snapshot.hook` crea un snapshot Btrfs antes de cada transacción. Detalle: [docs/rollback.md](docs/rollback.md).
 
 ## Ejecución privilegiada

@@ -137,6 +137,42 @@ class ShellScripts(unittest.TestCase):
                 f"{c['file']}:{c['line']}:{c['column']}: SC{c['code']} {c['message']}")
         testlib.assert_findings(self, "shellcheck", {key: " | ".join(msgs) for key, msgs in findings.items()})
 
+    def test_root_services_do_not_write_fixed_paths_in_tmp(self):
+        """Ningún script que corra como servicio de sistema escribe en /tmp con ruta fija.
+
+        /tmp es pegajoso pero compartido: un log con nombre fijo ahí permite
+        a otro usuario preparar un enlace simbólico o competir por el fichero.
+        Los servicios de root van a /var/log o a journald.
+        """
+        findings = {}
+        for unit_rel in self._root_units():
+            unit = testlib.AIROOTFS / unit_rel
+            text = testlib.read_text(unit)
+            exec_lines = [line.strip() for line in text.splitlines()
+                          if line.strip().startswith(("ExecStart=", "ExecStartPre=", "ExecStartPost="))]
+            scripts = {line.split("=", 1)[1].split()[0]
+                       for line in exec_lines
+                       if line.split("=", 1)[-1].strip().startswith("/")}
+            for script in sorted(scripts):
+                path = testlib.AIROOTFS / script.lstrip("/")
+                if not path.is_file():
+                    continue
+                for line in testlib.read_text(path).splitlines():
+                    if "tmp/churros" in line and not line.lstrip().startswith("#"):
+                        findings[f"root-tmp-log:{script}"] = (
+                            f"{script} (service {testlib.rel(unit)}) usa {line.strip()}: "
+                            "un log con ruta fija en /tmp es manipulable por otros usuarios; usa /var/log o journald")
+        testlib.assert_findings(self, "root-tmp-log", findings)
+
+    def _root_units(self) -> list[str]:
+        units = []
+        for path in (testlib.AIROOTFS / "etc/systemd/system").rglob("*.service"):
+            if path.is_symlink():
+                continue
+            if "[Service]" in testlib.read_text(path):
+                units.append(path.relative_to(testlib.AIROOTFS).as_posix())
+        return units
+
     def test_executables_have_valid_shebang(self):
         """Lo que se ejecuta directamente tiene #! válido; las bibliotecas no se ejecutan."""
         findings = {}
