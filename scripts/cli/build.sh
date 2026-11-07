@@ -327,7 +327,15 @@ mkdir -p archiso/airootfs/etc/greetd
 # Cada edición tiene su brazo explícito: si mañana se añade una y se olvida
 # este case, el build se para aquí en vez de generar una ISO que instala mal.
 case "$EDITION" in
-    niri)                SESSION_CMD="niri" ;;
+    niri)
+        # i686 es experimental y Arch Linux 32 no empaqueta niri: arrancar a un
+        # shell explícito evita autologin a un ejecutable ausente (#304).
+        if [ "$TARGET_ARCH" = "i686" ]; then
+            SESSION_CMD="bash --login"
+        else
+            SESSION_CMD="niri"
+        fi
+        ;;
     xfce|server)         SESSION_CMD="/usr/bin/churros-xfce-session" ;;
     pi)                SESSION_CMD="/usr/bin/churros-pi-session" ;;
     *)
