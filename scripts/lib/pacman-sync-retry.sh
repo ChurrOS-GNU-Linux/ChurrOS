@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Reintenta las operaciones de sincronización del contenedor de build.
 # Uso: pacman_sync_with_retry pacman -Sy ...
 pacman_sync_with_retry() {
