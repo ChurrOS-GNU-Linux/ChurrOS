@@ -1135,6 +1135,35 @@ class CalamaresConfigTest(unittest.TestCase):
             "verify-install no devuelve error cuando hay invariantes fallidas",
         )
 
+    def test_fixboot_modules_never_abort_mkinitcpio(self):
+        """Un módulo de MODULES que el kernel no trae hace salir a mkinitcpio con 1.
+
+        Pasó con bochs-drm (hoy el módulo es bochs) en linux-cachyos: initcpio
+        abortaba la instalación. Cada módulo que fix-boot añade lleva "?".
+        """
+        for conf in sorted(CALAMARES.glob("modules/**/shellprocess-fixboot.conf")):
+            config = self.load(conf)
+            for command, _ in command_entries(config.get("script")):
+                match = re.search(r"s/\^MODULES=\(/MODULES=\(([^/]*)/", command or "")
+                if not match:
+                    continue
+                modules = match.group(1).split()
+                self.assertTrue(modules, conf)
+                for module in modules:
+                    if conf.parent.name == "aarch64":
+                        continue  # linux-aarch64 trae virtio_* integrados como módulos fijos
+                    self.assertTrue(module.endswith("?"),
+                                    f"[fixboot-module-optional] {testlib.rel(conf)}: '{module}' sin '?' aborta "
+                                    "mkinitcpio si el kernel no lo trae")
+                    self.assertNotIn(module.rstrip("?"), ("bochs-drm", "bochs_drm"),
+                                     "[fixboot-bochs] el módulo DRM de Bochs se llama bochs")
+
+    def test_initcpiocfg_does_not_duplicate_plymouth(self):
+        """initcpiocfg añade plymouth solo cuando está instalado; prepend lo duplicaba."""
+        hooks = self.load(MODULES / "initcpiocfg.conf").get("hooks") or {}
+        extra = [*(hooks.get("prepend") or []), *(hooks.get("append") or [])]
+        self.assertNotIn("plymouth", extra, "[initcpio-plymouth-dup] Calamares ya añade el hook plymouth")
+
     def test_cleanup_removes_calamares_only_dependencies(self):
         """El sistema instalado no se queda con las bibliotecas Qt/KDE de Calamares."""
         cleanup = self.load(CALAMARES / "modules/shellprocess-cleanup.conf")
