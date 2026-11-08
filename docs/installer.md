@@ -23,7 +23,7 @@ La parte propia son dos cosas.
 
 | Instancia (`id`) | Fichero en `modules/` | Cuándo y qué hace |
 |---|---|---|
-| `boot-nocow` | `shellprocess-boot-nocow.conf` | Tras `mount` y antes de `unpackfs`: `chattr +C` y `compression none` en `/boot` del destino, para que GRUB pueda leer el kernel en btrfs |
+| `boot-nocow` | `shellprocess-boot-nocow.conf` | Tras `mount` y antes de `unpackfs`: `chattr +C +m` (sin CoW ni compresión) en `/boot` del destino, para que GRUB pueda leer el kernel en btrfs |
 | `pacman-init` | `shellprocess-pacman.conf` | Inicializa y puebla el keyring de pacman en el destino. Va antes de `fix-boot` |
 | `fix-boot` | `shellprocess-fixboot.conf` | Cambia el preset de mkinitcpio de archiso por el normal y añade módulos de vídeo |
 | `grub-theme` | `shellprocess-grub-theme.conf` | Tras `bootloader`: copia el tema de GRUB, regenera `grub.cfg` y deja `/boot` legible para GRUB en btrfs+zstd |

@@ -1490,11 +1490,29 @@ why = "Si la purga o la habilitación de SSH falla, la instalación server no de
 [[mutation]]
 name = "test_calamares_config: boot-nocow vuelve a ignorar el fallo de chattr"
 file = "installer/calamares/modules/shellprocess-boot-nocow.conf"
-find = 'then chattr +C +m \"${ROOT}/boot\" && btrfs'
-replace = 'then chattr +C +m \"${ROOT}/boot\" || true; btrfs'
+find = 'then chattr +C +m \"${ROOT}/boot\"; fi'
+replace = 'then chattr +C +m \"${ROOT}/boot\" || true; fi'
 caught_by = "tests.static.test_calamares_config"
 expect = "boot-nocow"
 why = "En btrfs, continuar sin No_COW puede producir un kernel que GRUB no puede leer."
+
+[[mutation]]
+name = "test_calamares_config: boot-nocow vuelve a fijar compression none tras chattr +C"
+file = "installer/calamares/modules/shellprocess-boot-nocow.conf"
+find = 'then chattr +C +m \"${ROOT}/boot\"; fi'
+replace = 'then chattr +C +m \"${ROOT}/boot\" && btrfs property set \"${ROOT}/boot\" compression none; fi'
+caught_by = "tests.static.test_calamares_config"
+expect = "compression"
+why = "El kernel rechaza la propiedad compression en un inodo No_COW (EINVAL) y Calamares aborta la instalación en btrfs."
+
+[[mutation]]
+name = "check: make-boot-grub-readable vuelve a fijar compression none en /boot"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = "chattr +C +m /boot || chattr +C /boot"
+replace = "chattr +C /boot; btrfs property set /boot compression none"
+caught_by = "check"
+expect = "sets the btrfs compression property on /boot"
+why = "Tras chattr +C el kernel devuelve EINVAL y, con set -e, shellprocess@grub-theme aborta la instalación en btrfs (exit 1 sin salida)."
 
 [[mutation]]
 name = "churros-services: el estado de sesión vuelve a ser global en /tmp"
