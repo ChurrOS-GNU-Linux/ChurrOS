@@ -33,7 +33,12 @@ fi
 # Configurar thunar como file manager predeterminado
 if command -v thunar >/dev/null 2>&1; then
     if command -v xdg-mime >/dev/null 2>&1; then
-        xdg-mime default thunar.desktop inode/directory >/dev/null 2>&1 || true
+        # Sin DISPLAY: xdg-utils no conoce XDG_CURRENT_DESKTOP=niri y, para
+        # adivinar el escritorio, lanza `xprop -root`. Ese cliente X basta
+        # para que niri arranque xwayland-satellite y Xwayland, que se
+        # quedaban vivos toda la sesión (~37 MiB). Sin DISPLAY, xprop falla
+        # al momento y xdg-mime escribe mimeapps.list igual. docs/memory.md.
+        env -u DISPLAY xdg-mime default thunar.desktop inode/directory >/dev/null 2>&1 || true
     fi
 fi
 

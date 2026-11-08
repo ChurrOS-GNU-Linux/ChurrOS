@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Print Queue Applet
+# system-config-printer arranca su applet de cola de impresión (applet.py,
+# ~40 MiB en reposo) en cada sesión XFCE. Esta copia en el directorio del
+# usuario lo oculta; la herramienta de impresoras sigue instalada y se abre
+# desde el menú. docs/memory.md.
+Exec=system-config-printer-applet
+Hidden=true
