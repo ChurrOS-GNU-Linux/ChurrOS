@@ -8,38 +8,60 @@
 # empty +C inode with a full copy. `cp -a` on btrfs reflinks by default
 # and keeps the compressed extents, so GRUB still fails.
 # A pacman hook re-runs this after kernel/initramfs updates.
+#
+# CHURROS_ROOT lets tests run it against a scratch tree instead of /.
 
-set -euo pipefail
+set -Eeuo pipefail
+
+# Calamares (shellprocess@grub-theme) only shows stdout: an error on stderr
+# turned into "exit code 1, there was no output from the command".
+exec 2>&1
+trap 'printf "make-boot-grub-readable: falló la línea %s: %s (código %s)\n" "$LINENO" "$BASH_COMMAND" "$?"' ERR
+
+ROOT="${CHURROS_ROOT:-}"
+BOOT="$ROOT/boot"
+
+fail() {
+    printf 'make-boot-grub-readable: %s\n' "$*"
+    exit 1
+}
 
 # En aarch64 publica vmlinuz-linux-aarch64 antes de salir: en ext4 este
 # script no reescribe inodos, pero GRUB sigue necesitando ese nombre.
 # En x86_64 no hay /boot/Image y el script sale 0.
-if [ -x /usr/share/churros/scripts/publish-aarch64-kernel ]; then
-    /usr/share/churros/scripts/publish-aarch64-kernel
+if [ -x "$ROOT/usr/share/churros/scripts/publish-aarch64-kernel" ]; then
+    CHURROS_ROOT="$ROOT" "$ROOT/usr/share/churros/scripts/publish-aarch64-kernel"
 fi
 
-root_fstype="$(findmnt -n -o FSTYPE / 2>/dev/null || true)"
-boot_fstype="$(findmnt -n -o FSTYPE /boot 2>/dev/null || true)"
-if [ "$root_fstype" != btrfs ] && [ "$boot_fstype" != btrfs ]; then
-    exit 0
-fi
-case "$boot_fstype" in
-    vfat|fat|msdos|exfat)
-        exit 0
-        ;;
-esac
+# Only the filesystem that really holds /boot matters: a separate ext4 /boot
+# under a btrfs root (or the ESP) does not know No_COW and chattr +C fails
+# there. stat -f answers for the directory itself, mountpoint or not, also
+# inside the Calamares chroot.
+[ -d "$BOOT" ] || exit 0
+boot_fs="$(stat -f -c %T "$BOOT" 2>/dev/null || true)"
+[ "$boot_fs" = btrfs ] || exit 0
 
-if [ -d /boot ]; then
-    # +C (No_COW) already rules out compression; +m makes it explicit.
-    # Never `btrfs property set /boot compression ...`: on a No_COW inode
-    # the kernel rejects it with EINVAL and Calamares aborts the install.
-    # Fall back to +C alone if this chattr/kernel does not know +m.
-    chattr +C +m /boot || chattr +C /boot
-    lsattr -d /boot | awk '{print $1}' | grep -q C || {
-        echo "make-boot-grub-readable: /boot no tiene el atributo No_COW" >&2
-        exit 1
-    }
+# No pipeline: with pipefail, `lsattr | awk | grep -q` can fail on SIGPIPE.
+has_nocow() {
+    local attrs
+    attrs="$(lsattr -d -- "$1" 2>&1)" || return 1
+    case "${attrs%% *}" in
+        *C*) return 0 ;;
+    esac
+    return 1
+}
+
+# +C (No_COW) already rules out compression; +m makes it explicit.
+# Never `btrfs property set /boot compression ...`: on a No_COW inode
+# the kernel rejects it with EINVAL and Calamares aborts the install.
+# Fall back to +C alone if this chattr/kernel does not know +m.
+# btrfs answers EINVAL when +C/+m are set again on an inode that already
+# has them: shellprocess@boot-nocow marks /boot before unpackfs, and the
+# pacman hook runs this on every kernel update. Only chattr when missing.
+if ! has_nocow "$BOOT"; then
+    chattr +C +m "$BOOT" 2>/dev/null || chattr +C "$BOOT" || fail "no se pudo marcar $BOOT con chattr +C"
 fi
+has_nocow "$BOOT" || fail "$BOOT no tiene el atributo No_COW"
 
 # chattr +C only applies to a newly created empty file. Write into that
 # inode (dd, never reflink/sparse) and rename over the original.
@@ -49,36 +71,42 @@ rewrite_for_grub() {
 
     rm -f -- "$tmp"
     touch -- "$tmp"
-    chattr +C -- "$tmp"
+    # The new inode inherits +C (and +m) from /boot. btrfs rejects setting
+    # flags on a regular file that has both: an unconditional `chattr +C`
+    # here failed with EINVAL ("Invalid argument") and aborted the install.
+    # Only call chattr when the flag is really missing.
+    has_nocow "$tmp" || chattr +C -- "$tmp" || fail "no se pudo marcar $tmp con chattr +C"
+    has_nocow "$tmp" || fail "$tmp no tiene el atributo No_COW"
     dd if="$f" of="$tmp" bs=8M status=none conv=fsync
     chmod --reference="$f" "$tmp"
     chown --reference="$f" "$tmp"
     mv -f -- "$tmp" "$f"
-    lsattr -d -- "$f" | awk '{print $1}' | grep -q C || {
-        echo "make-boot-grub-readable: $f no tiene el atributo No_COW" >&2
-        return 1
-    }
+    has_nocow "$f" || fail "$f no tiene el atributo No_COW"
 }
 
-shopt -s nullglob
-
-# Rewrite kernel, initramfs, microcode
-for f in /boot/vmlinuz-* /boot/initramfs-*.img /boot/*-ucode.img; do
-    [ -f "$f" ] || continue
-    case "$f" in
-        *.grub-rewr) continue ;;
-    esac
-    rewrite_for_grub "$f"
-done
-
-# Rewrite GRUB theme assets (background, fonts, select*.png, theme.txt)
-THEME_DIR="/boot/grub/themes/churros"
-if [ -d "$THEME_DIR" ]; then
-    for f in "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/select*.png "$THEME_DIR"/theme.txt; do
+# Symlinks stay symlinks: fix-boot points vmlinuz-linux and
+# initramfs-linux.img at the CachyOS images. Rewriting the link replaced it
+# with a copy of the image, which the next kernel update left stale. Its
+# target is rewritten under its own name.
+rewrite_all() {
+    local f
+    for f in "$@"; do
+        [ -L "$f" ] && continue
         [ -f "$f" ] || continue
         case "$f" in
             *.grub-rewr) continue ;;
         esac
         rewrite_for_grub "$f"
     done
+}
+
+shopt -s nullglob
+
+# Kernel, initramfs, microcode
+rewrite_all "$BOOT"/vmlinuz-* "$BOOT"/initramfs-*.img "$BOOT"/*-ucode.img
+
+# GRUB theme assets (background, fonts, select*.png, theme.txt)
+THEME_DIR="$BOOT/grub/themes/churros"
+if [ -d "$THEME_DIR" ]; then
+    rewrite_all "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/select*.png "$THEME_DIR"/theme.txt
 fi

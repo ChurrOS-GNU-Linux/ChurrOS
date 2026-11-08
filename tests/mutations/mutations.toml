@@ -1508,8 +1508,8 @@ why = "El kernel rechaza la propiedad compression en un inodo No_COW (EINVAL) y 
 [[mutation]]
 name = "check: make-boot-grub-readable vuelve a fijar compression none en /boot"
 file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
-find = "chattr +C +m /boot || chattr +C /boot"
-replace = "chattr +C /boot; btrfs property set /boot compression none"
+find = 'chattr +C +m "$BOOT" 2>/dev/null || chattr +C "$BOOT"'
+replace = 'chattr +C "$BOOT"; btrfs property set "$BOOT" compression none'
 caught_by = "check"
 expect = "sets the btrfs compression property on /boot"
 why = "Tras chattr +C el kernel devuelve EINVAL y, con set -e, shellprocess@grub-theme aborta la instalación en btrfs (exit 1 sin salida)."
@@ -3103,3 +3103,48 @@ replace = "xdg-mime default"
 caught_by = "tests.static.test_memory_profile"
 expect = "[xwayland-idle]"
 why = "xdg-mime lanza xprop con XDG_CURRENT_DESKTOP=niri: niri arranca Xwayland y se queda ~37 MiB toda la sesión."
+
+[[mutation]]
+name = "test_boot_grub_readable: chattr +C sobre el temporal que ya hereda C y m"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = '    has_nocow "$tmp" || chattr +C -- "$tmp" || fail'
+replace = '    chattr +C -- "$tmp" || fail'
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[boot-rerun]"
+why = "El temporal hereda +C +m de /boot y btrfs da EINVAL al volver a fijarlos: la instalación abortaba en grub-theme sin salida."
+
+[[mutation]]
+name = "test_boot_grub_readable: chattr sobre /boot ya marcado por boot-nocow"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = 'if ! has_nocow "$BOOT"; then'
+replace = 'if true; then'
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[boot-rerun]"
+why = "boot-nocow ya puso +C +m en /boot: repetir chattr da EINVAL en Calamares y en cada actualización del kernel."
+
+[[mutation]]
+name = "test_boot_grub_readable: los symlinks del kernel se reescriben como copias"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = "        [ -L \"$f\" ] && continue\n"
+replace = ''
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[symlink-kept]"
+why = "vmlinuz-linux pasa de enlace a copia: la siguiente actualización del kernel la deja vieja y GRUB arranca un kernel sin sus módulos."
+
+[[mutation]]
+name = "test_boot_grub_readable: los errores vuelven a stderr"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = "exec 2>&1\n"
+replace = ''
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[stdout]"
+why = "Calamares solo enseña stdout: el fallo se queda en 'exit code 1, there was no output from the command'."
+
+[[mutation]]
+name = "test_boot_grub_readable: /boot que no es btrfs"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = '[ "$boot_fs" = btrfs ] || exit 0'
+replace = 'true'
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[non-btrfs-skip]"
+why = "Un /boot ext4 o la ESP no admiten chattr +C: el script tiene que salir 0 sin tocarlos."
