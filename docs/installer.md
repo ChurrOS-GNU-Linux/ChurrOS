@@ -77,7 +77,7 @@ La ISO de la edición server sí lleva un XFCE mínimo, porque Calamares es grá
 
 ## Verificación
 
-`verify-install` se ejecuta al final de la instalación y **no falla la instalación, avisa**. Escribe en `/var/log/churros-install-verify.log`.
+`verify-install` se ejecuta al final de la instalación y **la aborta si alguna comprobación falla**, para no entregar un sistema que no arranca. Escribe el detalle en `/var/log/churros-install-verify.log` del sistema instalado y cada comprobación fallida también en la salida estándar, que es lo único que enseña la ventana de error de Calamares (`verify-install: FALLO: ...`).
 
 Comprobaciones comunes a todas las ediciones:
 
@@ -98,7 +98,7 @@ En las ediciones de escritorio:
 
 - Hay sesión declarada en `/etc/greetd/environments` y el lanzador existe en disco.
 - `greetd` está habilitado.
-- No hay sección `[initial_session]` en `config.toml`. Si el usuario marcó el inicio automático en Calamares, `configure-greetd-session` conserva ese usuario y escribe `[initial_session]`, y `verify-install` lo registra igualmente como aviso: es un falso positivo.
+- `[initial_session]` (el inicio automático) solo puede existir si el usuario lo marcó en Calamares: `configure-greetd-session` conserva ese usuario. Falla si es el usuario del Live (`churros`), si no tiene `user` o si ese usuario no existe.
 
 Solo en XFCE:
 
