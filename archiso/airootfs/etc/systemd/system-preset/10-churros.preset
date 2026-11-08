@@ -1,0 +1,15 @@
+# La Live arranca con /etc/machine-id vacío: systemd lo trata como primer
+# arranque y aplica los presets, y el 90-systemd.preset de Arch habilita
+# systemd-networkd (con sus sockets y wait-online) y systemd-homed. En ChurrOS
+# la red la lleva NetworkManager (services.sh, verify-install) y no hay
+# usuarios de homed: quedaban en memoria sin hacer nada (~5 MiB de PSS en la
+# Live de 2 GiB). Los presets de /etc mandan sobre los de /usr/lib.
+disable systemd-networkd.service
+disable systemd-networkd.socket
+disable systemd-networkd-varlink.socket
+disable systemd-networkd-varlink-metrics.socket
+disable systemd-networkd-resolve-hook.socket
+disable systemd-networkd-wait-online.service
+disable systemd-network-generator.service
+disable systemd-homed.service
+disable systemd-homed-activate.service

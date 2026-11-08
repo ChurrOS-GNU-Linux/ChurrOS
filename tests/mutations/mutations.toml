@@ -3049,3 +3049,30 @@ replace = '        if "X11-unix" in local:'
 caught_by = "tests.static.test_memory_profile"
 expect = "[x11-peer]"
 why = "ss solo pone la ruta del socket en el servidor: buscar por ruta devuelve Xwayland/Xorg y nunca el cliente que lo mantiene vivo."
+
+[[mutation]]
+name = "test_memory_profile: el preset vuelve a dejar networkd al primer arranque"
+file = "archiso/airootfs/etc/systemd/system-preset/10-churros.preset"
+find = "disable systemd-networkd.service\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[preset-systemd-networkd.service]"
+why = "Con la machine-id vacía, la Live aplica el preset de Arch y arranca systemd-networkd junto a NetworkManager."
+
+[[mutation]]
+name = "test_calamares_config: la limpieza vuelve a quitar os-prober"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "pacman -Qq qt6-declarative qt6-svg"
+replace = "pacman -Qq os-prober qt6-declarative qt6-svg"
+caught_by = "tests.static.test_calamares_config"
+expect = "[calamares-deps-keep]"
+why = "Sin os-prober, grub-mkconfig deja de detectar Windows u otros sistemas al actualizar el kernel."
+
+[[mutation]]
+name = "test_calamares_config: el sistema instalado se queda con las dependencias de Calamares"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "xargs -r pacman -Rnsu --noconfirm"
+replace = "xargs -r true"
+caught_by = "tests.static.test_calamares_config"
+expect = "[calamares-deps-removed]"
+why = "Las bibliotecas Qt/KDE de Calamares ocupan ~260 MiB en el XFCE instalado sin que nada las use."

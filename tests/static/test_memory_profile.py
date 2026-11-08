@@ -1,6 +1,7 @@
 """Regression coverage for the QEMU memory and zram profile."""
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -98,6 +99,10 @@ class MemoryProfileTest(unittest.TestCase):
         self.assertRegex(root, r"(?m)^ManagedOOMSwap=kill$", "[oomd-swap]")
         mglru = (air / "etc/tmpfiles.d/churros-mglru.conf").read_text()
         self.assertRegex(mglru, r"(?m)^w- /sys/kernel/mm/lru_gen/min_ttl_ms( +-){4} +[1-9]\d*$", "[mglru-min-ttl]")
+        preset = (air / "etc/systemd/system-preset/10-churros.preset").read_text()
+        for unit in ("systemd-networkd.service", "systemd-networkd.socket", "systemd-networkd-wait-online.service",
+                     "systemd-homed.service"):
+            self.assertRegex(preset, rf"(?m)^disable {re.escape(unit)}$", f"[preset-{unit}]")
         applet = (air / "etc/skel/.config/autostart/print-applet.desktop").read_text()
         self.assertRegex(applet, r"(?m)^Hidden=true$", "[print-applet-hidden]")
 
