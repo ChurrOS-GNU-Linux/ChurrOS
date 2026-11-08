@@ -782,7 +782,7 @@ why = "'Simplificar' la limpieza de [churros] con sed sin anclar (prohibido en A
 [[mutation]]
 name = "test_calamares_config: fix-boot después de initcpio"
 file = "installer/calamares/settings.conf"
-find = "      - shellprocess@fix-boot\n      - initcpiocfg\n      - initcpio\n"
+find = "      - initcpiocfg\n      - shellprocess@fix-boot\n      - initcpio\n"
 replace = "      - initcpiocfg\n      - initcpio\n      - shellprocess@fix-boot\n"
 caught_by = "tests.static.test_calamares_config"
 expect = "calamares-sequence:order:shellprocess@fix-boot<initcpio"
@@ -2968,3 +2968,12 @@ replace = 'main_sha="$(git rev-parse HEAD)"'
 caught_by = "tests.static.test_visual_iso_plan"
 expect = "[base-first-parent]"
 why = "On a pull_request merge commit HEAD^1 is main; using HEAD would compare the PR against itself."
+
+[[mutation]]
+name = "test_editions: niri/i686 vuelve a autologin a niri"
+file = "scripts/cli/build.sh"
+find = 'SESSION_CMD="bash --login"'
+replace = 'SESSION_CMD="niri"'
+caught_by = "tests.static.test_editions"
+expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
+why = "Arch Linux 32 no empaqueta niri: greetd haría autologin a un ejecutable ausente en la ISO i686 (#304)."
