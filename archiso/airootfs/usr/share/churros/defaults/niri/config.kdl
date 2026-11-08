@@ -79,9 +79,10 @@ window-rule {
     clip-to-geometry true
 }
 
+// Solo la ventana de imagen en imagen de Firefox flota. app-id y title van en
+// el mismo match (Y): dos match separados son O y hacían flotar todo Firefox.
 window-rule {
-    match app-id="firefox"
-    match title="^Picture-in-Picture$"
+    match app-id="^firefox$" title="^Picture-in-Picture$"
     open-floating true
 }
 
@@ -136,8 +137,10 @@ window-rule {
     clip-to-geometry true
 }
 
+// Bienvenida y recorrido: ventanas de diálogo, flotantes y centradas.
 window-rule {
     match app-id="org.churros.welcome"
+    open-floating true
     opacity 0.9
     draw-border-with-background false
     background-effect {
