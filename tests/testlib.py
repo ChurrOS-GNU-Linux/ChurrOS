@@ -225,13 +225,26 @@ class Edition:
 EDITIONS: tuple[Edition, ...] = (
     Edition("niri", "x86_64", "archiso/packages.x86_64", "niri", True, "niri"),
     Edition("niri", "aarch64", "archiso/packages.aarch64", "niri", True, "niri"),
-    Edition("niri", "i686", "archiso/packages.i686", None, False, "niri"),
+    Edition("niri", "i686", "archiso/packages.i686", None, False, "bash --login"),
     Edition("xfce", "x86_64", "archiso/packages.xfce.x86_64", "xfce", True, "/usr/bin/churros-xfce-session"),
     Edition("server", "x86_64", "archiso/packages.server.x86_64", "xfce", True, "/usr/bin/churros-xfce-session"),
     Edition("pi", "aarch64", "archiso/packages.pi.aarch64", "labwc", True, "/usr/bin/churros-pi-session"),
 )
 
 ARCHES = ("x86_64", "aarch64", "i686")
+
+
+def build_session_overrides() -> dict[tuple[str, str], str]:
+    """Excepciones por arquitectura al SESSION_CMD del case de build.sh.
+
+    {(arch, comando del case): comando final}, leído de los bloques
+    `if [ "$TARGET_ARCH" = X ] && [ "$SESSION_CMD" = Y ]; then SESSION_CMD=Z; fi`
+    (i686 no tiene niri en Arch Linux 32 y arranca un shell, #304).
+    """
+    text = read_text(ROOT / "scripts/cli/build.sh")
+    pattern = (r'^\s*if \[ "\$TARGET_ARCH" = "([\w-]+)" \] && \[ "\$SESSION_CMD" = "([^"]*)" \]; then\n'
+               r'\s*SESSION_CMD="([^"]*)"\n\s*fi\b')
+    return {(arch, base): command for arch, base, command in re.findall(pattern, text, re.M)}
 
 
 def edition(name: str, arch: str) -> Edition:

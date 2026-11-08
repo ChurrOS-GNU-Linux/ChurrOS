@@ -54,6 +54,8 @@ SESSIONS = {
     # startx (xorg-xinit) necesita el servidor X: sin xorg-server, pantalla negra.
     "/usr/bin/churros-xfce-session": ("xfce", ("xfce4-session", "xorg-xinit", "xorg-server")),
     "/usr/bin/churros-pi-session": ("labwc", ("labwc", "waybar")),
+    # i686 sin niri (#304): autologin a un shell, sin escritorio.
+    "bash --login": (None, ("bash",)),
 }
 
 # Paquetes que la configuración da por instalados. (paquete, ediciones
@@ -277,7 +279,9 @@ class BuildMatrixTest(unittest.TestCase):
                 self.assertTrue(item.list_path.is_file(), f"falta {item.package_list}")
                 self.assertIn(item.name, matrix["sessions"],
                               f"build.sh no tiene brazo SESSION_CMD para '{item.name}': el build se para")
-                self.assertEqual(matrix["sessions"][item.name], item.session_cmd,
+                base = matrix["sessions"][item.name]
+                command = testlib.build_session_overrides().get((item.arch, base), base)
+                self.assertEqual(command, item.session_cmd,
                                  "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
                 self.assertEqual(item.arch not in matrix["no_installer"], item.installer,
                                  "build.sh integra Calamares (o lo omite) al revés que testlib.EDITIONS")
@@ -296,7 +300,13 @@ class BuildMatrixTest(unittest.TestCase):
                     self.assertTrue(testlib.mode_is_executable(spec),
                                     f"{item.session_cmd} sin modo ejecutable en file_permissions "
                                     f"({item.arch}): mkarchiso lo copia 0644 y greetd no puede lanzarlo")
-                if item.desktop is None:
+                if desktop is None:
+                    # Sesión sin escritorio: la edición tampoco declara uno y el
+                    # programa que lanza greetd sí está en la lista.
+                    self.assertIsNone(item.desktop, "la sesión no lanza escritorio y testlib.EDITIONS declara uno")
+                    self.assertTrue(set(packages) <= available(item),
+                                    f"{item.package_list} no trae {packages}: greetd no puede abrir la sesión")
+                elif item.desktop is None:
                     # i686: la lista todavía no trae el escritorio (packages.i686).
                     self.assertFalse(set(packages) <= available(item),
                                      f"{item.package_list} ya trae {packages}: pon desktop='{desktop}' en testlib.EDITIONS")
