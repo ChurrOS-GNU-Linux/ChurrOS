@@ -211,34 +211,6 @@ impl UsersService {
         }
     }
 
-    /// Obtiene el fondo de pantalla configurado en ReGreet
-    pub fn regreet_wallpaper() -> String {
-        let Ok(content) = fs::read_to_string(REGREET_CONFIG_PATH) else {
-            return "/usr/share/churros/wallpapers/default.png".to_string();
-        };
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("path") && trimmed.contains('=') {
-                if let Some((_, val)) = trimmed.split_once('=') {
-                    let p = toml_value(val);
-                    if !p.is_empty() {
-                        return p;
-                    }
-                }
-            }
-        }
-        "/usr/share/churros/wallpapers/default.png".to_string()
-    }
-
-    /// Pone `wallpaper_path` de fondo en ReGreet.
-    ///
-    /// El helper solo acepta fondos del sistema (/usr/share/churros/wallpapers,
-    /// /usr/share/backgrounds, /usr/share/wallpapers) que el greeter pueda
-    /// leer: uno del home no lo podría mostrar.
-    pub fn set_regreet_wallpaper(wallpaper_path: &str) -> bool {
-        Self::write_root_config(&["regreet-wallpaper", wallpaper_path])
-    }
-
     /// Obtiene el mensaje de bienvenida de ReGreet
     pub fn regreet_greeting() -> String {
         let Ok(content) = fs::read_to_string(REGREET_CONFIG_PATH) else {

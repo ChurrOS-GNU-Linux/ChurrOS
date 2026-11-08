@@ -308,6 +308,12 @@ pub fn build(navigator: gtk::Stack) -> Page {
             "terminal.svg",
             "fastfetch",
         ),
+        (
+            "Pantalla de inicio",
+            "Fondo, reloj, saludo y colores del login",
+            "lock_screen.svg",
+            "greeter",
+        ),
     ] {
         personalization_group.add(&navigation_row::new(
             navigator.clone(),

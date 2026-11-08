@@ -5,10 +5,10 @@
 skip_selection = true
 
 [background]
-# Default wallpaper, pre-blurred: the greeter draws its controls straight on
-# it (docs/login-greeter.md). "Sincronizar fondo" in Settings swaps in a
-# sharp wallpaper; regreet.css darkens any of them.
-path = "/usr/share/churros/greeter/background.jpg"
+# Written by the user's session (churros-settings --sync-greeter): the desktop
+# wallpaper, or the image chosen in Settings, blurred if asked. tmpfiles.d
+# seeds it with the pre-blurred default wallpaper (docs/login-greeter.md).
+path = "/var/lib/churros/greeter/background.jpg"
 fit = "Cover"
 
 

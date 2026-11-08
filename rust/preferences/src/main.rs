@@ -102,6 +102,31 @@ fn main() -> glib::ExitCode {
         .build();
     logging::log("gtk app creada");
     
+    // Sin ventana: lo lanza churros-greeter-sync.service al cambiar el fondo.
+    // handle-local-options corre antes de registrar la app en D-Bus.
+    app.add_main_option(
+        "sync-greeter",
+        glib::Char::from(b'\0'),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::None,
+        "Copia el fondo del escritorio a la pantalla de inicio y sale",
+        None,
+    );
+    app.connect_handle_local_options(|_, options| {
+        if !options.contains("sync-greeter") {
+            return std::ops::ControlFlow::Continue(());
+        }
+        std::ops::ControlFlow::Break(match services::greeter::GreeterService::sync(false) {
+            Ok(written) => {
+                logging::log(&format!("[greeter] sync: {}", if written { "escrito" } else { "sin cambios" }));
+                glib::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("churros-settings --sync-greeter: {e}");
+                glib::ExitCode::FAILURE
+            }
+        })
+    });
     app.connect_activate(activate);
 
     let code = app.run();

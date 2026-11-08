@@ -12,6 +12,7 @@ pub mod fastfetch_config;
 pub mod fonts;
 pub mod foot_config;
 pub mod fuzzel_config;
+pub mod greeter;
 pub mod icons;
 pub mod keyboard;
 pub mod lock_screen;

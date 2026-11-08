@@ -6,8 +6,8 @@
 # Uso:
 #   churros-write-root-config greetd-autologin on|off
 #   churros-write-root-config lightdm-autologin on|off
-#   churros-write-root-config regreet-wallpaper /ruta/al/fondo
 #   churros-write-root-config regreet-greeting "texto"
+#   churros-write-root-config greeter-set CLAVE=VALOR [CLAVE=VALOR...]
 #
 # No acepta contenido libre: cada operación genera su fichero. Antes leía el
 # fichero entero de stdin y escribía /etc/greetd/config.toml tal cual, y ese
@@ -18,9 +18,15 @@
 #   - El comando de sesión sale de /etc/churros-edition con la tabla de
 #     edition-session.sh, la misma que usa la instalación
 #     (configure-greetd-session).
-#   - El fondo tiene que ser un fichero regular de los directorios de fondos
-#     del sistema y legible por el greeter; el saludo, un texto corto sin
-#     caracteres de control. Los dos se escapan para TOML.
+#   - El saludo es un texto corto sin caracteres de control, escapado para
+#     TOML.
+#   - greeter-set solo acepta claves conocidas con valores de una lista o un
+#     patrón cerrado (docs/login-greeter.md). Guarda el estado en
+#     /etc/greetd/churros-greeter.conf y reescribe solo las líneas de
+#     regreet.css marcadas con "churros:<clave>" y el formato del reloj.
+#   - El fondo de la pantalla de inicio no pasa por aquí: lo escribe la
+#     sesión del usuario en /var/lib/churros/greeter (grupo wheel, ver
+#     tmpfiles.d/churros-greeter.conf), sin root.
 #   - Cada escritura es atómica: temporal en el directorio de destino y
 #     rename.
 #
@@ -34,16 +40,10 @@ PROG="${0##*/}"
 
 GREETD_CONF=/etc/greetd/config.toml
 REGREET_CONF=/etc/greetd/regreet.toml
+REGREET_CSS=/etc/greetd/regreet.css
+GREETER_CONF=/etc/greetd/churros-greeter.conf
 LIGHTDM_AUTOLOGIN=/etc/lightdm/lightdm.conf.d/autologin.conf
 EDITION_LIB=/usr/share/churros/scripts/edition-session.sh
-
-# Fondos que puede usar la pantalla de login: los del sistema. Los del home no
-# los puede leer el greeter, y su contenido lo controla el usuario.
-WALLPAPER_DIRS=(
-    /usr/share/churros/wallpapers
-    /usr/share/backgrounds
-    /usr/share/wallpapers
-)
 
 GREETING_MAX_CHARS=80
 
@@ -53,8 +53,8 @@ usage() {
     cat >&2 <<EOF
 Uso: $PROG greetd-autologin on|off
      $PROG lightdm-autologin on|off
-     $PROG regreet-wallpaper /ruta/al/fondo
      $PROG regreet-greeting "texto"
+     $PROG greeter-set CLAVE=VALOR [CLAVE=VALOR...]
 EOF
     exit 2
 }
@@ -174,20 +174,6 @@ current_content() {
     fi
 }
 
-# ¿Lo puede leer cualquier usuario, el greeter incluido? Fichero con o+r y
-# todos los directorios de la ruta con o+x.
-world_readable() {
-    local path="$1" perms
-    perms="$(stat -c %a -- "$path")" || return 1
-    (( 8#$perms & 4 )) || return 1
-    path="${path%/*}"
-    while [ -n "$path" ]; do
-        perms="$(stat -c %a -- "$path")" || return 1
-        (( 8#$perms & 1 )) || return 1
-        path="${path%/*}"
-    done
-}
-
 # --------------------------------------------------------------- operaciones
 
 set_greetd_autologin() {
@@ -219,39 +205,6 @@ autologin-user-timeout=0
 autologin-session=$session"
 }
 
-set_regreet_wallpaper() {
-    local wanted="$1" real dir allowed="" content
-    case "$wanted" in
-        /*) ;;
-        *) die "la ruta del fondo tiene que ser absoluta: $wanted" ;;
-    esac
-    case "$wanted" in
-        *[[:cntrl:]]*) die "la ruta del fondo contiene caracteres de control" ;;
-    esac
-    real="$(realpath -e -- "$wanted" 2>/dev/null)" || die "no existe: $wanted"
-    case "$real" in
-        *[[:cntrl:]]*) die "la ruta del fondo contiene caracteres de control" ;;
-    esac
-    [ -f "$real" ] || die "no es un fichero regular: $wanted"
-    for dir in "${WALLPAPER_DIRS[@]}"; do
-        dir="$(realpath -e -- "$dir" 2>/dev/null)" || continue
-        case "$real" in
-            "$dir"/*) allowed=yes; break ;;
-        esac
-    done
-    [ -n "$allowed" ] \
-        || die "la pantalla de login solo usa fondos de ${WALLPAPER_DIRS[*]}: $wanted"
-    world_readable "$real" || die "el greeter no puede leer el fondo: $real"
-
-    content="$(current_content "$REGREET_CONF")"
-    if [ -z "$content" ]; then
-        content='[background]
-fit = "Cover"'
-    fi
-    content="$(printf '%s\n' "$content" | toml_set background path "$(toml_string "$real")")"
-    write_file "$REGREET_CONF" "$content"
-}
-
 set_regreet_greeting() {
     local text="$1" chars content
     [ -n "$text" ] || die "el saludo no puede estar vacío"
@@ -269,14 +222,151 @@ set_regreet_greeting() {
     write_file "$REGREET_CONF" "$content"
 }
 
+# ------------------------------------------------- pantalla de inicio
+
+# Valores por defecto: los del regreet.css y regreet.toml de la ISO.
+declare -A GREETER_DEFAULTS=(
+    [dim]=48 [avatar]=on [accent]=#F97316
+    [clock]=24 [seconds]=off [date]=on [clock_size]=medium
+    [date_pattern]="%A, %-d %B"
+)
+AVATAR_IMAGE='url("file:///usr/share/pixmaps/churros-logo.png"), radial-gradient(circle closest-side, rgba(255, 255, 255, 0.20) 96%, rgba(255, 255, 255, 0) 100%)'
+
+# Valida CLAVE=VALOR; muere si la clave no existe o el valor no vale.
+greeter_check() {
+    local key="$1" value="$2"
+    case "$key" in
+        dim)
+            if ! [[ "$value" =~ ^[0-9]{1,2}$ ]] || [ "$value" -gt 80 ]; then
+                die "dim: de 0 a 80 (% de oscurecido): $value"
+            fi ;;
+        avatar|seconds|date)
+            [[ "$value" =~ ^(on|off)$ ]] || die "$key: on u off: $value" ;;
+        accent)
+            [[ "$value" =~ ^#[0-9A-Fa-f]{6}$ ]] || die "accent: color #RRGGBB: $value" ;;
+        clock)
+            [[ "$value" =~ ^(12|24)$ ]] || die "clock: 12 o 24: $value" ;;
+        clock_size)
+            [[ "$value" =~ ^(small|medium|large)$ ]] || die "clock_size: small, medium o large: $value" ;;
+        date_pattern)
+            # Lo pone configure-greeter-locale al instalar (root, sin pkexec).
+            [ -z "${PKEXEC_UID:-}" ] || die "date_pattern solo se fija al instalar"
+            [[ "$value" =~ ^[%A-Za-z0-9\ .,-]{1,40}$ ]] || die "date_pattern no admitido: $value" ;;
+        *) die "clave desconocida: $key" ;;
+    esac
+}
+
+# Lee el estado guardado sobre los valores por defecto.
+greeter_load() {
+    local line key value
+    for key in "${!GREETER_DEFAULTS[@]}"; do
+        GREETER["$key"]="${GREETER_DEFAULTS[$key]}"
+    done
+    [ -f "$GREETER_CONF" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        key="${line%%=*}"
+        value="${line#*=}"
+        # Una línea inválida (editada a mano) se ignora: vale el defecto.
+        [ -n "${GREETER_DEFAULTS[$key]+x}" ] || continue
+        ( greeter_check "$key" "$value" ) 2>/dev/null || continue
+        GREETER["$key"]="$value"
+    done < "$GREETER_CONF"
+}
+
+# Reescribe el valor de las líneas de regreet.css que acaban en
+# "/* churros:CLAVE */". Las demás quedan igual.
+css_set() {
+    KEY="$1" VALUE="$2" awk '
+        BEGIN { tag = "; /* churros:" ENVIRON["KEY"] " */" }
+        substr($0, length($0) - length(tag) + 1) == tag {
+            if ($0 ~ /^@define-color /) {
+                split($0, f, " ")
+                print f[1] " " f[2] " " ENVIRON["VALUE"] tag
+            } else {
+                print substr($0, 1, index($0, ":")) " " ENVIRON["VALUE"] tag
+            }
+            next
+        }
+        { print }
+    '
+}
+
+# Formato del reloj (marcado Pango, regreet.toml): fecha opcional encima y
+# la hora grande. Ningún valor lleva comillas ni barras (greeter_check), así
+# que la cadena TOML se escribe tal cual, con su \n.
+clock_format() {
+    local time size fmt=""
+    if [ "${GREETER[clock]}" = 12 ]; then time="%-I:%M"; else time="%H:%M"; fi
+    [ "${GREETER[seconds]}" = off ] || time="$time:%S"
+    [ "${GREETER[clock]}" = 24 ] || time="$time %p"
+    case "${GREETER[clock_size]}" in
+        small) size=56pt ;;
+        large) size=88pt ;;
+        *) size=72pt ;;
+    esac
+    if [ "${GREETER[date]}" = on ]; then
+        fmt="<span size='15pt' weight='600'>${GREETER[date_pattern]}</span>\\n"
+    fi
+    fmt="$fmt<span size='$size' weight='bold' font_features='tnum' letter_spacing='-2048'>$time</span>"
+    printf '"%s"\n' "$fmt"
+}
+
+set_greeter() {
+    local pair key value css opacity
+    declare -gA GREETER=()
+    greeter_load
+    [ "$#" -ge 1 ] || usage
+    for pair in "$@"; do
+        case "$pair" in
+            *=*) ;;
+            *) die "se espera CLAVE=VALOR: $pair" ;;
+        esac
+        key="${pair%%=*}"
+        value="${pair#*=}"
+        greeter_check "$key" "$value"
+        GREETER["$key"]="$value"
+    done
+
+    if [ "${GREETER[dim]}" -eq 0 ]; then
+        opacity=1
+    else
+        opacity="$(printf '0.%02d' $((100 - GREETER[dim])))"
+    fi
+    css="$(current_content "$REGREET_CSS")"
+    [ -n "$css" ] || die "no existe $REGREET_CSS"
+    css="$(printf '%s\n' "$css" | css_set accent "${GREETER[accent]}")"
+    css="$(printf '%s\n' "$css" | css_set picture-opacity "$opacity")"
+    if [ "${GREETER[avatar]}" = on ]; then
+        css="$(printf '%s\n' "$css" | css_set avatar-image "$AVATAR_IMAGE")"
+        css="$(printf '%s\n' "$css" | css_set avatar-padding 110px)"
+    else
+        css="$(printf '%s\n' "$css" | css_set avatar-image none)"
+        css="$(printf '%s\n' "$css" | css_set avatar-padding 0)"
+    fi
+    write_file "$REGREET_CSS" "$css"
+
+    write_file "$REGREET_CONF" \
+        "$(current_content "$REGREET_CONF" | toml_set widget.clock format "$(clock_format)")"
+
+    local out="# Pantalla de inicio: churros-write-root-config greeter-set (no editar)"
+    for key in dim avatar accent clock seconds date clock_size date_pattern; do
+        out+=$'\n'"$key=${GREETER[$key]}"
+    done
+    write_file "$GREETER_CONF" "$out"
+}
+
 # --------------------------------------------------------------------- main
 
-[ "$#" -eq 2 ] || usage
+[ "$#" -ge 2 ] || usage
 
+case "$1" in
+    greeter-set) shift; set_greeter "$@"; exit 0 ;;
+esac
+[ "$#" -eq 2 ] || usage
 case "$1" in
     greetd-autologin)  set_greetd_autologin "$2" ;;
     lightdm-autologin) set_lightdm_autologin "$2" ;;
-    regreet-wallpaper) set_regreet_wallpaper "$2" ;;
     regreet-greeting)  set_regreet_greeting "$2" ;;
     *) usage ;;
 esac

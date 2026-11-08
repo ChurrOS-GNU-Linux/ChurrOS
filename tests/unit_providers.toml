@@ -48,6 +48,7 @@
 "ufw.service" = "ufw"
 
 [user_units]
+"default.target" = "systemd"
 "timers.target" = "systemd"
 
 [unit_commands]
