@@ -230,6 +230,7 @@ impl PreferencesWindow {
             }
         }
         self.register_subpage("wallpaper", "appearance", |n| pages::wallpaper::build(n));
+        self.register_subpage("fastfetch", "appearance", pages::fastfetch::build);
         if is_niri {
             self.register_subpage("night-light", "appearance", |n| pages::night_light::build(n));
             self.register_subpage("lock-screen", "appearance", |n| pages::lock_screen::build(n));
@@ -275,6 +276,8 @@ impl PreferencesWindow {
             }
             s.register_subpage(
                 "wallpaper", "appearance", "Fondo", "Cambiar el fondo de pantalla", Some("wallpaper.svg"));
+            s.register_subpage(
+                "fastfetch", "appearance", "Fastfetch", "Logo, modulos y formato del fetch de terminal", Some("terminal.svg"));
             if is_niri {
                 s.register_subpage(
                     "night-light", "appearance", "Luz nocturna", "Temperatura de color y filtro de luz azul", Some("night_light.svg"));

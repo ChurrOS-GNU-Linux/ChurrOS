@@ -8,6 +8,7 @@ pub mod cursor;
 pub mod datetime;
 pub mod desktop_apps;
 pub mod display;
+pub mod fastfetch_config;
 pub mod fonts;
 pub mod foot_config;
 pub mod fuzzel_config;

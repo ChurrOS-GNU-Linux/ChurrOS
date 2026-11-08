@@ -302,6 +302,12 @@ pub fn build(navigator: gtk::Stack) -> Page {
             "font.svg",
             "fonts",
         ),
+        (
+            "Fastfetch",
+            "Logo, modulos y formato del fetch de terminal",
+            "terminal.svg",
+            "fastfetch",
+        ),
     ] {
         personalization_group.add(&navigation_row::new(
             navigator.clone(),

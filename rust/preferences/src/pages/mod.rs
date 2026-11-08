@@ -10,6 +10,7 @@ pub mod cursor;
 pub mod datetime;
 pub mod display;
 pub mod display_timeout;
+pub mod fastfetch;
 pub mod fonts;
 pub mod foot;
 pub mod fuzzel;
