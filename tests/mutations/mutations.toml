@@ -243,8 +243,8 @@ why = "An unclosed if in an extensionless session wrapper, which check.sh never 
 [[mutation]]
 name = "test_shell_scripts: An unbalanced quote in an extensionless installer script"
 file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
-find = "LOG=/var/log/churros-install-verify.log"
-replace = "LOG=\"/var/log/churros-install-verify.log"
+find = 'LOG="${CHURROS_VERIFY_LOG:-/var/log/churros-install-verify.log}"'
+replace = 'LOG="${CHURROS_VERIFY_LOG:-/var/log/churros-install-verify.log}'
 caught_by = "tests.static.test_shell_scripts"
 expect = "verify-install: `bash -n` falla"
 why = "An unbalanced quote in an extensionless installer script."
@@ -3213,3 +3213,40 @@ replace = "url(\"file:///usr/share/churros/logo.png\")"
 caught_by = "tests.static.test_greeter_theme"
 expect = "[greeter-css-asset]"
 why = "GTK no avisa: el círculo del avatar queda vacío."
+
+[[mutation]]
+name = "test_verify_install: las comprobaciones fallidas solo van al log"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find = """        printf 'verify-install: FALLO: %s\\n' "$what"
+"""
+replace = ""
+caught_by = "tests.static.test_verify_install"
+expect = "[verify-stdout]"
+why = "Calamares solo enseña stdout: la instalación abortaba con \"There was no output from the command\" y sin decir qué falló."
+
+[[mutation]]
+name = "test_verify_install: vuelve a prohibir cualquier [initial_session]"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find = '"$([ -n "$AUTOLOGIN_USER" ] && [ "$AUTOLOGIN_USER" != churros ] && id "$AUTOLOGIN_USER" >/dev/null 2>&1 && echo yes || echo no)"'
+replace = "no"
+caught_by = "tests.static.test_verify_install"
+expect = "[verify-autologin-allowed]"
+why = "Marcar el inicio automático en Calamares abortaba la instalación al final."
+
+[[mutation]]
+name = "test_verify_install: acepta el autologin del usuario del Live"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find = '[ -n "$AUTOLOGIN_USER" ] && [ "$AUTOLOGIN_USER" != churros ] && id "$AUTOLOGIN_USER" >/dev/null 2>&1 && echo yes'
+replace = '[ -n "$AUTOLOGIN_USER" ] && echo yes'
+caught_by = "tests.static.test_verify_install"
+expect = "[verify-live-autologin]"
+why = "Un [initial_session] con churros (borrado por userdel) deja greetd en bucle sin usuario."
+
+[[mutation]]
+name = "test_verify_install: toma el user de cualquier sección de greetd"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find = "in_initial && /^[[:space:]]*user"
+replace = "/^[[:space:]]*user"
+caught_by = "tests.static.test_verify_install"
+expect = "[verify-live-autologin]"
+why = "El user de [default_session] (greeter) haría pasar un [initial_session] sin usuario."

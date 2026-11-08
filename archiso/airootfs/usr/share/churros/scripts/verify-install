@@ -7,6 +7,9 @@
 # y configure-server. Las invariantes incumplidas abortan la instalación para
 # no entregar un sistema que no arranca; el detalle queda en el log.
 #
+# Calamares solo enseña stdout: cada comprobación fallida se escribe también
+# ahí, o la ventana de error dice "There was no output from the command".
+#
 # Lo que se comprueba por edición:
 #   niri / xfce       -> existe el lanzador de sesión y greetd está habilitado
 #   server           -> no hay display manager, el target es multi-user y
@@ -14,7 +17,8 @@
 
 set -uo pipefail
 
-LOG=/var/log/churros-install-verify.log
+LOG="${CHURROS_VERIFY_LOG:-/var/log/churros-install-verify.log}"
+GREETD_CONF="${CHURROS_GREETD_CONF:-/etc/greetd/config.toml}"
 FAILURES=0
 
 log() {
@@ -27,6 +31,7 @@ check() {
         log "OK   $what"
     else
         log "AVISO $what"
+        printf 'verify-install: FALLO: %s\n' "$what"
         FAILURES=$((FAILURES + 1))
     fi
 }
@@ -47,6 +52,20 @@ unit_masked() {
         masked|masked-runtime) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+# user = "..." de [initial_session] en la config de greetd; vacío si no hay.
+initial_session_user() {
+    awk '
+        /^[[:space:]]*\[/ { in_initial = ($0 ~ /^[[:space:]]*\[initial_session\][[:space:]]*$/); next }
+        in_initial && /^[[:space:]]*user[[:space:]]*=/ {
+            sub(/^[^=]*=[[:space:]]*/, ""); gsub(/["\047[:space:]]/, ""); print; exit
+        }
+    ' "$GREETD_CONF" 2>/dev/null
+}
+
+has_initial_session() {
+    grep -q '^[[:space:]]*\[initial_session\]' "$GREETD_CONF" 2>/dev/null
 }
 
 EDITION="niri"
@@ -138,8 +157,15 @@ case "$EDITION" in
                 "$([ -f /etc/pacman.d/hooks/92-churros-xfce-x11-session.hook ] && [ -x /usr/share/churros/scripts/fix-xfce-sessions ] && echo yes || echo no)"
         fi
         check "greetd habilitado" "$(unit_enabled greetd.service && echo yes || echo no)"
-        check "config de greetd sin sección inicial_session" \
-            "$(grep -q '^\[initial_session\]' /etc/greetd/config.toml 2>/dev/null && echo no || echo yes)"
+        # [initial_session] es el autologin: válido si lo pidió el usuario en
+        # Calamares (configure-greetd-session lo conserva), nunca el del Live.
+        if has_initial_session; then
+            AUTOLOGIN_USER="$(initial_session_user)"
+            check "autologin de greetd sin el usuario del Live (${AUTOLOGIN_USER:-sin usuario})" \
+                "$([ -n "$AUTOLOGIN_USER" ] && [ "$AUTOLOGIN_USER" != churros ] && id "$AUTOLOGIN_USER" >/dev/null 2>&1 && echo yes || echo no)"
+        else
+            check "greetd pide contraseña (sin autologin)" yes
+        fi
         ;;
 esac
 
@@ -147,6 +173,7 @@ if [ "$FAILURES" -eq 0 ]; then
     log "--- todo correcto ---"
 else
     log "--- $FAILURES comprobaciones fallidas; revisar $LOG ---"
+    printf 'verify-install: %s comprobaciones fallidas; detalle en %s del sistema instalado\n' "$FAILURES" "$LOG"
     exit 1
 fi
 
