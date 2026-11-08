@@ -3013,3 +3013,39 @@ replace = "--artifacts out/reports/boot-uefi-2g"
 caught_by = "tests.static.test_memory_profile"
 expect = "[ci-2gib]"
 why = "2 GiB es el mínimo prometido: si la CI no arranca con esa memoria, una regresión de RAM pasa sin verse."
+
+[[mutation]]
+name = "test_memory_profile: systemd-oomd deja de habilitarse"
+file = "archiso/airootfs/root/scripts/services.sh"
+find = "enable_unit systemd-oomd.service\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[oomd-enabled]"
+why = "Sin systemd-oomd, en 2 GiB una app que agota la memoria congela el equipo entero en vez de cerrarse."
+
+[[mutation]]
+name = "test_memory_profile: MGLRU sin min_ttl"
+file = "archiso/airootfs/etc/tmpfiles.d/churros-mglru.conf"
+find = "min_ttl_ms - - - - 1000"
+replace = "min_ttl_ms - - - - 0"
+caught_by = "tests.static.test_memory_profile"
+expect = "[mglru-min-ttl]"
+why = "min_ttl_ms=0 desactiva la protección del working set y el escritorio vuelve a atascarse paginando con poca RAM."
+
+[[mutation]]
+name = "test_memory_profile: el applet de impresión vuelve a arrancar"
+file = "archiso/airootfs/etc/skel/.config/autostart/print-applet.desktop"
+find = "Hidden=true"
+replace = "Hidden=false"
+caught_by = "tests.static.test_memory_profile"
+expect = "[print-applet-hidden]"
+why = "El applet de cola de impresión ocupa ~40 MiB en cada sesión XFCE sin que haga falta."
+
+[[mutation]]
+name = "test_memory_profile: clientes X por la ruta del socket"
+file = "tests/vm/boot_smoke.py"
+find = '        if inode in peers and "X11-unix" not in local:'
+replace = '        if "X11-unix" in local:'
+caught_by = "tests.static.test_memory_profile"
+expect = "[x11-peer]"
+why = "ss solo pone la ruta del socket en el servidor: buscar por ruta devuelve Xwayland/Xorg y nunca el cliente que lo mantiene vivo."

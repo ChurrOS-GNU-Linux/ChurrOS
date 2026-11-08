@@ -227,14 +227,37 @@ for d in /proc/[0-9]*; do
 done | sort -t "$(printf '\t')" -k2,2nr | head -40
 """
 
-# Procesos conectados al socket de X (Xwayland en niri): en una sesión
+# Procesos conectados al servidor X (Xwayland en niri): en una sesión
 # Wayland en reposo debería estar vacío, porque niri arranca Xwayland
-# (xwayland-satellite) solo cuando un cliente X lo pide.
-X11_CLIENTS_SCRIPT = r"""ss -xp 2>/dev/null | awk '/X11-unix/' | grep -o 'users:(([^)]*' | sort -u"""
+# (xwayland-satellite) solo cuando un cliente X lo pide. ss solo pone la ruta
+# del socket en el extremo del servidor; el cliente se encuentra por el
+# inodo de su par (parse_x11_clients).
+X11_CLIENTS_SCRIPT = "ss -xpaH 2>/dev/null"
 
 # Ventanas de ChurrOS que la sesión abre sola o que abre la prueba: la
 # muestra "en reposo" se toma con todas cerradas.
 CHURROS_GUI = ("churros-welcome", "churros-settings", "churros-control-center", "churros-tour")
+
+
+def parse_x11_clients(ss_text: str) -> list[str]:
+    """`ss -xpaH` -> nombres de los procesos conectados a un socket X11-unix.
+
+    Cada línea: Netid State Recv-Q Send-Q Local Port Peer PeerPort [Process].
+    El extremo del servidor lleva la ruta (/tmp/.X11-unix/X0 o @/tmp/...) y
+    el inodo del cliente como PeerPort; el cliente es la línea cuyo Port es
+    ese inodo.
+    """
+    rows = []
+    for line in ss_text.splitlines():
+        fields = line.split()
+        if len(fields) >= 8 and fields[0] in ("u_str", "u_seq") and fields[5].isdigit():
+            rows.append((fields[4], fields[5], fields[7], " ".join(fields[8:])))
+    peers = {peer for local, _, peer, _ in rows if "X11-unix" in local and peer.isdigit() and peer != "0"}
+    names = set()
+    for local, inode, _, process in rows:
+        if inode in peers and "X11-unix" not in local:
+            names.update(re.findall(r'\("([^"]+)"', process))
+    return sorted(names)
 
 
 def parse_pss(text: str) -> list[dict]:
@@ -258,7 +281,7 @@ def memory_sample(agent, qemu_memory_mib: int, edition: str | None) -> dict:
     _, pss_text = guest_sh(agent, PSS_SCRIPT, timeout=120)
     profile["top_pss_processes"] = parse_pss(pss_text)
     _, x11 = guest_sh(agent, X11_CLIENTS_SCRIPT)
-    profile["x11_clients"] = [line.removeprefix("users:((") for line in x11.splitlines() if line.strip()]
+    profile["x11_clients"] = parse_x11_clients(x11)
     return profile
 
 
@@ -276,7 +299,11 @@ def collect_idle_memory_profile(agent, report: Report, qemu_memory_mib: int, set
     después Ajustes y el centro de control). Esta mide lo que el escritorio
     mantiene por sí mismo, que es lo que cuenta en un equipo de 2 GiB.
     """
-    guest_sh(agent, "pkill -x " + " -x ".join(CHURROS_GUI) + " || true")
+    # pkill admite un solo patrón y -x compara con comm, recortado a 15
+    # caracteres (churros-control-center es "churros-control"): se compara la
+    # línea de comandos con una expresión que las reúne a todas.
+    pattern = "^(/usr/bin/)?(" + "|".join(CHURROS_GUI) + ")( |$)"
+    guest_sh(agent, f"pkill -f '{pattern}' || true")
     time.sleep(settle)
     report.facts["memory_profile_idle"] = memory_sample(agent, qemu_memory_mib, report.facts.get("edition"))
 

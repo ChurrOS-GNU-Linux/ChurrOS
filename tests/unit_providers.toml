@@ -39,6 +39,7 @@
 "sockets.target" = "systemd"
 "sound.target" = "systemd"
 "sysinit.target" = "systemd"
+"systemd-oomd.service" = "systemd"
 "systemd-resolved.service" = "systemd"
 "systemd-time-wait-sync.service" = "systemd"
 "systemd-timesyncd.service" = "systemd"
