@@ -41,16 +41,18 @@ En i686 la ISO se construye como edición niri, pero `archiso/packages.i686` no 
 
 ## 2. Diseño
 
-El tema (`/etc/greetd/regreet.css`) toma de la referencia una composición despejada: fondo ChurrOS a pantalla completa, tarjeta pequeña centrada, contraseña como acción principal y controles de apagado apartados abajo. Mantiene la identidad propia de ChurrOS y no copia el logotipo ni los controles de macOS:
+Estilo de pantalla de bloqueo, sin tarjeta: el reloj grande arriba y los controles directamente sobre el fondo. Usa la identidad de ChurrOS (Inter, naranja `#F97316`, el logo como avatar), no la de ningún otro sistema.
 
-- **Fondo de pantalla**: `/usr/share/churros/wallpapers/default.png`, o el que se sincronice desde Ajustes (ver la sección 5).
-- **Tarjeta central oscura** con un solo borde fino y sombra moderada; los componentes internos no apilan contornos ni efectos de cristal.
-- **Controles simples**: campos y selectores redondeados de forma discreta, edición manual disponible desde botones secundarios poco llamativos.
-- **Foco y acción principal** en naranja ChurrOS (`#F97316`); Cancelar y los controles de energía tienen menos peso visual.
-- **Selección recordada**: `skip_selection = true` hace que, después del primer inicio de sesión correcto, ReGreet muestre directamente el campo de contraseña usando el último usuario y sesión. «Cancelar» vuelve al selector para cambiar cualquiera de los dos. En un equipo sin datos de inicio previo se presenta el selector normal.
-- **Reloj y saludo** con `Inter` y fuente de respaldo. El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
+- **Fondo**: `/usr/share/churros/greeter/background.jpg`, el fondo por defecto ya difuminado (generado una vez desde `wallpapers/default.png` y versionado: difuminar en GTK con `filter: blur()` cuesta en equipos sin aceleración). Sobre `#0B1020`, la imagen va al 74 % de opacidad para que el texto blanco se lea también en fondos claros. «Sincronizar fondo» de Ajustes (sección 5) pone un fondo nítido; se oscurece igual.
+- **Reloj**: fecha en pequeño y hora grande debajo. ReGreet 0.5 pinta el reloj con `set_markup`, así que `format` es marcado Pango (dos `<span>` con `size`; `tnum` deja las cifras de ancho fijo y la hora no baila). `configure-greeter-locale` solo traduce la fecha del primer `<span>`.
+- **Avatar y saludo**: un círculo translúcido con el logo (`/usr/share/pixmaps/churros-logo.png`) pintado como fondo del texto de saludo (`greeting_msg`).
+- **Campos en píldora**: usuario, sesión y contraseña son píldoras translúcidas con el foco en halo naranja. Las etiquetas «User:»/«Session:» y el aviso de PAM quedan transparentes. Su columna sigue ocupando 100 px, y la columna de los botones de editar se ensancha lo mismo con margen, para que las píldoras queden centradas.
+- **Botones**: «Login» es una píldora naranja y «Cancel» es texto. Reiniciar y apagar son círculos translúcidos con el icono simbólico del tema (`-gtk-icontheme`) y el texto debajo; el de apagar se vuelve rojo al pasar el ratón.
+- **Selección recordada**: `skip_selection = true` hace que, después del primer inicio de sesión correcto, ReGreet muestre directamente el campo de contraseña usando el último usuario y sesión. «Cancel» vuelve al selector para cambiar cualquiera de los dos.
 
-El cambio conserva greetd, PAM, usuarios, sesiones y el proceso de autenticación. La comprobación estática valida sintaxis, pero para confirmar tamaños y alineación reales hay que revisar el greeter en una sesión gráfica y probar la ISO.
+ReGreet 0.5 no da nombre a sus widgets (el `#[name]` de relm4 solo nombra el campo en Rust): los selectores de `regreet.css` siguen el árbol de su plantilla (`overlay > frame.background:nth-child(2)` es el formulario y `:nth-child(3)` el reloj). Los textos «User:», «Login», «Cancel», «Reboot» y «Power Off» están en inglés en el código de 0.5.0; la traducción (gettext) solo está en la rama principal de ReGreet.
+
+El paquete `inter-font` solo está en las listas de la edición niri (`packages.x86_64` y `packages.aarch64`); en las demás ediciones GTK usa otra fuente.
 
 ---
 
@@ -82,7 +84,7 @@ user = "churros"
 
 ```toml
 [background]
-path = "/usr/share/churros/wallpapers/default.png"
+path = "/usr/share/churros/greeter/background.jpg"
 fit = "Cover"
 
 [GTK]
@@ -97,11 +99,12 @@ reboot = ["systemctl", "reboot"]
 poweroff = ["systemctl", "poweroff"]
 
 [appearance]
-greeting_msg = "Bienvenido a ChurrOS"
+greeting_msg = "ChurrOS"
 
 [widget.clock]
-format = "%A, %d de %B  -  %H:%M"
+format = "<span size='15pt' weight='600'>%A, %-d %B</span>\n<span size='72pt' weight='bold' font_features='tnum' letter_spacing='-2048'>%H:%M</span>"
 resolution = "1s"
+label_width = 520
 ```
 
 ### `/etc/pam.d/greetd`
@@ -143,4 +146,4 @@ Los permisos de `churros-write-root-config` están en [privileged-execution.md](
 2. **Casilla de inicio automático**: viene desmarcada (`doAutologin: false` en `users.conf`). Si se marca, Calamares escribe `[initial_session]` con el usuario creado.
 3. **`/usr/share/churros/scripts/configure-greetd-session`** (paso `shellprocess@post-install`): reescribe `/etc/greetd/config.toml` con la sesión de la edición (tabla de `edition-session.sh`), conserva el usuario de autologin que dejó Calamares, si lo hay, y escribe `/etc/greetd/environments`. En la edición server sale sin hacer nada.
 4. **XFCE, sesión X11**: ReGreet no usa el comando de `[initial_session]`; descubre las sesiones en `/usr/share/xsessions` y `/usr/share/wayland-sessions`. `xfce4-session` trae una sesión `xfce-wayland` que exige labwc y una `xfce.desktop` que lanza `startxfce4` sin el wrapper. En la edición xfce, `configure-greetd-session` ejecuta `/usr/share/churros/scripts/fix-xfce-sessions` para dejar solo la sesión X11 con `churros-xfce-session`; sin eso, iniciar sesión sin autologin vuelve al greeter en bucle. El hook de pacman `92-churros-xfce-x11-session.hook` lo vuelve a aplicar cuando una actualización reinstala esos ficheros.
-5. **Idioma**: el script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta el saludo (`greeting_msg`) y el formato de fecha (`format`) de `regreet.toml` según el idioma elegido en Calamares.
+5. **Idioma**: el script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta el saludo (`greeting_msg`) y la fecha del reloj (el primer `<span>` de `format`; la hora y el marcado no cambian) según el idioma elegido en Calamares.

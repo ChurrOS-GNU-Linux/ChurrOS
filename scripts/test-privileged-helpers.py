@@ -620,12 +620,13 @@ class WriteRootConfig(unittest.TestCase):
 
     @unittest.skipIf(tomllib is None, "Python sin tomllib")
     def test_regreet_greeting(self):
+        background = self.regreet()["background"]["path"]
         for text in ("Hola", "¡Bienvenida, Ñandú! 🐧", 'Comillas "dobles" y \\barra\\', "x" * 80, "ñ" * 80):
             with self.subTest(text=text):
                 result = self.run_helper("regreet-greeting", text)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.regreet()["appearance"]["greeting_msg"], text)
-        self.assertEqual(self.regreet()["background"]["path"], "/usr/share/churros/wallpapers/default.png")
+        self.assertEqual(self.regreet()["background"]["path"], background, "cambiar el saludo tocó el fondo")
         self.assertNoTempFiles()
 
     def test_regreet_greeting_refusals(self):

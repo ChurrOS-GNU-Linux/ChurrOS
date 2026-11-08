@@ -1029,10 +1029,10 @@ why = "Comilla sin cerrar en regreet.toml: ReGreet no arranca y el sistema insta
 [[mutation]]
 name = "test_config_syntax: Fondo de ReGreet apuntando a un wallpaper que no existe"
 file = "archiso/airootfs/etc/greetd/regreet.toml"
-find = "path = \"/usr/share/churros/wallpapers/default.png\""
-replace = "path = \"/usr/share/churros/wallpapers/default.jpg\""
+find = "path = \"/usr/share/churros/greeter/background.jpg\""
+replace = "path = \"/usr/share/churros/greeter/background.png\""
 caught_by = "tests.static.test_config_syntax"
-expect = "default.jpg no existe en la ISO"
+expect = "background.png no existe en la ISO"
 why = "Fondo de ReGreet apuntando a un wallpaper que no existe"
 
 [[mutation]]
@@ -1092,8 +1092,8 @@ why = "Llave sin cerrar en style.css de waybar: GTK descarta la hoja desde ahí 
 [[mutation]]
 name = "test_config_syntax: !important en el tema de ReGreet"
 file = "archiso/airootfs/etc/greetd/regreet.css"
-find = "    border-radius: 22px;\n"
-replace = "    border-radius: 22px !important;\n"
+find = "    border-radius: 16px;\n"
+replace = "    border-radius: 16px !important;\n"
 caught_by = "tests.static.test_config_syntax"
 expect = "css-important:archiso/airootfs/etc/greetd/regreet.css:important"
 why = "GTK no admite !important: 'Junk at end of value' y la declaración se descarta. Así se perdió casi todo el tema Bento Glass de ReGreet."
@@ -3195,3 +3195,21 @@ replace = ""
 caught_by = "tests.static.test_calamares_config"
 expect = "[grub-entry-title-hook]"
 why = "grub reinstala 10_linux en cada actualización y el siguiente grub-mkconfig vuelve a poner with Linux."
+
+[[mutation]]
+name = "test_greeter_theme: el idioma vuelve a reescribir el reloj entero"
+file = "archiso/airootfs/usr/share/churros/scripts/configure-greeter-locale"
+find = "        print open ENVIRON[\"DATE\"] rest\n"
+replace = "        print \"format = \\\"\" ENVIRON[\"DATE\"] \"  -  %H:%M\\\"\"\n"
+caught_by = "tests.static.test_greeter_theme"
+expect = "[greeter-clock-markup]"
+why = "Al instalar en otro idioma el reloj grande volvía a ser una línea \"fecha - hora\"."
+
+[[mutation]]
+name = "test_greeter_theme: el avatar apunta a un logo que no está en la ISO"
+file = "archiso/airootfs/etc/greetd/regreet.css"
+find = "url(\"file:///usr/share/pixmaps/churros-logo.png\")"
+replace = "url(\"file:///usr/share/churros/logo.png\")"
+caught_by = "tests.static.test_greeter_theme"
+expect = "[greeter-css-asset]"
+why = "GTK no avisa: el círculo del avatar queda vacío."
