@@ -214,16 +214,98 @@ def parse_memory_profile(meminfo_text: str, swaps_text: str, zram_stat: str, pro
             "swap": swaps, "zram_mm_stat": zram_stat, "top_rss_processes": processes}
 
 
-def collect_memory_profile(agent, report: Report, qemu_memory_mib: int) -> None:
-    """Capture RAM, swap/zram and largest RSS processes after login."""
+# PSS (Proportional Set Size) reparte cada página compartida entre los
+# procesos que la usan: a diferencia de RSS, la suma se acerca a la memoria
+# física real y dice cuánto se libera al cerrar un proceso. Una línea por
+# proceso: pid, PSS en kB, comm y línea de comandos (recortada).
+PSS_SCRIPT = r"""
+for d in /proc/[0-9]*; do
+  pss=$(awk '/^Pss:/{print $2; exit}' "$d/smaps_rollup" 2>/dev/null)
+  [ -n "$pss" ] || continue
+  printf '%s\t%s\t%s\t%s\n' "${d#/proc/}" "$pss" "$(cat "$d/comm" 2>/dev/null)" \
+    "$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null | cut -c1-200)"
+done | sort -t "$(printf '\t')" -k2,2nr | head -40
+"""
+
+# Procesos conectados al servidor X (Xwayland en niri): en una sesión
+# Wayland en reposo debería estar vacío, porque niri arranca Xwayland
+# (xwayland-satellite) solo cuando un cliente X lo pide. ss solo pone la ruta
+# del socket en el extremo del servidor; el cliente se encuentra por el
+# inodo de su par (parse_x11_clients).
+X11_CLIENTS_SCRIPT = "ss -xpaH 2>/dev/null"
+
+# Ventanas de ChurrOS que la sesión abre sola o que abre la prueba: la
+# muestra "en reposo" se toma con todas cerradas.
+CHURROS_GUI = ("churros-welcome", "churros-settings", "churros-control-center", "churros-tour")
+
+
+def parse_x11_clients(ss_text: str) -> list[str]:
+    """`ss -xpaH` -> nombres de los procesos conectados a un socket X11-unix.
+
+    Cada línea: Netid State Recv-Q Send-Q Local Port Peer PeerPort [Process].
+    El extremo del servidor lleva la ruta (/tmp/.X11-unix/X0 o @/tmp/...) y
+    el inodo del cliente como PeerPort; el cliente es la línea cuyo Port es
+    ese inodo.
+    """
+    rows = []
+    for line in ss_text.splitlines():
+        fields = line.split()
+        if len(fields) >= 8 and fields[0] in ("u_str", "u_seq") and fields[5].isdigit():
+            rows.append((fields[4], fields[5], fields[7], " ".join(fields[8:])))
+    peers = {peer for local, _, peer, _ in rows if "X11-unix" in local and peer.isdigit() and peer != "0"}
+    names = set()
+    for local, inode, _, process in rows:
+        if inode in peers and "X11-unix" not in local:
+            names.update(re.findall(r'\("([^"]+)"', process))
+    return sorted(names)
+
+
+def parse_pss(text: str) -> list[dict]:
+    """Salida de PSS_SCRIPT -> [{pid, name, pss_bytes, cmdline}] (de mayor a menor)."""
+    processes = []
+    for line in text.splitlines():
+        fields = line.split("\t", 3)
+        if len(fields) >= 3 and fields[0].isdigit() and fields[1].isdigit():
+            processes.append({"pid": int(fields[0]), "name": fields[2], "pss_bytes": int(fields[1]) * 1024,
+                              "cmdline": fields[3].strip() if len(fields) == 4 else ""})
+    return sorted(processes, key=lambda item: item["pss_bytes"], reverse=True)
+
+
+def memory_sample(agent, qemu_memory_mib: int, edition: str | None) -> dict:
+    """Una foto de la memoria: meminfo, swap/zram, RSS, PSS y clientes X."""
     _, meminfo_text = guest_sh(agent, "cat /proc/meminfo")
     _, swaps_text = guest_sh(agent, "cat /proc/swaps")
     _, zram_stat = guest_sh(agent, "cat /sys/block/zram0/mm_stat 2>/dev/null || true")
     _, process_text = guest_sh(agent, "ps -eo pid,comm,rss --sort=-rss | head -21")
-    profile = parse_memory_profile(meminfo_text, swaps_text, zram_stat, process_text,
-                                   qemu_memory_mib, report.facts.get("edition"))
+    profile = parse_memory_profile(meminfo_text, swaps_text, zram_stat, process_text, qemu_memory_mib, edition)
+    _, pss_text = guest_sh(agent, PSS_SCRIPT, timeout=120)
+    profile["top_pss_processes"] = parse_pss(pss_text)
+    _, x11 = guest_sh(agent, X11_CLIENTS_SCRIPT)
+    profile["x11_clients"] = parse_x11_clients(x11)
+    return profile
+
+
+def collect_memory_profile(agent, report: Report, qemu_memory_mib: int) -> None:
+    """Capture RAM, swap/zram and largest RSS/PSS processes after login."""
+    profile = memory_sample(agent, qemu_memory_mib, report.facts.get("edition"))
     report.facts["memory_profile"] = profile
     report.check("memory profile collected", bool(profile["meminfo_bytes"]), "could not read /proc/meminfo")
+
+
+def collect_idle_memory_profile(agent, report: Report, qemu_memory_mib: int, settle: float = 20) -> None:
+    """Segunda foto con las ventanas de ChurrOS cerradas: el escritorio en reposo.
+
+    La primera se toma con la bienvenida abierta (y en niri, la prueba abre
+    después Ajustes y el centro de control). Esta mide lo que el escritorio
+    mantiene por sí mismo, que es lo que cuenta en un equipo de 2 GiB.
+    """
+    # pkill admite un solo patrón y -x compara con comm, recortado a 15
+    # caracteres (churros-control-center es "churros-control"): se compara la
+    # línea de comandos con una expresión que las reúne a todas.
+    pattern = "^(/usr/bin/)?(" + "|".join(CHURROS_GUI) + ")( |$)"
+    guest_sh(agent, f"pkill -f '{pattern}' || true")
+    time.sleep(settle)
+    report.facts["memory_profile_idle"] = memory_sample(agent, qemu_memory_mib, report.facts.get("edition"))
 
 
 def check_system(agent, report: Report, timeout: float) -> None:
@@ -498,6 +580,7 @@ def main() -> int:
         check_journal(agent, report, artifacts)
         if item and item.desktop:
             check_screen(vm, report, artifacts)
+            collect_idle_memory_profile(agent, report, args.memory)
         agent.close()
         completed = True
     except Exception as exc:  # noqa: BLE001 - cualquier error tiene que acabar en report.json

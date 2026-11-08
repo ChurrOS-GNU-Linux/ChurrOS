@@ -134,6 +134,12 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition "$EDITION" --artifacts out/reports/boot-uefi
 
+      # 2 GiB es el mínimo que ChurrOS promete (docs/memory.md): la sesión
+      # tiene que llegar al escritorio y el informe deja la memoria en reposo.
+      - name: Boot ISO in QEMU (UEFI, 2 GiB)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 tests/vm/boot_smoke.py out/*.iso --edition "$EDITION" --memory 2048 --artifacts out/reports/boot-uefi-2g
+
       - name: Boot ISO in QEMU (BIOS)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && needs.matrix.outputs.bios == 'true' }}
         run: python3 tests/vm/boot_smoke.py out/*.iso --edition "$EDITION" --firmware bios --artifacts out/reports/boot-bios

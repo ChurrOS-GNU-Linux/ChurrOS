@@ -1164,6 +1164,26 @@ class CalamaresConfigTest(unittest.TestCase):
         extra = [*(hooks.get("prepend") or []), *(hooks.get("append") or [])]
         self.assertNotIn("plymouth", extra, "[initcpio-plymouth-dup] Calamares ya añade el hook plymouth")
 
+    def test_cleanup_removes_calamares_only_dependencies(self):
+        """El sistema instalado no se queda con las bibliotecas Qt/KDE de Calamares."""
+        cleanup = self.load(CALAMARES / "modules/shellprocess-cleanup.conf")
+        commands = [command for command, _ in command_entries(cleanup.get("script")) if command]
+        removal = [c for c in commands if "pacman -Rnsu" in c]
+        self.assertEqual(len(removal), 1, "[calamares-deps-removed] falta quitar las dependencias de Calamares")
+        command, _ = strip_ignore(removal[0])
+        self.assertNotIn("$", command, "Calamares sustituye $ como variable")
+        self.assertIn("xargs -r", command, "sin -r, una lista vacía lanza pacman -R sin objetivos")
+        targets = set(re.search(r"pacman -Qq (.*?) 2>", command).group(1).split())
+        block = re.search(r"^# Calamares installer dependencies\n(.*?)(?:\n\n|\Z)",
+                          testlib.read_text(testlib.ROOT / "archiso/packages.x86_64"), re.S | re.M)
+        listed = set(block.group(1).split())
+        self.assertLessEqual(targets, listed, "solo se quita lo que el bloque de Calamares instaló")
+        for keep in ("os-prober", "zenity", "udisks2"):
+            self.assertNotIn(keep, targets, f"[calamares-deps-keep] {keep} sigue haciendo falta tras instalar")
+        self.assertIn("qt6-declarative", targets, "[calamares-deps-removed]")
+        verify = next(i for i, c in enumerate(commands) if c.endswith("/verify-install"))
+        self.assertLess(commands.index(removal[0]), verify, "verify-install tiene que ver el sistema final")
+
     def test_boot_nocow_fails_closed_only_on_btrfs(self):
         config = self.load(CALAMARES / "modules/shellprocess-boot-nocow.conf")
         commands = [command for command, _ in command_entries(config.get("script")) if command]

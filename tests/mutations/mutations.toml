@@ -3004,3 +3004,102 @@ replace = "  prepend:\n    - plymouth\n"
 caught_by = "tests.static.test_calamares_config"
 expect = "[initcpio-plymouth-dup]"
 why = "initcpiocfg ya añade plymouth cuando está instalado: el hook se ejecuta dos veces en el initramfs."
+
+[[mutation]]
+name = "test_memory_profile: PSS sin ordenar"
+file = "tests/vm/boot_smoke.py"
+find = 'return sorted(processes, key=lambda item: item["pss_bytes"], reverse=True)'
+replace = 'return processes'
+caught_by = "tests.static.test_memory_profile"
+expect = "[pss-sorted]"
+why = "El informe tiene que poner primero lo que más memoria ocupa; sin ordenar, el top de PSS engaña."
+
+[[mutation]]
+name = "test_memory_profile: la muestra en reposo deja de tomarse"
+file = "tests/vm/boot_smoke.py"
+find = "            collect_idle_memory_profile(agent, report, args.memory)\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[idle-after-screen]"
+why = "Sin la muestra con las ventanas de ChurrOS cerradas, la bienvenida abierta infla el consumo en reposo y no se puede comparar antes/después."
+
+[[mutation]]
+name = "test_memory_profile: la CI deja de arrancar con 2 GiB"
+file = ".github/workflows/iso.yml"
+find = "--memory 2048 --artifacts out/reports/boot-uefi-2g"
+replace = "--artifacts out/reports/boot-uefi-2g"
+caught_by = "tests.static.test_memory_profile"
+expect = "[ci-2gib]"
+why = "2 GiB es el mínimo prometido: si la CI no arranca con esa memoria, una regresión de RAM pasa sin verse."
+
+[[mutation]]
+name = "test_memory_profile: systemd-oomd deja de habilitarse"
+file = "archiso/airootfs/root/scripts/services.sh"
+find = "enable_unit systemd-oomd.service\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[oomd-enabled]"
+why = "Sin systemd-oomd, en 2 GiB una app que agota la memoria congela el equipo entero en vez de cerrarse."
+
+[[mutation]]
+name = "test_memory_profile: MGLRU sin min_ttl"
+file = "archiso/airootfs/etc/tmpfiles.d/churros-mglru.conf"
+find = "min_ttl_ms - - - - 1000"
+replace = "min_ttl_ms - - - - 0"
+caught_by = "tests.static.test_memory_profile"
+expect = "[mglru-min-ttl]"
+why = "min_ttl_ms=0 desactiva la protección del working set y el escritorio vuelve a atascarse paginando con poca RAM."
+
+[[mutation]]
+name = "test_memory_profile: el applet de impresión vuelve a arrancar"
+file = "archiso/airootfs/etc/skel/.config/autostart/print-applet.desktop"
+find = "Hidden=true"
+replace = "Hidden=false"
+caught_by = "tests.static.test_memory_profile"
+expect = "[print-applet-hidden]"
+why = "El applet de cola de impresión ocupa ~40 MiB en cada sesión XFCE sin que haga falta."
+
+[[mutation]]
+name = "test_memory_profile: clientes X por la ruta del socket"
+file = "tests/vm/boot_smoke.py"
+find = '        if inode in peers and "X11-unix" not in local:'
+replace = '        if "X11-unix" in local:'
+caught_by = "tests.static.test_memory_profile"
+expect = "[x11-peer]"
+why = "ss solo pone la ruta del socket en el servidor: buscar por ruta devuelve Xwayland/Xorg y nunca el cliente que lo mantiene vivo."
+
+[[mutation]]
+name = "test_memory_profile: el preset vuelve a dejar networkd al primer arranque"
+file = "archiso/airootfs/etc/systemd/system-preset/10-churros.preset"
+find = "disable systemd-networkd.service\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[preset-systemd-networkd.service]"
+why = "Con la machine-id vacía, la Live aplica el preset de Arch y arranca systemd-networkd junto a NetworkManager."
+
+[[mutation]]
+name = "test_calamares_config: la limpieza vuelve a quitar os-prober"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "pacman -Qq qt6-declarative qt6-svg"
+replace = "pacman -Qq os-prober qt6-declarative qt6-svg"
+caught_by = "tests.static.test_calamares_config"
+expect = "[calamares-deps-keep]"
+why = "Sin os-prober, grub-mkconfig deja de detectar Windows u otros sistemas al actualizar el kernel."
+
+[[mutation]]
+name = "test_calamares_config: el sistema instalado se queda con las dependencias de Calamares"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "xargs -r pacman -Rnsu --noconfirm"
+replace = "xargs -r true"
+caught_by = "tests.static.test_calamares_config"
+expect = "[calamares-deps-removed]"
+why = "Las bibliotecas Qt/KDE de Calamares ocupan ~260 MiB en el XFCE instalado sin que nada las use."
+
+[[mutation]]
+name = "test_memory_profile: churros-portal-start vuelve a despertar Xwayland"
+file = "archiso/airootfs/usr/bin/churros-portal-start"
+find = "env -u DISPLAY xdg-mime default"
+replace = "xdg-mime default"
+caught_by = "tests.static.test_memory_profile"
+expect = "[xwayland-idle]"
+why = "xdg-mime lanza xprop con XDG_CURRENT_DESKTOP=niri: niri arranca Xwayland y se queda ~37 MiB toda la sesión."
