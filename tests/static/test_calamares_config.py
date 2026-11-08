@@ -1316,6 +1316,15 @@ class CalamaresConfigTest(unittest.TestCase):
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(testlib.ROOT / source, root / target)
         kernel_presets = live_kernel_presets(arch)
+        # Un kernel propio que alguna edición instala tiene su preset en
+        # customize_airootfs.sh; si la simulación no lo ve, deja de probar
+        # el camino real (renombrar vmlinuz-linux, sin linux.preset).
+        listed = set().union(*(testlib.packages(item) for item in testlib.EDITIONS
+                               if item.arch == arch and item.installer))
+        for kernel in ("linux-cachyos", "linux-churrosvyper"):
+            if kernel in listed and f"etc/mkinitcpio.d/{kernel}.preset" not in kernel_presets:
+                findings[f"{prefix}:kernel-preset-missing:{kernel}"] = (
+                    f"{arch}: se instala {kernel} pero no encuentro su preset en customize_airootfs.sh")
         for target, body in kernel_presets.items():
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             (root / target).write_text(body)

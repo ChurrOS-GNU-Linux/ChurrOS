@@ -812,8 +812,8 @@ file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
 find = "PRESETS=('archiso')"
 replace = "PRESETS=(\"archiso\")"
 caught_by = "tests.static.test_calamares_config"
-expect = "calamares-sim:fix-boot:x86_64:presets:linux.preset"
-why = "Cambiar las comillas del preset: el sed de fix-boot ya no casa y el sistema instalado arranca con hooks de archiso"
+expect = "calamares-sim:fix-boot:i686:presets:linux.preset"
+why = "Cambiar las comillas del preset: el sed de fix-boot ya no casa y el sistema instalado arranca con hooks de archiso (i686; en x86_64 customize_airootfs.sh borra linux.preset porque el kernel es linux-cachyos)"
 
 [[mutation]]
 name = "test_calamares_config: Errata en config"
@@ -2661,8 +2661,8 @@ file = "tests/static/test_calamares_config.py"
 find = '        if name.removesuffix(".preset") in listed:'
 replace = '        if False:'
 caught_by = "tests.static.test_calamares_config"
-expect = "Ya no fallan; borra su entrada de tests/known_issues.toml"
-why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh; la prueba detecta que su hallazgo conocido queda huérfano."
+expect = "calamares-sim:fix-boot:x86_64:kernel-preset-missing:linux-cachyos"
+why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh y ya no prueba el camino real de x86_64 (renombrar vmlinuz-linux, sin linux.preset)."
 
 [[mutation]]
 name = "test_build_dryrun: ARM package filter must not scan the shared x86 repository"
