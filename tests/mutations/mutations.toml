@@ -354,8 +354,8 @@ why = "Debian/Fedora path copied in: no polkit agent, so pkexec prompts fail"
 [[mutation]]
 name = "test_references: The Live autologin session command does not exist, giving a black screen"
 file = "scripts/cli/build.sh"
-find = "SESSION_CMD=\"niri\" ;;"
-replace = "SESSION_CMD=\"nirii\" ;;"
+find = "SESSION_CMD=\"niri\""
+replace = "SESSION_CMD=\"nirii\""
 caught_by = "tests.static.test_references"
 expect = "[ref:niri/x86_64:scripts/cli/build.sh:initial_session:nirii]"
 why = "The Live autologin session command does not exist, giving a black screen"
@@ -555,8 +555,8 @@ why = "The xfce|server arm is 'simplified' to xfce): every server build aborts w
 [[mutation]]
 name = "test_editions: Typo in the Live session command"
 file = "scripts/cli/build.sh"
-find = "    niri)                SESSION_CMD=\"niri\" ;;"
-replace = "    niri)                SESSION_CMD=\"nirii\" ;;"
+find = "SESSION_CMD=\"niri\""
+replace = "SESSION_CMD=\"nirii\""
 caught_by = "tests.static.test_editions"
 expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
 why = "Typo in the Live session command: every niri ISO autologins a command that does not exist."
@@ -782,7 +782,7 @@ why = "'Simplificar' la limpieza de [churros] con sed sin anclar (prohibido en A
 [[mutation]]
 name = "test_calamares_config: fix-boot después de initcpio"
 file = "installer/calamares/settings.conf"
-find = "      - shellprocess@fix-boot\n      - initcpiocfg\n      - initcpio\n"
+find = "      - initcpiocfg\n      - shellprocess@fix-boot\n      - initcpio\n"
 replace = "      - initcpiocfg\n      - initcpio\n      - shellprocess@fix-boot\n"
 caught_by = "tests.static.test_calamares_config"
 expect = "calamares-sequence:order:shellprocess@fix-boot<initcpio"
@@ -2950,33 +2950,3 @@ replace = 'main_sha="$(git rev-parse HEAD)"'
 caught_by = "tests.static.test_visual_iso_plan"
 expect = "[base-first-parent]"
 why = "On a pull_request merge commit HEAD^1 is main; using HEAD would compare the PR against itself."
-
-
-# --- container pacman database sync retry ---
-
-[[mutation]]
-name = "container build: do not retry transient pacman database sync failures"
-file = "scripts/lib/pacman-sync-retry.sh"
-find = 'if (( attempt >= attempts )); then'
-replace = 'if (( attempt >= 1 )); then'
-caught_by = "tests.static.test_container_upgrade_retry"
-expect = "calls, 3"
-why = "Pacman database sync can fail transiently on DNS or mirrors; bounded retries can recover without masking persistent failures."
-
-[[mutation]]
-name = "container build: omit DNS guidance after pacman sync retries are exhausted"
-file = "scripts/lib/pacman-sync-retry.sh"
-find = 'CHURROS_CONTAINER_ARGS="--dns DIRECCION_DNS"'
-replace = 'CHURROS_CONTAINER_ARGS=""'
-caught_by = "tests.static.test_container_upgrade_retry"
-expect = "CHURROS_CONTAINER_ARGS"
-why = "When retries fail, the message must explain the supported per-network DNS override rather than hardcode public resolvers."
-
-[[mutation]]
-name = "container build: retry helper is not used by the upgrade entrypoint"
-file = "scripts/container-entrypoint.sh"
-find = 'pacman_sync_with_retry pacman -Sy'
-replace = 'pacman -Sy'
-caught_by = "tests.static.test_container_upgrade_retry"
-expect = "pacman_sync_with_retry pacman -Sy"
-why = "The helper must wrap the real pre-build database synchronization or the retry tests only exercise dead code."

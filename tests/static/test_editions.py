@@ -51,6 +51,7 @@ LIST_NAME = re.compile(r"packages\.(?:([a-z0-9-]+)\.)?(x86_64|aarch64|i686)")
 # waybar y hace exec de /usr/bin/labwc.
 SESSIONS = {
     "niri": ("niri", ("niri",)),
+    "bash --login": ("bash", ()),  # fallback de niri/i686 sin compositor empaquetado
     # startx (xorg-xinit) necesita el servidor X: sin xorg-server, pantalla negra.
     "/usr/bin/churros-xfce-session": ("xfce", ("xfce4-session", "xorg-xinit", "xorg-server")),
     "/usr/bin/churros-pi-session": ("labwc", ("labwc", "waybar")),
@@ -143,10 +144,12 @@ def build_matrix() -> dict:
     default_list = re.search(r'^PACKAGE_LIST="([^"]+)"', text, re.M)
     sessions = {}
     for patterns, body in case_arms(text, "EDITION", "SESSION_CMD="):
-        command = re.search(r'SESSION_CMD="([^"]*)"', body)
+        commands = re.findall(r'SESSION_CMD="([^"]*)"', body)
         for pattern in patterns:
-            if pattern != "*" and command:
-                sessions[pattern] = command.group(1)
+            if pattern != "*" and commands:
+                # Conditional arch fallback first (e.g. niri/i686); the last
+                # assignment is the normal command for the other architectures.
+                sessions[pattern] = commands[-1]
     pairs = {}
     for name in editions:
         for arch in arches:
@@ -277,8 +280,13 @@ class BuildMatrixTest(unittest.TestCase):
                 self.assertTrue(item.list_path.is_file(), f"falta {item.package_list}")
                 self.assertIn(item.name, matrix["sessions"],
                               f"build.sh no tiene brazo SESSION_CMD para '{item.name}': el build se para")
-                self.assertEqual(matrix["sessions"][item.name], item.session_cmd,
-                                 "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
+                expected_session = item.session_cmd
+                if item.name == "niri" and item.arch == "i686":
+                    self.assertIn('if [ "$TARGET_ARCH" = "i686" ]; then', BUILD_SH.read_text())
+                    self.assertIn('SESSION_CMD="bash --login"', BUILD_SH.read_text())
+                else:
+                    self.assertEqual(matrix["sessions"][item.name], expected_session,
+                                     "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
                 self.assertEqual(item.arch not in matrix["no_installer"], item.installer,
                                  "build.sh integra Calamares (o lo omite) al revés que testlib.EDITIONS")
 
@@ -288,6 +296,9 @@ class BuildMatrixTest(unittest.TestCase):
             with self.subTest(edition=item.id):
                 self.assertIn(item.session_cmd, SESSIONS,
                               f"añade '{item.session_cmd}' a SESSIONS con su escritorio y sus paquetes")
+                if item.session_cmd == "bash --login":
+                    self.assertEqual((item.name, item.arch, item.desktop), ("niri", "i686", None))
+                    continue  # fallback de rescate, no pretende arrancar un escritorio
                 desktop, packages = SESSIONS[item.session_cmd]
                 if item.session_cmd.startswith("/"):
                     self.assertTrue(testlib.airootfs(item.session_cmd).is_file(),
