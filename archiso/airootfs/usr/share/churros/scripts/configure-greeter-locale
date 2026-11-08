@@ -15,29 +15,42 @@ fi
 case "$LANG_CODE" in
     es)
         GREET="Bienvenido a ChurrOS"
-        FMT="%A, %d de %B  -  %H:%M"
+        DATE="%A, %-d de %B"
         ;;
     pt)
         GREET="Bem-vindo ao ChurrOS"
-        FMT="%A, %d de %B  -  %H:%M"
+        DATE="%A, %-d de %B"
         ;;
     fr)
         GREET="Bienvenue sur ChurrOS"
-        FMT="%A %d %B  -  %H:%M"
+        DATE="%A %-d %B"
         ;;
     de)
         GREET="Willkommen bei ChurrOS"
-        FMT="%A, %d. %B  -  %H:%M"
+        DATE="%A, %-d. %B"
         ;;
     it)
         GREET="Benvenuto su ChurrOS"
-        FMT="%A %d %B  -  %H:%M"
+        DATE="%A %-d %B"
         ;;
     *)
         GREET="Welcome to ChurrOS"
-        FMT="%A, %B %d  -  %H:%M"
+        DATE="%A, %B %-d"
         ;;
 esac
 
 sed -i "s|^greeting_msg = .*|greeting_msg = \"$GREET\"|" "$REGREET_CONF" || true
-sed -i "s|^format = .*|format = \"$FMT\"|" "$REGREET_CONF" || true
+
+# The clock is Pango markup (regreet.toml): only the strftime date between the
+# first <span ...> and </span> changes. awk reads it from the environment, so
+# the quotes and the "\n" of the TOML string pass through untouched.
+DATE="$DATE" awk '
+    /^format = "<span[^>]*>/ && index($0, "</span>") {
+        open = substr($0, 1, index($0, ">"))
+        rest = substr($0, index($0, "</span>"))
+        print open ENVIRON["DATE"] rest
+        next
+    }
+    { print }
+' "$REGREET_CONF" > "$REGREET_CONF.tmp" && cat "$REGREET_CONF.tmp" > "$REGREET_CONF"
+rm -f "$REGREET_CONF.tmp"

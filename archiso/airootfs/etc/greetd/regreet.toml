@@ -5,7 +5,10 @@
 skip_selection = true
 
 [background]
-path = "/usr/share/churros/wallpapers/default.png"
+# Default wallpaper, pre-blurred: the greeter draws its controls straight on
+# it (docs/login-greeter.md). "Sincronizar fondo" in Settings swaps in a
+# sharp wallpaper; regreet.css darkens any of them.
+path = "/usr/share/churros/greeter/background.jpg"
 fit = "Cover"
 
 
@@ -23,7 +26,9 @@ poweroff = ["systemctl", "poweroff"]
 [appearance]
 greeting_msg = "ChurrOS"
 
+# Date above, large time below. ReGreet 0.5 renders the clock with Pango
+# markup; configure-greeter-locale rewrites only the date part per language.
 [widget.clock]
-format = "%A, %d %B - %H:%M"
+format = "<span size='15pt' weight='600'>%A, %-d %B</span>\n<span size='72pt' weight='bold' font_features='tnum' letter_spacing='-2048'>%H:%M</span>"
 resolution = "1s"
-label_width = 300
+label_width = 520

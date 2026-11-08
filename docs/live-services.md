@@ -44,6 +44,7 @@ archiso/airootfs/etc/
         ├── 50-churros-snapshot.hook
         ├── 91-churros-boot-grub-readable.hook
         ├── 92-churros-xfce-x11-session.hook
+        ├── 93-churros-grub-entry-title.hook
         ├── uncomment-mirrors.hook
         └── zzzz99-remove-custom-hooks-from-airootfs.hook
 ```
@@ -359,6 +360,10 @@ Tras instalar o actualizar el kernel, el initramfs, el microcódigo, el tema de 
 ### 92-churros-xfce-x11-session.hook
 
 Cuando una actualización de `xfce4-session` vuelve a instalar `xfce-wayland.desktop` o `xfce.desktop`, ejecuta `fix-xfce-sessions`: borra la sesión Wayland de XFCE (exige labwc) y hace que `xfce.desktop` lance `churros-xfce-session` ([login-greeter.md](login-greeter.md)).
+
+### 93-churros-grub-entry-title.hook
+
+Cuando una actualización de `grub` reinstala `/etc/grub.d/10_linux`, vuelve a aplicar los dos `sed` de `shellprocess-grub-theme.conf`: la entrada se llama solo "ChurrOS Linux" (sin "with Linux linux-cachyos") y no se pintan los mensajes "Loading Linux..." ([boot.md](boot.md)).
 
 ---
 

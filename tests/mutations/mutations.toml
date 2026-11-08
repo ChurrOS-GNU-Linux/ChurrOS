@@ -812,8 +812,8 @@ file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
 find = "PRESETS=('archiso')"
 replace = "PRESETS=(\"archiso\")"
 caught_by = "tests.static.test_calamares_config"
-expect = "calamares-sim:fix-boot:x86_64:presets:linux.preset"
-why = "Cambiar las comillas del preset: el sed de fix-boot ya no casa y el sistema instalado arranca con hooks de archiso"
+expect = "calamares-sim:fix-boot:i686:presets:linux.preset"
+why = "Cambiar las comillas del preset: el sed de fix-boot ya no casa y el sistema instalado arranca con hooks de archiso (i686; en x86_64 customize_airootfs.sh borra linux.preset porque el kernel es linux-cachyos)"
 
 [[mutation]]
 name = "test_calamares_config: Errata en config"
@@ -1029,10 +1029,10 @@ why = "Comilla sin cerrar en regreet.toml: ReGreet no arranca y el sistema insta
 [[mutation]]
 name = "test_config_syntax: Fondo de ReGreet apuntando a un wallpaper que no existe"
 file = "archiso/airootfs/etc/greetd/regreet.toml"
-find = "path = \"/usr/share/churros/wallpapers/default.png\""
-replace = "path = \"/usr/share/churros/wallpapers/default.jpg\""
+find = "path = \"/usr/share/churros/greeter/background.jpg\""
+replace = "path = \"/usr/share/churros/greeter/background.png\""
 caught_by = "tests.static.test_config_syntax"
-expect = "default.jpg no existe en la ISO"
+expect = "background.png no existe en la ISO"
 why = "Fondo de ReGreet apuntando a un wallpaper que no existe"
 
 [[mutation]]
@@ -1092,8 +1092,8 @@ why = "Llave sin cerrar en style.css de waybar: GTK descarta la hoja desde ahí 
 [[mutation]]
 name = "test_config_syntax: !important en el tema de ReGreet"
 file = "archiso/airootfs/etc/greetd/regreet.css"
-find = "    border-radius: 22px;\n"
-replace = "    border-radius: 22px !important;\n"
+find = "    border-radius: 16px;\n"
+replace = "    border-radius: 16px !important;\n"
 caught_by = "tests.static.test_config_syntax"
 expect = "css-important:archiso/airootfs/etc/greetd/regreet.css:important"
 why = "GTK no admite !important: 'Junk at end of value' y la declaración se descarta. Así se perdió casi todo el tema Bento Glass de ReGreet."
@@ -2661,8 +2661,8 @@ file = "tests/static/test_calamares_config.py"
 find = '        if name.removesuffix(".preset") in listed:'
 replace = '        if False:'
 caught_by = "tests.static.test_calamares_config"
-expect = "Ya no fallan; borra su entrada de tests/known_issues.toml"
-why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh; la prueba detecta que su hallazgo conocido queda huérfano."
+expect = "calamares-sim:fix-boot:x86_64:kernel-preset-missing:linux-cachyos"
+why = "Sin ese filtro la simulación deja de ver el preset de linux-cachyos que escribe customize_airootfs.sh y ya no prueba el camino real de x86_64 (renombrar vmlinuz-linux, sin linux.preset)."
 
 [[mutation]]
 name = "test_build_dryrun: ARM package filter must not scan the shared x86 repository"
@@ -3166,6 +3166,53 @@ replace = 'rewrite_all "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DI
 caught_by = "tests.static.test_boot_grub_readable"
 expect = "[theme-rewritten]"
 why = "Un fichero del tema que GRUB no puede leer en btrfs (zstd) hace que descarte el tema entero."
+
+[[mutation]]
+name = "test_calamares_config: fix-boot vuelve a dejar el alias vmlinuz-linux"
+file = "installer/calamares/modules/shellprocess-fixboot.conf"
+find = '''  - "[ -f /etc/mkinitcpio.d/linux.preset ] || rm -f /boot/vmlinuz-linux /boot/initramfs-linux.img /boot/initramfs-linux-fallback.img"
+'''
+replace = '''  - "[ ! -f /etc/mkinitcpio.d/linux-cachyos.preset ] || ln -sfn vmlinuz-linux-cachyos /boot/vmlinuz-linux"
+'''
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:fix-boot:x86_64:grub-extra-entry:vmlinuz-linux"
+why = "grub-mkconfig lista cada vmlinuz-* de /boot: el alias de compatibilidad añadía una segunda entrada \"with Linux linux\"."
+
+[[mutation]]
+name = "test_calamares_config: la entrada de GRUB vuelve a decir with Linux linux-cachyos"
+file = "installer/calamares/modules/shellprocess-grub-theme.conf"
+find = "s/\\\"%s, with Linux %s\\\"/\\\"%s%.0s\\\"/"
+replace = "s/\\\"%s, with Linux %s\\\"/\\\"%s %s\\\"/"
+caught_by = "tests.static.test_calamares_config"
+expect = "[grub-entry-title]"
+why = "El menú tiene que decir solo ChurrOS Linux."
+
+[[mutation]]
+name = "test_calamares_config: el hook de grub no repite el título tras actualizar"
+file = "archiso/airootfs/etc/pacman.d/hooks/93-churros-grub-entry-title.hook"
+find = """-e 's/"%s, with Linux %s"/"%s%.0s"/' """
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "[grub-entry-title-hook]"
+why = "grub reinstala 10_linux en cada actualización y el siguiente grub-mkconfig vuelve a poner with Linux."
+
+[[mutation]]
+name = "test_greeter_theme: el idioma vuelve a reescribir el reloj entero"
+file = "archiso/airootfs/usr/share/churros/scripts/configure-greeter-locale"
+find = "        print open ENVIRON[\"DATE\"] rest\n"
+replace = "        print \"format = \\\"\" ENVIRON[\"DATE\"] \"  -  %H:%M\\\"\"\n"
+caught_by = "tests.static.test_greeter_theme"
+expect = "[greeter-clock-markup]"
+why = "Al instalar en otro idioma el reloj grande volvía a ser una línea \"fecha - hora\"."
+
+[[mutation]]
+name = "test_greeter_theme: el avatar apunta a un logo que no está en la ISO"
+file = "archiso/airootfs/etc/greetd/regreet.css"
+find = "url(\"file:///usr/share/pixmaps/churros-logo.png\")"
+replace = "url(\"file:///usr/share/churros/logo.png\")"
+caught_by = "tests.static.test_greeter_theme"
+expect = "[greeter-css-asset]"
+why = "GTK no avisa: el círculo del avatar queda vacío."
 
 [[mutation]]
 name = "test_verify_install: las comprobaciones fallidas solo van al log"

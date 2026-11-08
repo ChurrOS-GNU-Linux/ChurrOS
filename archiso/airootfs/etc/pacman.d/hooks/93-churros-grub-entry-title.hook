@@ -1,0 +1,14 @@
+# grub reinstala /etc/grub.d/10_linux en cada actualización (no es un fichero
+# de configuración): vuelve a dejar la entrada como "ChurrOS Linux", sin
+# "with Linux <kernel>", y sin los mensajes "Loading Linux..." en pantalla.
+# El mismo sed que shellprocess-grub-theme.conf aplica al instalar.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = etc/grub.d/10_linux
+
+[Action]
+Description = Keeping the ChurrOS GRUB entry title
+When = PostTransaction
+Exec = /usr/bin/sed -i -e 's/"%s, with Linux %s"/"%s%.0s"/' -e '/echo[[:space:]]\x27\x24(echo/s/^[[:space:]]*echo/#&/' /etc/grub.d/10_linux
