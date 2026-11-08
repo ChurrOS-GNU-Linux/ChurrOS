@@ -84,8 +84,9 @@ rewrite_for_grub() {
     has_nocow "$f" || fail "$f no tiene el atributo No_COW"
 }
 
-# Symlinks stay symlinks: fix-boot points vmlinuz-linux and
-# initramfs-linux.img at the CachyOS images. Rewriting the link replaced it
+# Symlinks stay symlinks: installs before the fix-boot change kept
+# vmlinuz-linux and initramfs-linux.img pointing at the CachyOS images.
+# Rewriting the link replaced it
 # with a copy of the image, which the next kernel update left stale. Its
 # target is rewritten under its own name.
 rewrite_all() {

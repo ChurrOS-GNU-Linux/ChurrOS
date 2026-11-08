@@ -3166,3 +3166,32 @@ replace = 'rewrite_all "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DI
 caught_by = "tests.static.test_boot_grub_readable"
 expect = "[theme-rewritten]"
 why = "Un fichero del tema que GRUB no puede leer en btrfs (zstd) hace que descarte el tema entero."
+
+[[mutation]]
+name = "test_calamares_config: fix-boot vuelve a dejar el alias vmlinuz-linux"
+file = "installer/calamares/modules/shellprocess-fixboot.conf"
+find = '''  - "[ -f /etc/mkinitcpio.d/linux.preset ] || rm -f /boot/vmlinuz-linux /boot/initramfs-linux.img /boot/initramfs-linux-fallback.img"
+'''
+replace = '''  - "[ ! -f /etc/mkinitcpio.d/linux-cachyos.preset ] || ln -sfn vmlinuz-linux-cachyos /boot/vmlinuz-linux"
+'''
+caught_by = "tests.static.test_calamares_config"
+expect = "calamares-sim:fix-boot:x86_64:grub-extra-entry:vmlinuz-linux"
+why = "grub-mkconfig lista cada vmlinuz-* de /boot: el alias de compatibilidad añadía una segunda entrada \"with Linux linux\"."
+
+[[mutation]]
+name = "test_calamares_config: la entrada de GRUB vuelve a decir with Linux linux-cachyos"
+file = "installer/calamares/modules/shellprocess-grub-theme.conf"
+find = "s/\\\"%s, with Linux %s\\\"/\\\"%s%.0s\\\"/"
+replace = "s/\\\"%s, with Linux %s\\\"/\\\"%s %s\\\"/"
+caught_by = "tests.static.test_calamares_config"
+expect = "[grub-entry-title]"
+why = "El menú tiene que decir solo ChurrOS Linux."
+
+[[mutation]]
+name = "test_calamares_config: el hook de grub no repite el título tras actualizar"
+file = "archiso/airootfs/etc/pacman.d/hooks/93-churros-grub-entry-title.hook"
+find = """-e 's/"%s, with Linux %s"/"%s%.0s"/' """
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "[grub-entry-title-hook]"
+why = "grub reinstala 10_linux en cada actualización y el siguiente grub-mkconfig vuelve a poner with Linux."

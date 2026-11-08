@@ -1158,6 +1158,49 @@ class CalamaresConfigTest(unittest.TestCase):
                     self.assertNotIn(module.rstrip("?"), ("bochs-drm", "bochs_drm"),
                                      "[fixboot-bochs] el módulo DRM de Bochs se llama bochs")
 
+    # Líneas de /etc/grub.d/10_linux (grub 2.12) que dan título a cada entrada.
+    GRUB_10_LINUX = (
+        'linux_entry ()\n{\n'
+        '  if [ x$type != xsimple ] ; then\n'
+        '      case $type in\n'
+        '\t  recovery)\n'
+        '\t      title="$(gettext_printf "%s, with Linux %s (%s)" "${os}" "${version}" "recovery")" ;;\n'
+        '\t  *)\n'
+        '\t      title="$(gettext_printf "%s, with Linux %s" "${os}" "${version}")" ;;\n'
+        '      esac\n'
+        "\techo '$(echo \"$message\" | grub_quote)'\n"
+    )
+
+    def grub_entry_title(self, commands: list[list[str]]) -> str:
+        """Aplica los sed a una copia de 10_linux y devuelve el título de la entrada normal."""
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "10_linux"
+            script.write_text(self.GRUB_10_LINUX)
+            for argv in commands:
+                argv = [str(script) if a == "/etc/grub.d/10_linux" else a for a in argv]
+                result = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, f"{argv}: {result.stderr}")
+            text = script.read_text()
+        line = next(l for l in text.splitlines() if "title=" in l and "recovery" not in l)
+        fmt = re.search(r'gettext_printf "([^"]*)"', line).group(1)
+        return subprocess.run(["bash", "-c", 'printf "$1" "$2" "$3"', "-", fmt, "ChurrOS Linux", "linux-cachyos"],
+                              capture_output=True, text=True, timeout=10).stdout
+
+    def test_grub_entry_is_just_churros_linux(self):
+        """Una entrada "ChurrOS Linux", sin "with Linux linux-cachyos", al instalar y tras actualizar grub."""
+        config = self.load(MODULES / "shellprocess-grub-theme.conf")
+        commands = [strip_ignore(c)[0] for c, _ in command_entries(config.get("script")) if c]
+        mkconfig = next(i for i, c in enumerate(commands) if c.startswith("grub-mkconfig"))
+        seds = [shlex.split(c) for c in commands[:mkconfig] if "/etc/grub.d/10_linux" in c]
+        self.assertEqual(self.grub_entry_title(seds), "ChurrOS Linux",
+                         "[grub-entry-title] la entrada de GRUB al instalar no se llama solo ChurrOS Linux")
+
+        hook = testlib.read_text(testlib.AIROOTFS / "etc/pacman.d/hooks/93-churros-grub-entry-title.hook")
+        self.assertIn("Target = etc/grub.d/10_linux", hook)
+        exec_line = re.search(r"^Exec = (.*)$", hook, re.M).group(1)
+        self.assertEqual(self.grub_entry_title([shlex.split(exec_line)]), "ChurrOS Linux",
+                         "[grub-entry-title-hook] tras actualizar grub la entrada vuelve a decir with Linux")
+
     def test_initcpiocfg_does_not_duplicate_plymouth(self):
         """initcpiocfg añade plymouth solo cuando está instalado; prepend lo duplicaba."""
         hooks = self.load(MODULES / "initcpiocfg.conf").get("hooks") or {}
@@ -1272,9 +1315,14 @@ class CalamaresConfigTest(unittest.TestCase):
         for target, source in LIVE_MKINITCPIO[arch].items():
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(testlib.ROOT / source, root / target)
-        for target, body in live_kernel_presets(arch).items():
+        kernel_presets = live_kernel_presets(arch)
+        for target, body in kernel_presets.items():
             (root / target).parent.mkdir(parents=True, exist_ok=True)
             (root / target).write_text(body)
+        if kernel_presets:
+            # customize_airootfs.sh borra linux.preset en la rama de cada
+            # kernel propio (linux-cachyos, linux-churrosvyper).
+            (root / "etc/mkinitcpio.d/linux.preset").unlink(missing_ok=True)
         (root / "etc/mkinitcpio.conf").write_text(STOCK_MKINITCPIO_CONF)
         (root / "boot").mkdir(parents=True, exist_ok=True)
         kernel_dest = initramfs_dest = None
@@ -1314,6 +1362,7 @@ class CalamaresConfigTest(unittest.TestCase):
             '  printf "%s\\t%s\\t%s\\t%s\\n" "$p" "${!k:-$ALL_kver}" "${!c:-$ALL_config}" "${!i}"\n'
             'done\n'
         )
+        kernels_built = set()
         for preset in presets:
             name = preset.name
             result = testlib.run(["bash", "-c", evaluate, "preset", str(preset)], timeout=10)
@@ -1335,10 +1384,26 @@ class CalamaresConfigTest(unittest.TestCase):
                     findings[f"{prefix}:kver-missing:{name}"] = (
                         f"{arch}: {name}: el kernel '{kver}' no existe en el destino (unpackfs copia "
                         f"{kernel_dest} y mkarchiso vacía /boot del squashfs): mkinitcpio -P falla")
-                if image != initramfs_dest:
+                # grub-mkconfig (10_linux) empareja /boot/vmlinuz-X con
+                # /boot/initramfs-X.img: ese es el que tiene que generar el preset.
+                # aarch64 arranca /boot/Image (publish-aarch64-kernel): ahí vale
+                # el initramfs que copia unpackfs.
+                paired = re.match(r"(.*)/vmlinuz-([^/]+)$", kver or "")
+                expected = f"{paired.group(1)}/initramfs-{paired.group(2)}.img" if paired else initramfs_dest
+                if image != expected:
                     findings[f"{prefix}:image:{name}"] = (
-                        f"{arch}: {name}: default_image '{image}' != '{initramfs_dest}' de unpackfs.conf: "
+                        f"{arch}: {name}: default_image '{image}' != '{expected}', el que GRUB arranca con {kver}: "
                         "GRUB arrancaría el initramfs de archiso copiado del ISO")
+                kernels_built.add(kver)
+        # Cada vmlinuz-* que queda en /boot es una entrada de GRUB. Uno sin
+        # preset es el del ISO con el initramfs de archiso: entrada duplicada.
+        for kernel in sorted((root / "boot").glob("vmlinuz-*")) if all(
+                Path(k or "").name.startswith("vmlinuz-") for k in kernels_built) else []:
+            path = "/" + str(kernel.relative_to(root))
+            if path not in kernels_built:
+                findings[f"{prefix}:grub-extra-entry:{kernel.name}"] = (
+                    f"{arch}: tras fix-boot queda {path}{' (enlace)' if kernel.is_symlink() else ''} sin preset: "
+                    "grub-mkconfig añade otra entrada con el initramfs de archiso")
         confd = root / "etc/mkinitcpio.conf.d"
         for drop_in in sorted(confd.glob("*.conf")) if confd.is_dir() else []:
             if "archiso" in testlib.read_text(drop_in):
