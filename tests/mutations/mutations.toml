@@ -3076,3 +3076,12 @@ replace = "xargs -r true"
 caught_by = "tests.static.test_calamares_config"
 expect = "[calamares-deps-removed]"
 why = "Las bibliotecas Qt/KDE de Calamares ocupan ~260 MiB en el XFCE instalado sin que nada las use."
+
+[[mutation]]
+name = "test_memory_profile: churros-portal-start vuelve a despertar Xwayland"
+file = "archiso/airootfs/usr/bin/churros-portal-start"
+find = "env -u DISPLAY xdg-mime default"
+replace = "xdg-mime default"
+caught_by = "tests.static.test_memory_profile"
+expect = "[xwayland-idle]"
+why = "xdg-mime lanza xprop con XDG_CURRENT_DESKTOP=niri: niri arranca Xwayland y se queda ~37 MiB toda la sesión."

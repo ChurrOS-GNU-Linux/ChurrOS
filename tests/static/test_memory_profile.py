@@ -106,6 +106,15 @@ class MemoryProfileTest(unittest.TestCase):
         applet = (air / "etc/skel/.config/autostart/print-applet.desktop").read_text()
         self.assertRegex(applet, r"(?m)^Hidden=true$", "[print-applet-hidden]")
 
+    def test_niri_session_start_does_not_wake_xwayland(self):
+        """Un cliente X al iniciar sesión deja Xwayland vivo toda la sesión niri."""
+        script = (ROOT / "archiso/airootfs/usr/bin/churros-portal-start").read_text()
+        for line in script.splitlines():
+            code = line.split("#", 1)[0]
+            # Ejecuciones de xdg-utils, no `command -v xdg-mime`.
+            if re.search(r"\bxdg-(mime|settings|open)\s+(?!>)", code) and "command -v" not in code:
+                self.assertIn("env -u DISPLAY", code, "[xwayland-idle] xdg-utils lanza xprop si no conoce el escritorio")
+
     def test_empty_reads_are_explicit(self):
         profile = parse_memory_profile("", "Filename Type Size Used Priority\n", "", "PID COMMAND RSS\n", 2048, "xfce")
         self.assertEqual(profile["meminfo_bytes"], {})

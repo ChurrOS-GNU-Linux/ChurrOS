@@ -2,6 +2,17 @@
 
 ChurrOS usa `zram-generator` para tener swap comprimido en RAM. Da margen cuando la memoria se llena, pero por sí solo no reduce la memoria residente del escritorio. Todas las ediciones incluyen el paquete `zram-generator` junto a la configuración común `archiso/airootfs/etc/systemd/zram-generator.conf`.
 
+## Ajustes para equipos de 2 GiB
+
+2 GiB es el mínimo que ChurrOS promete. La CI arranca cada edición con esa memoria (ver más abajo). Estos ajustes van en todas las ediciones:
+
+- **systemd-oomd** (`services.sh` lo habilita). Si la sesión del usuario pasa más del 50 % del tiempo esperando memoria durante 20 s, systemd-oomd cierra el cgroup que más presiona (`user@.service.d/10-churros-oomd.conf`). Si el swap (zram) supera el 90 %, cierra el que más swap usa (`-.slice.d/10-churros-oomd.conf`). Sin esto, una app que agota la memoria congela el equipo entero. Son los valores por defecto de Fedora.
+- **MGLRU `min_ttl_ms=1000`** (`tmpfiles.d/churros-mglru.conf`). El kernel no expulsa páginas usadas en el último segundo, así que el escritorio no se queda atascado paginando el código en uso (thrashing).
+- **Preset `10-churros.preset`**. La Live arranca con la machine-id vacía y systemd aplica los presets de Arch, que habilitan `systemd-networkd` y `systemd-homed`. ChurrOS usa NetworkManager y no tiene usuarios de homed, así que el preset los deja desactivados.
+- **Niri sin Xwayland en reposo**. `churros-portal-start` ejecuta `xdg-mime` sin `DISPLAY`. Como xdg-utils no conoce `XDG_CURRENT_DESKTOP=niri`, lanzaba `xprop -root` para adivinar el escritorio, y ese cliente X bastaba para que niri arrancara Xwayland, que se quedaba vivo toda la sesión (unos 37 MiB).
+- **Sin applet de cola de impresión en XFCE** (`skel/.config/autostart/print-applet.desktop`, `Hidden=true`). La herramienta de impresoras sigue en el menú.
+- **Disco del sistema instalado**. Calamares se instala con bsdtar, fuera de pacman. `shellprocess-cleanup.conf` quita sus bibliotecas Qt/KDE con `pacman -Rnsu` (en XFCE, unos 260 MiB). Se conserva lo que otro paquete necesita, además de `os-prober`, `zenity` y `udisks2`.
+
 ## Revisar una sesión Live o una instalación
 
 Después de iniciar sesión, ejecuta:
