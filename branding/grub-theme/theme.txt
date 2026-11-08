@@ -1,40 +1,87 @@
-# ChurrOS GRUB theme — Rediseñado desde Figma
-# Fondo oscuro medianoche + malla geométrica + tarjeta glassmorphism + acento naranja
-# Global properties are only those in gfxmenu theme_set_string (no title-align).
-# Font properties use PFF2NAME (not the .pf2 filename). Filenames must not
-# contain spaces: GRUB file open treats space as a separator.
-# Position math is 50%-290 (no spaces) or grub_strtoull fails.
-# Selected entry is highlighted with bold orange text.
+# ChurrOS GRUB theme
+#
+# Todo se coloca desde el centro (50%-N) o desde los bordes (100%-N): el fondo
+# no lleva texto ni tarjetas, así que el tema funciona igual en 4:3, 16:10,
+# 16:9 y ultrapanorámico. fitheight escala el fondo sin deformarlo y
+# desktop-color rellena los lados con el color de su borde.
+#
+# Reglas de GRUB (grub-core/gfxmenu/theme_loader.c), comprobadas en
+# tests/static/test_config_syntax.py: solo las propiedades globales de
+# theme_set_string(); las fuentes se piden por el NAME de la .pf2 (no por el
+# fichero); ni espacios en los nombres de fichero ni en "50%-330".
 
 title-text: ""
 desktop-image: "background.png"
-desktop-color: "#111827"
+desktop-image-scale-method: "fitheight"
+desktop-image-h-align: "center"
+desktop-image-v-align: "center"
+desktop-color: "#0B1020"
 
 terminal-box: "terminal_box_*.png"
 terminal-border: "0"
-terminal-font: "DejaVu Sans Regular 16"
+terminal-left: "10%"
+terminal-top: "12%"
+terminal-width: "80%"
+terminal-height: "76%"
+terminal-font: "JetBrains Mono Regular 16"
+
++ image {
+    left = 50%-36
+    top = 11%
+    width = 72
+    height = 72
+    file = "logo.png"
+}
+
++ label {
+    left = 0
+    top = 11%+84
+    width = 100%
+    align = "center"
+    text = "ChurrOS"
+    font = "Inter Bold 30"
+    color = "#F8FAFC"
+}
 
 + boot_menu {
-    left = 35%
-    top = 39%
-    width = 30%
-    height = 24%
-    icon_width = "0"
-    item_color = "#94A3B8"
-    selected_item_color = "#F97316"
-    item_font = "DejaVu Sans Regular 16"
-    selected_item_font = "DejaVu Sans Bold 16"
-    item_height = "38"
-    item_spacing = "8"
+    left = 50%-330
+    top = 31%
+    width = 660
+    height = 44%
+    item_font = "Inter Regular 18"
+    selected_item_font = "Inter SemiBold Regular 18"
+    item_color = "#CBD5E1"
+    selected_item_color = "#FFFFFF"
+    selected_item_pixmap_style = "select_*.png"
+    icon_width = 26
+    icon_height = 26
+    item_icon_space = 14
+    item_height = 40
+    item_padding = 14
+    item_spacing = 14
+    scrollbar = true
+    scrollbar_width = 4
+    scrollbar_thumb = "scrollbar_thumb_*.png"
+    scrollbar_frame = "scrollbar_frame_*.png"
 }
 
 + label {
     id = "__timeout__"
-    left = "0"
-    top = 100%-210
-    width = "100%"
+    left = 0
+    top = 100%-92
+    width = 100%
     align = "center"
-    text = "Booting automatically in %d s..."
-    font = "DejaVu Sans Regular 16"
+    text = "Arranque automático en %d s"
+    font = "Inter Medium Regular 14"
+    color = "#94A3B8"
+}
+
++ label {
+    left = 0
+    top = 100%-52
+    width = 100%
+    align = "center"
+    text = "↑ ↓  elegir        ↵  arrancar        e  editar        c  consola"
+    font = "Inter Medium Regular 14"
     color = "#64748B"
 }
