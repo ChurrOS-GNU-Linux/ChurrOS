@@ -2986,3 +2986,30 @@ replace = 'SESSION_CMD="niri"'
 caught_by = "tests.static.test_editions"
 expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
 why = "Arch Linux 32 no empaqueta niri: greetd haría autologin a un ejecutable ausente en la ISO i686 (#304)."
+
+[[mutation]]
+name = "test_memory_profile: PSS sin ordenar"
+file = "tests/vm/boot_smoke.py"
+find = 'return sorted(processes, key=lambda item: item["pss_bytes"], reverse=True)'
+replace = 'return processes'
+caught_by = "tests.static.test_memory_profile"
+expect = "[pss-sorted]"
+why = "El informe tiene que poner primero lo que más memoria ocupa; sin ordenar, el top de PSS engaña."
+
+[[mutation]]
+name = "test_memory_profile: la muestra en reposo deja de tomarse"
+file = "tests/vm/boot_smoke.py"
+find = "            collect_idle_memory_profile(agent, report, args.memory)\n"
+replace = ""
+caught_by = "tests.static.test_memory_profile"
+expect = "[idle-after-screen]"
+why = "Sin la muestra con las ventanas de ChurrOS cerradas, la bienvenida abierta infla el consumo en reposo y no se puede comparar antes/después."
+
+[[mutation]]
+name = "test_memory_profile: la CI deja de arrancar con 2 GiB"
+file = ".github/workflows/iso.yml"
+find = "--memory 2048 --artifacts out/reports/boot-uefi-2g"
+replace = "--artifacts out/reports/boot-uefi-2g"
+caught_by = "tests.static.test_memory_profile"
+expect = "[ci-2gib]"
+why = "2 GiB es el mínimo prometido: si la CI no arranca con esa memoria, una regresión de RAM pasa sin verse."

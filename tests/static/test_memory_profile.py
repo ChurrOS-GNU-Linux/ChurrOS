@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from tests.vm.boot_smoke import parse_memory_profile, zram_is_active
+from tests.vm.boot_smoke import CHURROS_GUI, parse_memory_profile, parse_pss, zram_is_active
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,6 +43,32 @@ class MemoryProfileTest(unittest.TestCase):
         ])
         self.assertEqual(profile["qemu_memory_mib"], 4096)
         self.assertEqual(profile["edition"], "niri")
+
+    def test_pss_is_parsed_sorted_and_keeps_cmdline(self):
+        processes = parse_pss(
+            "838\t51200\tnoctalia\tnoctalia \n"
+            "881\t90112\tXwayland\t/usr/bin/Xwayland :0 -rootless\n"
+            "1\t2048\tsystemd\n"
+            "basura\n"
+        )
+        self.assertEqual([p["name"] for p in processes], ["Xwayland", "noctalia", "systemd"],
+                         "[pss-sorted]")
+        self.assertEqual(processes[0]["pss_bytes"], 90112 * 1024)
+        self.assertEqual(processes[0]["cmdline"], "/usr/bin/Xwayland :0 -rootless")
+        self.assertEqual(processes[2]["cmdline"], "")
+
+    def test_idle_sample_closes_churros_windows_and_runs_for_desktops(self):
+        source = (ROOT / "tests/vm/boot_smoke.py").read_text()
+        self.assertIn("churros-welcome", CHURROS_GUI)
+        self.assertIn('profile["top_pss_processes"] = parse_pss(pss_text)', source)
+        self.assertIn('profile["x11_clients"]', source)
+        self.assertRegex(source, r"check_screen\(vm, report, artifacts\)\n\s+collect_idle_memory_profile\(",
+                         "[idle-after-screen]")
+
+    def test_ci_boots_each_desktop_with_2_gib(self):
+        workflow = (ROOT / ".github/workflows/iso.yml").read_text()
+        self.assertRegex(workflow, r"boot_smoke\.py out/\*\.iso [^\n]*--memory 2048",
+                         "[ci-2gib] iso.yml tiene que arrancar también con 2 GiB, el mínimo que se promete")
 
     def test_empty_reads_are_explicit(self):
         profile = parse_memory_profile("", "Filename Type Size Used Priority\n", "", "PID COMMAND RSS\n", 2048, "xfce")
