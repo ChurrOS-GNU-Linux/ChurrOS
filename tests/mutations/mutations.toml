@@ -881,8 +881,8 @@ why = "'yes' es texto para Calamares (solo true/on): boot-nocow corre en chroot 
 [[mutation]]
 name = "test_calamares_config: Hook de mkinitcpio que ningún paquete da"
 file = "installer/calamares/modules/initcpiocfg.conf"
-find = "    - plymouth\n"
-replace = "    - plymouth\n    - sd-plymouth\n"
+find = "  prepend: []\n"
+replace = "  prepend:\n    - sd-plymouth\n"
 caught_by = "tests.static.test_calamares_config"
 expect = "calamares-xref:initcpio-hook-unknown:sd-plymouth"
 why = "Hook de mkinitcpio que ningún paquete da: mkinitcpio sale con 1 y initcpio aborta"
@@ -2986,3 +2986,21 @@ replace = 'SESSION_CMD="niri"'
 caught_by = "tests.static.test_editions"
 expect = "SESSION_CMD de build.sh distinto del de testlib.EDITIONS"
 why = "Arch Linux 32 no empaqueta niri: greetd haría autologin a un ejecutable ausente en la ISO i686 (#304)."
+
+[[mutation]]
+name = "test_calamares_config: fix-boot vuelve a pedir bochs-drm"
+file = "installer/calamares/modules/shellprocess-fixboot.conf"
+find = "MODULES=(virtio-gpu? vmwgfx? bochs? qxl? /"
+replace = "MODULES=(virtio-gpu vmwgfx bochs-drm qxl /"
+caught_by = "tests.static.test_calamares_config"
+expect = "[fixboot-module-optional]"
+why = "linux-cachyos no tiene bochs-drm: mkinitcpio sale con 1 (module not found) y Calamares aborta la instalación."
+
+[[mutation]]
+name = "test_calamares_config: initcpiocfg vuelve a duplicar plymouth"
+file = "installer/calamares/modules/initcpiocfg.conf"
+find = "  prepend: []\n"
+replace = "  prepend:\n    - plymouth\n"
+caught_by = "tests.static.test_calamares_config"
+expect = "[initcpio-plymouth-dup]"
+why = "initcpiocfg ya añade plymouth cuando está instalado: el hook se ejecuta dos veces en el initramfs."
