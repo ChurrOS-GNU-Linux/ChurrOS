@@ -869,6 +869,15 @@ class GrubThemes(unittest.TestCase):
                 if re.search(r"\s", font.name):
                     findings[f"pf2-space:{font.name}"] = (f"{font.name}: grub-mkconfig escribe `loadfont <ruta>` "
                                                           "sin comillas y GRUB corta la ruta en el espacio")
+            # grub-core/video/readers/png.c: solo RGB/RGBA de 8 bits sin
+            # entrelazar. Una PNG con paleta ("color type not supported", lo
+            # que guarda ImageMagick para piezas de un color) tira el tema.
+            for image in sorted(theme_dir.rglob("*.png")):
+                header = image.read_bytes()[:29]
+                if header[:8] != b"\x89PNG\r\n\x1a\n" or header[25] not in (2, 6) or header[24] != 8 or header[28]:
+                    findings[f"png:{image.relative_to(theme_dir)}"] = (
+                        f"{image.relative_to(theme_dir)}: GRUB solo lee PNG RGB/RGBA de 8 bits sin entrelazar "
+                        f"(tipo de color {header[25]}, {header[24]} bits); usa PNG24:/PNG32: al generarla")
             for component, key, value, line in props:
                 where = f"línea {line}: {key}" if component is None else f"línea {line}: {component}.{key}"
                 if component is None and key not in GRUB_GLOBALS:

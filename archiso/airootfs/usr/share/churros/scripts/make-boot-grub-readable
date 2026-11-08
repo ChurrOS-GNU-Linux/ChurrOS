@@ -105,8 +105,9 @@ shopt -s nullglob
 # Kernel, initramfs, microcode
 rewrite_all "$BOOT"/vmlinuz-* "$BOOT"/initramfs-*.img "$BOOT"/*-ucode.img
 
-# GRUB theme assets (background, fonts, select*.png, theme.txt)
+# Every file of the GRUB theme: background, logo, styled-box pieces, entry
+# icons, fonts and theme.txt. A file GRUB cannot read drops the whole theme.
 THEME_DIR="$BOOT/grub/themes/churros"
 if [ -d "$THEME_DIR" ]; then
-    rewrite_all "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/select*.png "$THEME_DIR"/theme.txt
+    rewrite_all "$THEME_DIR"/*.png "$THEME_DIR"/icons/*.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/theme.txt
 fi
