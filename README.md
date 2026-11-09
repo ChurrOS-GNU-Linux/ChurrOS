@@ -49,8 +49,8 @@ Este repositorio contiene el perfil de la ISO, el overlay del sistema Live, la c
 
 | Edición | Arquitectura | Escritorio | Estado |
 |---|---|---|---|
-| Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.4) |
-| XFCE | x86_64 | XFCE | ISO publicada (1.4) |
+| Niri (por defecto) | x86_64 | Niri + Noctalia | ISO publicada (1.5) |
+| XFCE | x86_64 | XFCE | ISO publicada (1.5) |
 | Servidor | x86_64 | Ninguno en el sistema instalado | Se construye y prueba en nightly; no hay ISO publicada |
 | Niri | aarch64 (UEFI) | Niri + Noctalia | CI diaria construye y audita; no publica ISO estable |
 | Raspberry Pi Lite (`pi`) | aarch64 | labwc + Waybar | Experimental: sin build nightly ni ISO publicada |
@@ -99,9 +99,9 @@ Es la más ligera de las ediciones x86_64. Habilita `sshd`, `chronyd`, NetworkMa
 
 ## Descarga
 
-Las ISO publicadas se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La última versión publicada es la **1.4** (25 de octubre de 2026), para x86_64 en ediciones Niri y XFCE. El [directorio de descargas](https://download.churroslinux.org/) lista ambas ISO y `SHA256SUMS`. La [GitHub Release v1.4](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.4) también adjunta el manifiesto, pero no las ISO. Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/).
+Las ISO publicadas se descargan de [download.churroslinux.org](https://download.churroslinux.org/). La última versión publicada es la **1.5** (noviembre de 2026), para x86_64 en ediciones Niri y XFCE. El [directorio de descargas](https://download.churroslinux.org/) lista ambas ISO y `SHA256SUMS`. La [GitHub Release v1.5](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.5) también adjunta el manifiesto, pero no las ISO. Las versiones 0.6, 0.7 y 1.0 también están en [SourceForge](https://sourceforge.net/projects/churr-os/files/).
 
-El servidor publica SHA-256 para ambas ISO 1.4 en [`SHA256SUMS`](https://download.churroslinux.org/SHA256SUMS), y GitHub adjunta el mismo manifiesto a la [release v1.4](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.4). Las sumas no están firmadas: sirven para detectar corrupción, no para autenticar el origen. Puedes comprobar los archivos así:
+El servidor publica SHA-256 para ambas ISO 1.5 en [`SHA256SUMS`](https://download.churroslinux.org/SHA256SUMS), y GitHub adjunta el mismo manifiesto a la [release v1.5](https://github.com/ChurrOS-GNU-Linux/ChurrOS/releases/tag/v1.5). Las sumas no están firmadas: sirven para detectar corrupción, no para autenticar el origen. Puedes comprobar los archivos así:
 
 ```bash
 sha256sum -c SHA256SUMS
@@ -449,7 +449,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md). La guía inic
 
 ## Estado actual
 
-Versión del proyecto: **1.4** ( [`VERSION`](VERSION) ); última versión publicada conocida en este repositorio (25 de octubre de 2026).
+Versión del proyecto: **1.5** ( [`VERSION`](VERSION) ); última versión publicada conocida en este repositorio (noviembre de 2026).
 
 ChurrOS cuenta con ISO personalizada, ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, Calamares, aplicaciones Rust, actualizador, rollback Btrfs, branding propio, tema GRUB y CI. La guía inicial está en [`docs/user-guide.md`](docs/user-guide.md); todavía faltan la prueba automatizada de instalación en disco, la firma obligatoria de actualizaciones y el repositorio remoto firmado.
 

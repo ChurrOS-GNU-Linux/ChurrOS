@@ -19,6 +19,9 @@ from pathlib import Path
 DEFAULT_URL = "https://download.churroslinux.org/upload"
 DEFAULT_USER = "Hoyuse"
 DEFAULT_CHUNK_SIZE = 10 * 1024 * 1024  # 10 MB chunks (matches Cloudflare-safe limits)
+# Versión de la distro (VERSION): nombres de los bundles OTA y User-Agent.
+VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text(encoding="utf-8").strip()
+USER_AGENT = f"ChurrOS-ReleaseUploader/{VERSION}"
 
 
 def login(base_url: str, username: str, password: str) -> str:
@@ -27,7 +30,7 @@ def login(base_url: str, username: str, password: str) -> str:
     req = urllib.request.Request(
         login_url,
         data=payload,
-        headers={"Content-Type": "application/json", "User-Agent": "ChurrOS-ReleaseUploader/1.4"},
+        headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
     )
     with urllib.request.urlopen(req) as resp:
         return resp.read().decode("utf-8").strip('"')
@@ -51,7 +54,7 @@ def upload_tus(base_url: str, token: str, local_path: Path, remote_dest_path: st
             "X-Auth": token,
             "Tus-Resumable": "1.0.0",
             "Upload-Length": str(file_size),
-            "User-Agent": "ChurrOS-ReleaseUploader/1.4",
+            "User-Agent": USER_AGENT,
         },
     )
 
@@ -89,7 +92,7 @@ def upload_tus(base_url: str, token: str, local_path: Path, remote_dest_path: st
                             "Upload-Offset": str(offset),
                             "Content-Type": "application/offset+octet-stream",
                             "Content-Length": str(chunk_len),
-                            "User-Agent": "ChurrOS-ReleaseUploader/1.4",
+                            "User-Agent": USER_AGENT,
                         },
                     )
                     with urllib.request.urlopen(patch_req) as patch_resp:
@@ -147,9 +150,9 @@ def main():
         ota_dir = repo_root / "release"
         ota_files = [
             ota_dir / "updates.json",
-            ota_dir / "churros-utils-1.4-x86_64.tar.zst",
-            ota_dir / "churros-utils-niri-1.4-x86_64.tar.zst",
-            ota_dir / "churros-utils-xfce-1.4-x86_64.tar.zst",
+            ota_dir / f"churros-utils-{VERSION}-x86_64.tar.zst",
+            ota_dir / f"churros-utils-niri-{VERSION}-x86_64.tar.zst",
+            ota_dir / f"churros-utils-xfce-{VERSION}-x86_64.tar.zst",
         ]
         print("\n==> Subiendo bundles de actualización OTA a /churros/...")
         for p in ota_files:
