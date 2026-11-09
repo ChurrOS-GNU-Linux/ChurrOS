@@ -505,3 +505,60 @@ path = '/tmp/monitor.png'
         );
     }
 }
+
+// ---- configuración viva (noctalia msg config-get / config-set) -------------
+//
+// Comprobado con Noctalia 5.4.1: `config-set <ruta> <valor>` valida el valor
+// como TOML (cadenas entre comillas), lo aplica en caliente, responde "ok" y
+// lo guarda en ~/.local/state/noctalia/settings.toml; `config-get` imprime el
+// valor efectivo ("660.0", "true"). Sin Noctalia en marcha los dos fallan.
+
+/// Valor efectivo de `ruta` en el Noctalia en marcha.
+pub fn config_get(path: &str) -> Option<String> {
+    let (code, out, _) = crate::run(&["noctalia", "msg", "config-get", path], 3000)?;
+    (code == 0).then(|| out.trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// Cambia `ruta` (valor en sintaxis TOML) en el Noctalia en marcha.
+pub fn config_set(path: &str, toml_value: &str) -> bool {
+    matches!(
+        crate::run(&["noctalia", "msg", "config-set", path, toml_value], 3000),
+        Some((0, out, _)) if out.trim() == "ok"
+    )
+}
+
+/// Noctalia corre en esta sesión (la IPC responde).
+pub fn running() -> bool {
+    running_shells().noctalia
+}
+
+/// "660.0" / "300" -> 660 / 300 (segundos, Kelvin...).
+pub fn parse_number(value: &str) -> Option<i64> {
+    value.trim().parse::<f64>().ok().filter(|v| v.is_finite()).map(|v| v.round() as i64)
+}
+
+/// "true" / "false" de config-get.
+pub fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn config_get_values_parse() {
+        assert_eq!(parse_number("660.0"), Some(660));
+        assert_eq!(parse_number("300\n"), Some(300));
+        assert_eq!(parse_number("40.399999999999999"), Some(40));
+        assert_eq!(parse_number("nan"), None);
+        assert_eq!(parse_number("abc"), None);
+        assert_eq!(parse_bool("true\n"), Some(true));
+        assert_eq!(parse_bool("false"), Some(false));
+        assert_eq!(parse_bool("1"), None);
+    }
+}

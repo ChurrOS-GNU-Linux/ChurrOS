@@ -5,7 +5,6 @@
 
 
 use crate::services::power::PowerService;
-use crate::services::settings;
 use crate::widgets::combo_row::ComboRow;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
@@ -48,20 +47,15 @@ pub fn build(navigator: gtk::Stack) -> Page {
         None,
         None,
         Some(Box::new(|label| {
-            for (lbl, value) in OPTIONS.iter() {
-                if lbl == &label {
-                    if *value == 0 {
-                        settings::set("display.timeout", serde_json::json!(0));
-                    }
-                    PowerService::set_screen_timeout(*value);
-                    return;
-                }
+            if let Some((_, value)) = OPTIONS.iter().find(|(lbl, _)| *lbl == label) {
+                PowerService::set_screen_timeout(*value);
             }
         })),
     );
 
     group.add(&combo);
     page.add(group.widget());
+    page.add(&crate::pages::sleep::idle_note());
 
     page
 }

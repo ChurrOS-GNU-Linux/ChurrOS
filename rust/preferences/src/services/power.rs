@@ -3,6 +3,7 @@
 // ==========================================
 
 use std::io::Read;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -180,65 +181,53 @@ impl PowerService {
         }
     }
 
-    /// Timeout de pantalla en segundos (gsettings idle-delay); default 300.
-    pub fn screen_timeout() -> i64 {
-        let output = run(&[
-            "gsettings",
-            "get",
-            "org.gnome.desktop.session",
-            "idle-delay",
-        ]);
-        if let Some(v) = output.strip_prefix("uint32") {
-            if let Ok(n) = v.trim().parse::<i64>() {
-                return n;
-            }
-        }
-        if !output.is_empty() && output.chars().all(|c| c.is_ascii_digit()) {
-            if let Ok(n) = output.parse::<i64>() {
-                return n;
-            }
-        }
-        300
-    }
-
-    /// Timeout de suspensión en segundos (sleep-inactive-ac-timeout); default 900.
-    pub fn sleep_timeout() -> i64 {
-        let output = run(&[
-            "gsettings",
-            "get",
-            "org.gnome.settings-daemon.plugins.power",
-            "sleep-inactive-ac-timeout",
-        ]);
-        if let Some(v) = output.strip_prefix("uint32") {
-            if let Ok(n) = v.trim().parse::<i64>() {
-                return n;
-            }
-        }
-        if !output.is_empty() && output.chars().all(|c| c.is_ascii_digit()) {
-            if let Ok(n) = output.parse::<i64>() {
-                return n;
-            }
-        }
-        900
-    }
-
-    /// Acción al cerrar la tapa; default "suspend".
-    pub fn lid_close_action() -> String {
-        let output = run(&[
-            "gsettings",
-            "get",
-            "org.gnome.settings-daemon.plugins.power",
-            "lid-close-ac-action",
-        ]);
-        let value = output.trim().trim_matches(|c| c == '\'' || c == '"');
-        if matches!(
-            value,
-            "suspend" | "hibernate" | "nothing" | "blank" | "logout" | "shutdown"
-        ) {
-            value.to_string()
+    /// Quién aplica la inactividad y la tapa en esta sesión.
+    pub fn idle_backend() -> IdleBackend {
+        if churros_services::noctalia::running() {
+            IdleBackend::Noctalia
+        } else if churros_services::which("xfconf-query")
+            && Path::new("/usr/bin/xfce4-power-manager").exists()
+        {
+            IdleBackend::Xfce
         } else {
-            "suspend".to_string()
+            IdleBackend::None
         }
+    }
+
+    /// Segundos hasta apagar la pantalla; 0 = nunca.
+    pub fn screen_timeout() -> i64 {
+        match Self::idle_backend() {
+            IdleBackend::Noctalia => noctalia_idle("screen-off").unwrap_or(600),
+            IdleBackend::Xfce => xfpm_get("dpms-on-ac-off").map(|m| m * 60).unwrap_or(15 * 60),
+            IdleBackend::None => 0,
+        }
+    }
+
+    /// Segundos de inactividad hasta suspender; 0 = nunca.
+    pub fn sleep_timeout() -> i64 {
+        match Self::idle_backend() {
+            IdleBackend::Noctalia => noctalia_idle("lock-and-suspend").unwrap_or(0),
+            IdleBackend::Xfce => xfpm_get("inactivity-on-ac").map(|m| m * 60).unwrap_or(0),
+            IdleBackend::None => 0,
+        }
+    }
+
+    /// Acción al cerrar la tapa: una de LID_ACTIONS. Solo XFCE la
+    /// configura (xfce4-power-manager); en Niri la decide logind (suspender).
+    pub fn lid_close_action() -> String {
+        if Self::idle_backend() == IdleBackend::Xfce {
+            if let Some(n) = xfpm_get("lid-action-on-ac") {
+                if let Some((name, _)) = LID_ACTIONS.iter().find(|(_, v)| *v == n) {
+                    return (*name).to_string();
+                }
+            }
+        }
+        "suspend".to_string()
+    }
+
+    /// ¿Se puede cambiar la acción de la tapa en esta sesión?
+    pub fn lid_action_configurable() -> bool {
+        Self::idle_backend() == IdleBackend::Xfce
     }
 
     /// True si el modo ahorro de energía está activo.
@@ -251,38 +240,132 @@ impl PowerService {
         run_no_output(&["powerprofilesctl", "set", profile]);
     }
 
-    /// Establece el tiempo de espera para apagar la pantalla.
-    pub fn set_screen_timeout(seconds: i64) {
-        let s = seconds.to_string();
-        run_no_output(&[
-            "gsettings",
-            "set",
-            "org.gnome.desktop.session",
-            "idle-delay",
-            &s,
-        ]);
+    /// Apaga la pantalla tras `seconds` de inactividad (0 = nunca).
+    pub fn set_screen_timeout(seconds: i64) -> bool {
+        match Self::idle_backend() {
+            IdleBackend::Noctalia => set_noctalia_idle("screen-off", seconds),
+            IdleBackend::Xfce => {
+                let minutes = to_minutes(seconds);
+                xfpm_set("dpms-on-ac-off", minutes) && xfpm_set("dpms-on-battery-off", minutes)
+            }
+            IdleBackend::None => false,
+        }
     }
 
-    /// Establece el tiempo de espera para suspender.
-    pub fn set_sleep_timeout(seconds: i64) {
-        let s = seconds.to_string();
-        run_no_output(&[
-            "gsettings",
-            "set",
-            "org.gnome.settings-daemon.plugins.power",
-            "sleep-inactive-ac-timeout",
-            &s,
-        ]);
+    /// Suspende tras `seconds` de inactividad (0 = nunca). En Noctalia la
+    /// acción es bloquear y suspender, como en la configuración de ChurrOS.
+    pub fn set_sleep_timeout(seconds: i64) -> bool {
+        match Self::idle_backend() {
+            IdleBackend::Noctalia => set_noctalia_idle("lock-and-suspend", seconds),
+            IdleBackend::Xfce => {
+                let minutes = to_minutes(seconds);
+                xfpm_set("inactivity-on-ac", minutes)
+                    && xfpm_set("inactivity-on-battery", minutes)
+                    && xfpm_set("inactivity-sleep-mode-on-ac", 1)
+                    && xfpm_set("inactivity-sleep-mode-on-battery", 1)
+            }
+            IdleBackend::None => false,
+        }
     }
 
-    /// Configura la acción al cerrar la tapa.
-    pub fn set_lid_close_action(action: &str) {
-        run_no_output(&[
-            "gsettings",
-            "set",
-            "org.gnome.settings-daemon.plugins.power",
-            "lid-close-ac-action",
-            action,
-        ]);
+    /// Acción al cerrar la tapa (solo XFCE).
+    pub fn set_lid_close_action(action: &str) -> bool {
+        let Some((_, value)) = LID_ACTIONS.iter().find(|(name, _)| *name == action) else {
+            return false;
+        };
+        Self::idle_backend() == IdleBackend::Xfce
+            && xfpm_set("lid-action-on-ac", *value)
+            && xfpm_set("lid-action-on-battery", *value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdleBackend {
+    /// [idle.behavior.*] de Noctalia (Niri).
+    Noctalia,
+    /// xfce4-power-manager (xfconf).
+    Xfce,
+    None,
+}
+
+/// Acciones de tapa -> XfpmLidTriggerAction (xfpm-enum-glib.h).
+pub const LID_ACTIONS: [(&str, i64); 6] = [
+    ("suspend", 1),
+    ("hibernate", 2),
+    ("lock", 3),
+    ("blank", 0),
+    ("nothing", 4),
+    ("shutdown", 6),
+];
+
+fn to_minutes(seconds: i64) -> i64 {
+    if seconds <= 0 {
+        0
+    } else {
+        (seconds + 59) / 60
+    }
+}
+
+/// Segundos de [idle.behavior.<name>]; 0 si está desactivado.
+fn noctalia_idle(name: &str) -> Option<i64> {
+    use churros_services::noctalia::{config_get, parse_bool, parse_number};
+    let enabled = parse_bool(&config_get(&format!("idle.behavior.{name}.enabled"))?)?;
+    if !enabled {
+        return Some(0);
+    }
+    parse_number(&config_get(&format!("idle.behavior.{name}.timeout"))?)
+}
+
+fn set_noctalia_idle(name: &str, seconds: i64) -> bool {
+    use churros_services::noctalia::config_set;
+    if seconds <= 0 {
+        return config_set(&format!("idle.behavior.{name}.enabled"), "false");
+    }
+    config_set(&format!("idle.behavior.{name}.timeout"), &seconds.to_string())
+        && config_set(&format!("idle.behavior.{name}.enabled"), "true")
+}
+
+fn xfpm_get(key: &str) -> Option<i64> {
+    let property = format!("/xfce4-power-manager/{key}");
+    let (code, out, _) =
+        churros_services::run(&["xfconf-query", "-c", "xfce4-power-manager", "-p", &property], 3000)?;
+    (code == 0).then(|| out.trim().parse().ok()).flatten()
+}
+
+/// -n crea la propiedad si no existe (xfpm solo guarda lo que se cambia).
+fn xfpm_set(key: &str, value: i64) -> bool {
+    let property = format!("/xfce4-power-manager/{key}");
+    let value = value.to_string();
+    matches!(
+        churros_services::run(
+            &["xfconf-query", "-c", "xfce4-power-manager", "-p", &property, "-n", "-t", "uint", "-s", &value],
+            3000,
+        ),
+        Some((0, _, _))
+    )
+}
+
+#[cfg(test)]
+mod idle_tests {
+    use super::*;
+
+    #[test]
+    fn minutes_round_up_and_never_is_zero() {
+        assert_eq!(to_minutes(0), 0);
+        assert_eq!(to_minutes(60), 1);
+        assert_eq!(to_minutes(90), 2);
+        assert_eq!(to_minutes(1800), 30);
+    }
+
+    #[test]
+    fn lid_actions_match_xfpm_enum() {
+        // LID_TRIGGER_DPMS, SUSPEND, HIBERNATE, LOCK_SCREEN, NOTHING, HYBRID_SLEEP, SHUTDOWN
+        let value = |n: &str| LID_ACTIONS.iter().find(|(name, _)| *name == n).unwrap().1;
+        assert_eq!(value("blank"), 0);
+        assert_eq!(value("suspend"), 1);
+        assert_eq!(value("hibernate"), 2);
+        assert_eq!(value("lock"), 3);
+        assert_eq!(value("nothing"), 4);
+        assert_eq!(value("shutdown"), 6);
     }
 }

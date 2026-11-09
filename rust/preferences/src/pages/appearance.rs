@@ -206,7 +206,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
             ),
             (
                 "Fuzzel",
-                "Launcher: fuente, layout, iconos",
+                "Lanzador alternativo (Mod+Shift+Space)",
                 "applications.svg",
                 "fuzzel",
             ),

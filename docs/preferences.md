@@ -148,24 +148,24 @@ Páginas principales del sidebar, en orden: Sistema, Actualizaciones, Fecha y ho
 | ↳ `cursor.rs` | `appearance` | | Tema y tamaño de cursor |
 | ↳ `fonts.rs` | `appearance` | | Familia, escala, vista previa |
 | ↳ `wallpaper.rs` | `appearance` | | Selector e importación de fondos |
-| ↳ `fastfetch.rs` | `appearance` | | Logo (ASCII/imagen), módulos y formato de salida |
+| ↳ `fastfetch.rs` | `appearance` | | Logo (texto, imagen con `sixel` en foot, el de la distribución o ninguno), módulos y formato de salida |
 | ↳ `niri.rs` | `appearance` | Niri | Disposición, bordes, blur, animaciones |
 | ↳ `window_rules.rs` | `appearance` | Niri | Bloques `window-rule {}` |
 | ↳ `foot.rs` | `appearance` | Niri | `foot.ini` |
 | ↳ `fuzzel.rs` | `appearance` | Niri | `fuzzel.ini` |
-| ↳ `night_light.rs` | `appearance` | Niri | `wlsunset` |
-| ↳ `lock_screen.rs` | `appearance` | Niri | `swaylock` / `swayidle` (con Noctalia, el bloqueo lo gestiona Noctalia) |
+| ↳ `night_light.rs` | `appearance` | Niri | Luz nocturna de Noctalia (`[nightlight]`, `[location]`); `wlsunset` si Noctalia no corre |
+| ↳ `lock_screen.rs` | `appearance` | Niri | Con Noctalia, su bloqueo (`[idle.behavior.lock]`, `[lockscreen]`); si no, `swaylock` / `swayidle` |
 | ↳ `waybar.rs` | `appearance` | Niri y sesión con Waybar | Posición, módulos, colores |
 | ↳ `mako.rs` | `appearance` | Niri y sesión con Mako | Tipografía, colores, bordes, DND |
 | `display.rs` | (principal) | | Resolución, escala, rotación, VRR y brillo (en XFCE, botón a `xfce4-display-settings`) |
-| ↳ `display_timeout.rs` | `display` | | Apagado de pantalla |
+| ↳ `display_timeout.rs` | `display` | | Apagado de pantalla: Noctalia (`[idle.behavior.screen-off]`) o xfce4-power-manager (`dpms-on-*-off`) |
 | `input.rs` | (principal) | | Teclado y ratón (en XFCE, botón a `xfce4-mouse-settings`) |
 | `audio.rs` | (principal) | | Dispositivo y volumen de salida y micrófono |
 | `connectivity.rs` | (principal) | | Wi-Fi y Bluetooth |
 | `power.rs` | (principal) | | Resumen de energía |
 | ↳ `power_profile.rs` | `power` | | `powerprofilesctl` |
 | ↳ `battery.rs` | `power` | | Estado y nivel de la batería |
-| ↳ `sleep.rs` | `power` | | Suspensión y tapa |
+| ↳ `sleep.rs` | `power` | | Suspensión: Noctalia (`[idle.behavior.lock-and-suspend]`) o xfce4-power-manager (`inactivity-on-*`). Tapa: solo XFCE (`lid-action-on-*`); en Niri la decide logind |
 | `users.rs` | (principal) | | Cuenta y pantalla de inicio de sesión |
 | `privacy.rs` | (principal) | | Permisos, firewall (`ufw`), diagnóstico |
 | `applications.rs` | (principal) | | Apps instaladas, tienda y actualizaciones |
@@ -176,8 +176,9 @@ Páginas principales del sidebar, en orden: Sistema, Actualizaciones, Fecha y ho
 
 ## Servicios extra
 
-- **LockScreenService** — `swaylock` + `swayidle` (timeout, bloqueo al suspender). Con Noctalia activo el bloqueo lo gestiona Noctalia.
-- **NightLightService** — `wlsunset` (temperatura, gamma, automático).
+- **LockScreenService** — `swaylock` + `swayidle` (timeout, bloqueo al suspender), solo sin Noctalia. Con Noctalia la página escribe su configuración con `noctalia msg config-set`; arrancar `swayidle` además bloqueaba dos veces.
+- **NightLightService** — con Noctalia, su luz nocturna (`nightlight.*`, `location.*` vía `noctalia msg config-set`, que persiste en `~/.local/state/noctalia/settings.toml`); sin ubicación activa `location.auto_locate`. Sin Noctalia, `wlsunset` (temperatura, gamma).
+- **PowerService (inactividad)** — antes escribía claves de GNOME (`gsettings org.gnome.desktop.session idle-delay`…) que nada lee en ChurrOS. Ahora `idle_backend()` elige Noctalia (`noctalia msg config-get/config-set`, comprobado con Noctalia 5.4.1) o xfce4-power-manager (`xfconf-query -c xfce4-power-manager`, en minutos, 0 = nunca; valores de la tapa de `XfpmLidTriggerAction`).
 - **MakoConfig** (`mako_config.rs`) — escribe `~/.config/mako/config` y ejecuta `makoctl reload`; la página muestra y cambia el modo DND. Solo aparece si la sesión ejecuta Mako.
 - **NiriConfig** — parser KDL y `reload()` con `niri msg action load-config-file`. Nunca `pkill -HUP niri`: SIGHUP reinicia la sesión entera del compositor y cierra todas las apps.
 - **WaybarService** — `config.jsonc` + `style.css`; recarga relanzando Waybar o con `SIGUSR2`. `colors-waybar.css` (pywal) lo recoge Waybar por inotify, sin señal.

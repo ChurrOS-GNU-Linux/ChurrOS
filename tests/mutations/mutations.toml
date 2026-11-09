@@ -3288,6 +3288,46 @@ expect = "[verify-live-autologin]"
 why = "El user de [default_session] (greeter) haría pasar un [initial_session] sin usuario."
 
 [[mutation]]
+name = "churros-settings: fastfetch deja de quitar los comentarios de línea"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = "            ('/', Some('/')) => {"
+replace = "            ('/', Some('#')) => {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings fastfetch_config"
+expect = "strip_keeps_utf8_intact"
+requires = "container"
+why = "Un comentario // del config.jsonc rompe el JSON: Ajustes lee {} y el siguiente guardado deja el fastfetch sin logo ni módulos."
+
+[[mutation]]
+name = "churros-settings: fastfetch trata una imagen como texto"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = ".is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))"
+replace = ".is_some_and(|_| false)"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings fastfetch_config"
+expect = "image_paths_are_detected"
+requires = "container"
+why = "Sin tipo de imagen (sixel), fastfetch imprime los bytes del PNG en la terminal (comprobado con fastfetch 2.71)."
+
+[[mutation]]
+name = "churros-settings: la tapa usa otro valor que XfpmLidTriggerAction"
+file = "rust/preferences/src/services/power.rs"
+find = '    ("lock", 3),'
+replace = '    ("lock", 4),'
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings idle_tests"
+expect = "lid_actions_match_xfpm_enum"
+requires = "container"
+why = "En xfce4-power-manager 4 es no hacer nada: «Bloquear la pantalla» dejaría el equipo sin bloquear al cerrar la tapa."
+
+[[mutation]]
+name = "churros-settings: los minutos de inactividad de XFCE se truncan"
+file = "rust/preferences/src/services/power.rs"
+find = "        (seconds + 59) / 60"
+replace = "        seconds / 60"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings idle_tests"
+expect = "minutes_round_up_and_never_is_zero"
+requires = "container"
+why = "xfce4-power-manager cuenta en minutos y 0 es nunca: 30 s se convertía en «nunca apagar»."
+
+[[mutation]]
 name = "test_niri_window_rules: la regla de imagen en imagen vuelve a dos match"
 file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
 find = '    match app-id="^firefox$" title="^Picture-in-Picture$"'

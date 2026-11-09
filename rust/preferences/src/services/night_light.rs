@@ -1,7 +1,13 @@
 // ==========================================
-// NightLightService — wlsunset: temperatura de color y gamma
-// (equivalente a services/night_light.py)
+// NightLightService — luz nocturna
+//
+// Con Noctalia en marcha (Niri), la luz nocturna es la suya ([nightlight] y
+// [location], vía `noctalia msg config-set`): persiste en su settings.toml y
+// vuelve al iniciar sesión. Arrancar además wlsunset ponía dos filtros de
+// gamma peleándose. Sin Noctalia se usa wlsunset como antes.
 // ==========================================
+
+use churros_services::noctalia;
 
 use std::fs;
 use std::path::PathBuf;
@@ -109,18 +115,42 @@ fn apply_state() {
 
 pub struct NightLightService;
 
+fn noctalia_number(path: &str) -> Option<i64> {
+    noctalia::config_get(path).and_then(|v| noctalia::parse_number(&v))
+}
+
+fn noctalia_float(path: &str) -> Option<f64> {
+    noctalia::config_get(path).and_then(|v| v.trim().parse::<f64>().ok())
+}
+
 impl NightLightService {
-    /// wlsunset instalado en /usr/bin o /usr/local/bin
+    /// La luz nocturna la hace Noctalia.
+    pub fn uses_noctalia() -> bool {
+        noctalia::running()
+    }
+
+    /// Noctalia, o wlsunset instalado en /usr/bin o /usr/local/bin.
     pub fn is_available() -> bool {
-        PathBuf::from("/usr/bin/wlsunset").exists()
+        Self::uses_noctalia()
+            || PathBuf::from("/usr/bin/wlsunset").exists()
             || PathBuf::from("/usr/local/bin/wlsunset").exists()
     }
 
     pub fn is_enabled() -> bool {
+        if Self::uses_noctalia() {
+            return noctalia::config_get("nightlight.enabled")
+                .and_then(|v| noctalia::parse_bool(&v))
+                .unwrap_or(false);
+        }
         read().get("enabled").and_then(|v| v.as_bool()).unwrap_or(false)
     }
 
     pub fn set_enabled(enabled: bool) {
+        if Self::uses_noctalia() {
+            stop();
+            noctalia::config_set("nightlight.enabled", if enabled { "true" } else { "false" });
+            return;
+        }
         let mut data = read();
         data["enabled"] = json!(enabled);
         save(&data);
@@ -129,6 +159,9 @@ impl NightLightService {
 
     /// Temperatura de día en Kelvin (default 6500)
     pub fn get_temp_day() -> f64 {
+        if Self::uses_noctalia() {
+            return noctalia_number("nightlight.temperature_day").unwrap_or(6500) as f64;
+        }
         read()
             .get("temp_day")
             .and_then(|v| v.as_i64())
@@ -137,19 +170,31 @@ impl NightLightService {
 
     /// Temperatura de noche en Kelvin (default 4500)
     pub fn get_temp_night() -> f64 {
+        if Self::uses_noctalia() {
+            return noctalia_number("nightlight.temperature_night").unwrap_or(4000) as f64;
+        }
         read()
             .get("temp_night")
             .and_then(|v| v.as_i64())
             .unwrap_or(4500) as f64
     }
 
-    /// int(day)/int(night) como en el Python
     pub fn set_temps(day: f64, night: f64) {
+        if Self::uses_noctalia() {
+            noctalia::config_set("nightlight.temperature_day", &(day as i64).to_string());
+            noctalia::config_set("nightlight.temperature_night", &(night as i64).to_string());
+            return;
+        }
         let mut data = read();
         data["temp_day"] = json!(day as i64);
         data["temp_night"] = json!(night as i64);
         save(&data);
         apply_state();
+    }
+
+    /// Solo wlsunset tiene gamma.
+    pub fn has_gamma() -> bool {
+        !Self::uses_noctalia()
     }
 
     pub fn get_gamma() -> f64 {
@@ -163,8 +208,17 @@ impl NightLightService {
         apply_state();
     }
 
-    /// (manual_lat, manual_lng) — Option<f64>, None si no configuradas
+    /// (lat, lng) — None si no configuradas (o geolocalización automática)
     pub fn get_location() -> (Option<f64>, Option<f64>) {
+        if Self::uses_noctalia() {
+            let auto = noctalia::config_get("location.auto_locate")
+                .and_then(|v| noctalia::parse_bool(&v))
+                .unwrap_or(false);
+            if auto {
+                return (None, None);
+            }
+            return (noctalia_float("location.latitude"), noctalia_float("location.longitude"));
+        }
         let data = read();
         (
             data.get("manual_lat").and_then(|v| v.as_f64()),
@@ -172,7 +226,22 @@ impl NightLightService {
         )
     }
 
+    /// Con Noctalia, sin coordenadas se activa su geolocalización: sin
+    /// ubicación ni horario no sabe cuándo es de noche y no hace nada.
     pub fn set_location(lat: Option<f64>, lng: Option<f64>) {
+        if Self::uses_noctalia() {
+            match (lat, lng) {
+                (Some(lat), Some(lng)) => {
+                    noctalia::config_set("location.latitude", &lat.to_string());
+                    noctalia::config_set("location.longitude", &lng.to_string());
+                    noctalia::config_set("location.auto_locate", "false");
+                }
+                _ => {
+                    noctalia::config_set("location.auto_locate", "true");
+                }
+            }
+            return;
+        }
         let mut data = read();
         data["manual_lat"] = json!(lat);
         data["manual_lng"] = json!(lng);
@@ -180,8 +249,11 @@ impl NightLightService {
         apply_state();
     }
 
-    /// pgrep -x wlsunset -> returncode == 0
+    /// Filtro activo ahora mismo.
     pub fn is_running() -> bool {
+        if Self::uses_noctalia() {
+            return Self::is_enabled();
+        }
         Command::new("pgrep")
             .args(["-x", "wlsunset"])
             .stdout(Stdio::null())
