@@ -116,7 +116,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
         .iter()
         .find(|(k, _)| *k == logo_type)
         .map(|(_, l)| *l)
-        .unwrap_or("Archivo ASCII / imagen");
+        .unwrap_or("Archivo de texto (ASCII)");
 
     let feedback_rc = Rc::clone(&feedback);
     let source_lbl = source_subtitle.clone();
@@ -134,12 +134,21 @@ pub fn build(navigator: gtk::Stack) -> Page {
                 .unwrap_or("file");
 
             let current = FastfetchConfig::get_logo_source();
-            FastfetchConfig::set_logo_source(&current, type_key);
+            if !FastfetchConfig::set_logo_source(&current, type_key) {
+                set_feedback(
+                    &feedback_rc,
+                    "Para «Imagen», importa primero una imagen (y la terminal tiene que poder mostrarla)",
+                );
+                return;
+            }
             set_feedback(&feedback_rc, &format!("Logo tipo: {selected}"));
             if let Some(lbl) = &source_lbl {
-                if type_key == "none" {
-                    lbl.set_label("Logo desactivado");
-                }
+                let now = FastfetchConfig::get_logo_source();
+                lbl.set_label(match type_key {
+                    "none" => "Logo desactivado",
+                    "builtin" => "Logo de la distribución",
+                    _ => &now,
+                });
             }
         })),
     );

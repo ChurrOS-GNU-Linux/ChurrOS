@@ -23,53 +23,53 @@ fn config_path() -> PathBuf {
 
 /// Strip `//` and `/* … */` comments from a JSONC string so that serde_json
 /// can parse it.  Handles quoted strings correctly (no stripping inside them).
+///
+/// Works on chars, not bytes: the ChurrOS config has `┌──┐` banners and a
+/// Nerd Font separator, and pushing each UTF-8 byte as a char turned them into
+/// mojibake that the next save wrote back.
 fn strip_jsonc_comments(src: &str) -> String {
-    let bytes = src.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len);
-    let mut i = 0;
+    let mut out = String::with_capacity(src.len());
+    let mut chars = src.chars().peekable();
     let mut in_string = false;
 
-    while i < len {
+    while let Some(c) = chars.next() {
         if in_string {
-            out.push(bytes[i] as char);
-            if bytes[i] == b'\\' && i + 1 < len {
-                i += 1;
-                out.push(bytes[i] as char);
-            } else if bytes[i] == b'"' {
+            out.push(c);
+            if c == '\\' {
+                if let Some(escaped) = chars.next() {
+                    out.push(escaped);
+                }
+            } else if c == '"' {
                 in_string = false;
             }
-            i += 1;
             continue;
         }
-
-        if bytes[i] == b'"' {
-            in_string = true;
-            out.push('"');
-            i += 1;
-            continue;
-        }
-
-        // line comment
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
+        match (c, chars.peek()) {
+            ('"', _) => {
+                in_string = true;
+                out.push(c);
             }
-            continue;
-        }
-
-        // block comment
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
+            ('/', Some('/')) => {
+                // line comment: keep the newline
+                for next in chars.by_ref() {
+                    if next == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
             }
-            i += 2; // skip */
-            continue;
+            ('/', Some('*')) => {
+                chars.next();
+                let mut prev = '\0';
+                for next in chars.by_ref() {
+                    if prev == '*' && next == '/' {
+                        break;
+                    }
+                    prev = next;
+                }
+            }
+            _ => out.push(c),
         }
-
-        out.push(bytes[i] as char);
-        i += 1;
     }
     out
 }
@@ -89,6 +89,14 @@ fn read_config() -> Value {
 
 fn write_config(value: &Value) {
     let path = config_path();
+    // read_config() returns {} for a file it cannot parse: writing that back
+    // would replace the user's whole config with one key. Leave it alone.
+    if let Ok(raw) = fs::read_to_string(&path) {
+        if serde_json::from_str::<Value>(&strip_jsonc_comments(&raw)).is_err() {
+            eprintln!("[fastfetch] {} no es JSONC válido: no se sobrescribe", path.display());
+            return;
+        }
+    }
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -142,10 +150,40 @@ pub const ALL_MODULES: &[(&str, &str)] = &[
 
 /// Logo source types for the combo box.
 pub const LOGO_TYPES: &[(&str, &str)] = &[
-    ("file", "Archivo ASCII / imagen"),
-    ("builtin", "Logo integrado de fastfetch"),
+    ("file", "Archivo de texto (ASCII)"),
+    ("image", "Imagen"),
+    ("builtin", "Logo de la distribución (integrado)"),
     ("none", "Sin logo"),
 ];
+
+/// Default ChurrOS logo (skel and /usr/share/churros/defaults).
+pub const DEFAULT_LOGO: &str = "~/.config/fastfetch/churros-logo";
+
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "svg", "webp", "gif", "bmp"];
+
+/// Fastfetch prints a logo with no `type` (auto) as text: a PNG came out as
+/// binary garbage. Images need an image protocol the terminal understands:
+/// sixel in foot (Niri editions). Without a sixel terminal, chafa renders
+/// them as text art, but only if libchafa is installed. None = not possible.
+pub fn image_logo_type() -> Option<&'static str> {
+    if std::path::Path::new("/usr/bin/foot").exists() {
+        Some("sixel")
+    } else if ["/usr/lib/libchafa.so.0", "/usr/lib64/libchafa.so.0"]
+        .iter()
+        .any(|p| std::path::Path::new(p).exists())
+    {
+        Some("chafa")
+    } else {
+        None
+    }
+}
+
+pub fn is_image_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
 
 impl FastfetchConfig {
     // ---- Logo ----
@@ -170,7 +208,10 @@ impl FastfetchConfig {
                 if let Some(t) = l.get("type").and_then(|v| v.as_str()) {
                     match t {
                         "none" | "disabled" => "none".to_string(),
-                        "builtin" => "builtin".to_string(),
+                        "builtin" | "small" => "builtin".to_string(),
+                        "sixel" | "kitty" | "kitty-direct" | "kitty-icat" | "iterm" | "chafa" | "raw" => {
+                            "image".to_string()
+                        }
                         _ => "file".to_string(),
                     }
                 } else if l
@@ -220,8 +261,10 @@ impl FastfetchConfig {
             .unwrap_or(1)
     }
 
-    /// Set the logo source path and type.
-    pub fn set_logo_source(source: &str, logo_type: &str) {
+    /// Set the logo source path and type ("file", "image", "builtin", "none").
+    /// Returns false when the type cannot work here (an image without a
+    /// terminal able to show it).
+    pub fn set_logo_source(source: &str, logo_type: &str) -> bool {
         let mut cfg = read_config();
         let logo = cfg
             .as_object_mut()
@@ -236,16 +279,31 @@ impl FastfetchConfig {
                 obj.remove("source");
             }
             "builtin" => {
+                // No source: fastfetch detects the distribution's logo. The
+                // path of a file is not a builtin logo name.
                 obj.insert("type".to_string(), json!("builtin"));
+                obj.remove("source");
+            }
+            "image" => {
+                let Some(kind) = image_logo_type() else {
+                    return false;
+                };
+                if source.is_empty() || !is_image_path(source) {
+                    return false;
+                }
+                obj.insert("type".to_string(), json!(kind));
                 obj.insert("source".to_string(), json!(source));
             }
             _ => {
-                // file — no explicit type needed (fastfetch auto-detects)
-                obj.remove("type");
+                // Text file. After "none" or "builtin" there is no source
+                // left: go back to the ChurrOS logo.
+                let source = if source.is_empty() || is_image_path(source) { DEFAULT_LOGO } else { source };
+                obj.insert("type".to_string(), json!("file"));
                 obj.insert("source".to_string(), json!(source));
             }
         }
         write_config(&cfg);
+        true
     }
 
     /// Set logo color overrides.
@@ -452,7 +510,11 @@ impl FastfetchConfig {
 
         // Use ~ shorthand so the config is portable
         let rel = format!("~/.config/fastfetch/{file_name}");
-        Self::set_logo_source(&rel, "file");
+        let kind = if is_image_path(&file_name) { "image" } else { "file" };
+        if !Self::set_logo_source(&rel, kind) {
+            let _ = fs::remove_file(&dest);
+            return Err("Esta terminal no puede mostrar imágenes en fastfetch: usa un archivo de texto (ASCII)".to_string());
+        }
         Ok(rel)
     }
 
@@ -548,6 +610,35 @@ mod tests {
 
         let val: Value = serde_json::from_str(&stripped).expect("valid json after stripping");
         assert_eq!(val["key"], "value // not a comment");
+    }
+
+    #[test]
+    fn strip_keeps_utf8_intact() {
+        let input = "{\n  // ┌ comment\n  \"separator\": \" 󰁔 \", /* ── */\n  \"banner\": \"┌──────┐ ChurrOS ñ\"\n}";
+        let stripped = strip_jsonc_comments(input);
+        let val: Value = serde_json::from_str(&stripped).expect("valid json");
+        assert_eq!(val["separator"], " 󰁔 ");
+        assert_eq!(val["banner"], "┌──────┐ ChurrOS ñ");
+    }
+
+    #[test]
+    fn shipped_config_survives_a_read_write_cycle() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../archiso/airootfs/etc/skel/.config/fastfetch/config.jsonc");
+        let raw = fs::read_to_string(path).expect("skel config");
+        let val: Value = serde_json::from_str(&strip_jsonc_comments(&raw)).expect("skel config parses");
+        let modules = val["modules"].as_array().expect("modules");
+        assert_eq!(modules[0]["format"], "┌──────────────────────────┐");
+        assert_eq!(val["display"]["separator"], " 󰁔 ");
+        let again: Value = serde_json::from_str(&serde_json::to_string_pretty(&val).unwrap()).unwrap();
+        assert_eq!(again, val);
+    }
+
+    #[test]
+    fn image_paths_are_detected() {
+        assert!(is_image_path("~/.config/fastfetch/logo.PNG"));
+        assert!(is_image_path("/x/a.jpeg"));
+        assert!(!is_image_path("~/.config/fastfetch/churros-logo"));
+        assert!(!is_image_path("/x/logo.txt"));
     }
 
     #[test]

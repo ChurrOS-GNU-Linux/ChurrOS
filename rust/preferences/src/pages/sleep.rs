@@ -4,6 +4,8 @@
 // ==========================================
 
 
+use gtk::prelude::*;
+
 use crate::services::power::PowerService;
 use crate::widgets::combo_row::ComboRow;
 use crate::widgets::group::Group;
@@ -19,7 +21,31 @@ const OPTIONS: [(&str, i64); 6] = [
     ("Nunca", 0),
 ];
 
-const LID_ACTIONS: [&str; 6] = ["suspend", "hibernate", "nothing", "blank", "logout", "shutdown"];
+const LID_LABELS: [(&str, &str); 6] = [
+    ("suspend", "Suspender"),
+    ("hibernate", "Hibernar"),
+    ("lock", "Bloquear la pantalla"),
+    ("blank", "Apagar la pantalla"),
+    ("nothing", "No hacer nada"),
+    ("shutdown", "Apagar el equipo"),
+];
+
+/// Quién aplica estos ajustes en la sesión, o por qué no hacen nada.
+pub fn idle_note() -> gtk::Label {
+    use crate::services::power::IdleBackend;
+    let text = match PowerService::idle_backend() {
+        IdleBackend::Noctalia => "Se aplica al momento en Noctalia (inactividad del escritorio).",
+        IdleBackend::Xfce => "Se aplica al momento en el gestor de energía de XFCE.",
+        IdleBackend::None => {
+            "No disponible en esta sesión: ni Noctalia ni el gestor de energía de XFCE están en marcha."
+        }
+    };
+    let label = gtk::Label::new(Some(text));
+    label.set_wrap(true);
+    label.set_xalign(0.0);
+    label.add_css_class("row-subtitle");
+    label
+}
 
 pub fn build(navigator: gtk::Stack) -> Page {
     let page = Page::new(
@@ -86,11 +112,8 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("Inactividad antes de que el sistema entre en suspension"),
         None,
         Some(Box::new(|label| {
-            for (lbl, value) in OPTIONS.iter() {
-                if lbl == &label {
-                    PowerService::set_sleep_timeout(*value);
-                    return;
-                }
+            if let Some((_, value)) = OPTIONS.iter().find(|(lbl, _)| *lbl == label) {
+                PowerService::set_sleep_timeout(*value);
             }
         })),
     );
@@ -100,27 +123,39 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     // ============ Cierre de tapa ============
     let mut lid = Group::new("Cierre de tapa");
-
-    let current_action = PowerService::lid_close_action();
-    let selected_action = if LID_ACTIONS.contains(&current_action.as_str()) {
-        current_action.as_str()
+    if PowerService::lid_action_configurable() {
+        let current_action = PowerService::lid_close_action();
+        let selected = LID_LABELS
+            .iter()
+            .find(|(id, _)| *id == current_action)
+            .map(|(_, label)| *label)
+            .unwrap_or("Suspender");
+        let labels: Vec<&str> = LID_LABELS.iter().map(|(_, l)| *l).collect();
+        lid.add(&ComboRow::new(
+            "Al cerrar la tapa",
+            &labels,
+            Some(selected),
+            None,
+            None,
+            Some(Box::new(|label| {
+                if let Some((id, _)) = LID_LABELS.iter().find(|(_, l)| *l == label) {
+                    PowerService::set_lid_close_action(id);
+                }
+            })),
+        ));
     } else {
-        "suspend"
-    };
-
-    let lid_combo = ComboRow::new(
-        "Al cerrar la tapa",
-        &LID_ACTIONS,
-        Some(selected_action),
-        None,
-        None,
-        Some(Box::new(|action| {
-            PowerService::set_lid_close_action(&action);
-        })),
-    );
-
-    lid.add(&lid_combo);
+        // logind decide la tapa en Niri; cambiarlo exige root.
+        lid.add(&Row::new(
+            "Al cerrar la tapa",
+            Some("Suspender: lo decide el sistema (systemd-logind)"),
+            Some("power.svg"),
+            None,
+            None,
+            None,
+        ));
+    }
     page.add(lid.widget());
+    page.add(&idle_note());
 
     page
 }

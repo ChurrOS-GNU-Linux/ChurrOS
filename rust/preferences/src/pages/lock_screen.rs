@@ -104,6 +104,13 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("appearance".to_string()),
     );
 
+    // Con Noctalia el bloqueo y la inactividad son suyos ([idle], [lockscreen]).
+    // swayidle + swaylock encima bloqueaban dos veces.
+    if churros_services::noctalia::running() {
+        build_noctalia(&page);
+        return page;
+    }
+
     if !LockScreenService::is_available() {
         let mut warn = Group::new("No disponible");
         warn.add(&Row::new(
@@ -461,4 +468,79 @@ fn on_apply_custom_path(state: &LockStateRef) {
         .borrow()
         .apply_path_row
         .set_subtitle(&format!("Aplicado: {path}"));
+}
+
+/// Bloqueo de Noctalia: automático, tiempo, antes de suspender y fondo.
+fn build_noctalia(page: &Page) {
+    use churros_services::noctalia::{config_get, config_set, parse_bool, parse_number};
+
+    let get_bool = |path: &str, default: bool| config_get(path).and_then(|v| parse_bool(&v)).unwrap_or(default);
+    let toml_bool = |on: bool| if on { "true" } else { "false" };
+
+    let mut group = Group::new("Bloqueo (Noctalia)");
+    group.add(&SwitchRow::new(
+        "Bloqueo automatico",
+        None,
+        Some("Bloquea la pantalla tras un periodo de inactividad"),
+        get_bool("idle.behavior.lock.enabled", true),
+        Some(Box::new(move |on| {
+            config_set("idle.behavior.lock.enabled", toml_bool(on));
+        })),
+    ));
+
+    let timeout = config_get("idle.behavior.lock.timeout")
+        .and_then(|v| parse_number(&v))
+        .unwrap_or(660);
+    // Una sola llamada al soltar el deslizador.
+    let generation = Rc::new(std::cell::Cell::new(0u32));
+    let slider = SliderRow::new(
+        "Tiempo de inactividad",
+        None,
+        Some("Minutos hasta que se bloquee"),
+        1.0,
+        120.0,
+        1.0,
+        (timeout as f64 / 60.0).round().max(1.0),
+        Some(Box::new(move |minutes| {
+            let ticket = generation.get().wrapping_add(1);
+            generation.set(ticket);
+            let generation = Rc::clone(&generation);
+            glib::timeout_add_local_once(Duration::from_millis(500), move || {
+                if generation.get() == ticket {
+                    let seconds = (minutes.round() as i64).max(1) * 60;
+                    config_set("idle.behavior.lock.timeout", &seconds.to_string());
+                }
+            });
+        })),
+    );
+    group.add(&slider);
+
+    group.add(&SwitchRow::new(
+        "Bloquear antes de suspender",
+        None,
+        Some("Al volver de la suspensión pide la contraseña"),
+        get_bool("lockscreen.lock_before_suspend", true),
+        Some(Box::new(move |on| {
+            config_set("lockscreen.lock_before_suspend", toml_bool(on));
+        })),
+    ));
+    group.add(&SwitchRow::new(
+        "Escritorio difuminado de fondo",
+        None,
+        Some("Muestra el escritorio desenfocado detrás del bloqueo"),
+        get_bool("lockscreen.blurred_desktop", false),
+        Some(Box::new(move |on| {
+            config_set("lockscreen.blurred_desktop", toml_bool(on));
+        })),
+    ));
+    page.add(group.widget());
+
+    let note = gtk::Label::new(Some(
+        "El bloqueo lo hace Noctalia: los cambios se aplican al momento. El aspecto del \
+         bloqueo (widgets, transiciones) se cambia en los ajustes de Noctalia.",
+    ));
+    note.set_wrap(true);
+    note.set_xalign(0.0);
+    note.add_css_class("row-subtitle");
+    page.add(&note);
 }

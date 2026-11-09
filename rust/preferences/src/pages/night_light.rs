@@ -63,7 +63,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
     ));
 
     let status = Row::new(
-        "Estado de wlsunset",
+        "Estado",
         Some(&status_text()),
         Some("night_light.svg"),
         None,
@@ -135,7 +135,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     gamma_group.add(&gamma_slider.row);
 
-    page.add(gamma_group.widget());
+    if NightLightService::has_gamma() {
+        page.add(gamma_group.widget());
+    }
 
     *sliders.borrow_mut() = (Some(day_slider), Some(night_slider), Some(gamma_slider));
 
@@ -144,7 +146,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     loc_group.add(&Row::new(
         "Latitud / Longitud",
-        Some("Si las desactivas, wlsunset usara la geolocalizacion automatica"),
+        Some("Vacías: geolocalización automática"),
         None,
         None,
         None,
@@ -205,13 +207,14 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
 /// Equivalente a NightLightPage._status_text
 fn status_text() -> String {
+    let who = if NightLightService::uses_noctalia() { "Noctalia" } else { "wlsunset" };
     if NightLightService::is_running() {
-        return "wlsunset ejecutandose".to_string();
+        return format!("Activa ({who})");
     }
     if NightLightService::is_enabled() {
-        return "wlsunset activado pero no se esta ejecutando".to_string();
+        return format!("Activada, pero {who} no está aplicando el filtro");
     }
-    "wlsunset desactivado".to_string()
+    "Desactivada".to_string()
 }
 
 /// Equivalente a NightLightPage._refresh_status (try/except silencioso en el Python)

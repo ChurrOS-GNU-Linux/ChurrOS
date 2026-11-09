@@ -268,7 +268,7 @@ impl PreferencesWindow {
                 s.register_subpage(
                     "foot", "appearance", "Foot", "Terminal: fuente, cursor, padding, bell", Some("terminal.svg"));
                 s.register_subpage(
-                    "fuzzel", "appearance", "Fuzzel", "Launcher: fuente, layout, iconos", Some("applications.svg"));
+                    "fuzzel", "appearance", "Fuzzel", "Lanzador alternativo (Mod+Shift+Space)", Some("applications.svg"));
                 if show_mako {
                     s.register_subpage(
                         "mako", "appearance", "Mako", "Notificaciones: fuente, colores, posicion, DND", Some("mako.svg"));
