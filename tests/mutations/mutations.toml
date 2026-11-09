@@ -3348,3 +3348,12 @@ replace = """    match app-id="org.churros.welcome"
 caught_by = "tests.static.test_niri_window_rules"
 expect = "[niri-dialog-floats]"
 why = "La bienvenida es un diálogo de 900x680: en mosaico ocupaba una columna entera."
+
+[[mutation]]
+name = "test_config_syntax: la fuente de la consola de GRUB sin caracteres de caja"
+file = "branding/grub-theme/theme.txt"
+find = 'terminal-font: "JetBrains Mono Regular 16"'
+replace = 'terminal-font: "Inter Regular 18"'
+caught_by = "tests.static.test_config_syntax"
+expect = "terminal-box:inter-regular-18.pf2"
+why = "Sin U+2500..U+2518 el editor (e) y la consola (c) de GRUB dibujan el marco como «AAAA»."
