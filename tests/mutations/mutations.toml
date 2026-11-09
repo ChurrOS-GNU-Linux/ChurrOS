@@ -3250,3 +3250,25 @@ replace = "/^[[:space:]]*user"
 caught_by = "tests.static.test_verify_install"
 expect = "[verify-live-autologin]"
 why = "El user de [default_session] (greeter) haría pasar un [initial_session] sin usuario."
+
+[[mutation]]
+name = "test_niri_window_rules: la regla de imagen en imagen vuelve a dos match"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = '    match app-id="^firefox$" title="^Picture-in-Picture$"'
+replace = """    match app-id="firefox"
+    match title="^Picture-in-Picture$\""""
+caught_by = "tests.static.test_niri_window_rules"
+expect = "[niri-floating-whole-app]"
+why = "En niri varios match son O: todo Firefox abría flotante en vez de en mosaico."
+
+[[mutation]]
+name = "test_niri_window_rules: la bienvenida vuelve a abrir en mosaico"
+file = "archiso/airootfs/etc/skel/.config/niri/config.kdl"
+find = """    match app-id="org.churros.welcome"
+    open-floating true
+"""
+replace = """    match app-id="org.churros.welcome"
+"""
+caught_by = "tests.static.test_niri_window_rules"
+expect = "[niri-dialog-floats]"
+why = "La bienvenida es un diálogo de 900x680: en mosaico ocupaba una columna entera."
