@@ -7,6 +7,7 @@ usando el protocolo TUS para soportar ficheros de cualquier tamaño a través de
 
 import argparse
 import base64
+import getpass
 import json
 import os
 import sys
@@ -124,7 +125,10 @@ def main():
     parser = argparse.ArgumentParser(description="Sube ficheros de release a download.churroslinux.org")
     parser.add_argument("--url", default=DEFAULT_URL, help=f"URL base de FileBrowser (def: {DEFAULT_URL})")
     parser.add_argument("--user", default=DEFAULT_USER, help=f"Usuario (def: {DEFAULT_USER})")
-    parser.add_argument("--password", default=os.getenv("CHURROS_UPLOAD_PASSWORD", "X_40Loataimado"), help="Contraseña")
+    # Nunca una contraseña por defecto en el código: el repositorio es público.
+    parser.add_argument("--password", default=os.getenv("CHURROS_UPLOAD_PASSWORD"),
+                        help="Contraseña (o CHURROS_UPLOAD_PASSWORD; si falta, se pregunta)")
+    parser.add_argument("--arch", default="x86_64", help="Arquitectura de los bundles OTA (def: x86_64)")
     parser.add_argument("--ota-only", action="store_true", help="Solo subir bundles OTA (/churros/)")
     parser.add_argument("--iso-only", action="store_true", help="Solo subir ISOs y sumas a la raíz (/)")
     parser.add_argument("--file", help="Subir un fichero específico")
@@ -132,6 +136,9 @@ def main():
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
+
+    if not args.password:
+        args.password = getpass.getpass(f"Contraseña de {args.user} en {args.url}: ")
 
     print(f"==> Conectando a {args.url} como '{args.user}'...")
     token = login(args.url, args.user, args.password)
@@ -145,21 +152,29 @@ def main():
         upload_tus(args.url, token, path, args.dest)
         return
 
-    # Subida de OTA bundles a /churros/
+    # Bundles OTA (scripts/build-churros-release.sh -> release/<arch>/).
+    # churros-update-utils 1.5+ los lee de /churros/<arch>/ y exige
+    # updates.json.minisig. La 1.4 (sin clave pública) lee /churros/ y solo
+    # comprueba el sha256: se publica también ahí para que pueda actualizar.
     if not args.iso_only:
-        ota_dir = repo_root / "release"
-        ota_files = [
-            ota_dir / "updates.json",
-            ota_dir / f"churros-utils-{VERSION}-x86_64.tar.zst",
-            ota_dir / f"churros-utils-niri-{VERSION}-x86_64.tar.zst",
-            ota_dir / f"churros-utils-xfce-{VERSION}-x86_64.tar.zst",
-        ]
-        print("\n==> Subiendo bundles de actualización OTA a /churros/...")
-        for p in ota_files:
-            if p.is_file():
-                upload_tus(args.url, token, p, "churros")
-            else:
-                print(f"  ! Aviso: {p.name} no encontrado en {ota_dir}")
+        ota_dir = repo_root / "release" / args.arch
+        manifest = ota_dir / "updates.json"
+        signature = ota_dir / "updates.json.minisig"
+        bundles = [ota_dir / f"churros-utils{edition}-{VERSION}-{args.arch}.tar.zst"
+                   for edition in ("", "-niri", "-xfce")]
+        missing = [p.name for p in (manifest, signature, *bundles) if not p.is_file()]
+        if missing:
+            print(f"Error: faltan en {ota_dir}: {', '.join(missing)}", file=sys.stderr)
+            sys.exit(1)
+        if json.loads(manifest.read_text(encoding="utf-8")).get("version") != VERSION:
+            print(f"Error: {manifest} no es de la versión {VERSION}", file=sys.stderr)
+            sys.exit(1)
+        destinations = [f"churros/{args.arch}"] + (["churros"] if args.arch == "x86_64" else [])
+        for dest in destinations:
+            print(f"\n==> Subiendo bundles OTA a /{dest}/...")
+            # El manifiesto al final: nadie lo ve antes de que estén los bundles.
+            for p in (*bundles, signature, manifest):
+                upload_tus(args.url, token, p, dest)
 
     # Subida de ISOs a la raíz (/)
     if not args.ota_only:
@@ -167,13 +182,30 @@ def main():
         if not iso_dir.is_dir():
             print(f"\n! Aviso: {iso_dir} no existe todavía.")
         else:
-            files = sorted(list(iso_dir.glob("ChurrOS-*.iso")) + list(iso_dir.glob("SHA256SUMS*")))
+            # Solo las ISO de esta versión (ChurrOS-<versión>-<edición>-<arch>.iso).
+            files = sorted(iso_dir.glob(f"ChurrOS-{VERSION}-*.iso"))
             if not files:
                 print(f"\n! Aviso: no hay ISOs en {iso_dir} todavía.")
             else:
+                # SHA256SUMS cubre solo las ISO de esta versión (docs/release.md):
+                # se genera aquí para no subir el de una versión anterior.
+                import hashlib
+                import tempfile
+                lines = []
+                for p in files:
+                    digest = hashlib.sha256()
+                    with p.open("rb") as fh:
+                        for chunk in iter(lambda: fh.read(1 << 20), b""):
+                            digest.update(chunk)
+                    lines.append(f"{digest.hexdigest()}  {p.name}\n")
                 print("\n==> Subiendo ISOs y sumas de verificación a /...")
                 for p in files:
                     upload_tus(args.url, token, p, "")
+                with tempfile.TemporaryDirectory() as tmp:
+                    sums = Path(tmp) / "SHA256SUMS"
+                    sums.write_text("".join(lines), encoding="utf-8")
+                    print("".join(lines), end="")
+                    upload_tus(args.url, token, sums, "")
 
     print("\n✓ Proceso de subida finalizado con éxito.")
 
