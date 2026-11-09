@@ -3348,3 +3348,12 @@ replace = """    match app-id="org.churros.welcome"
 caught_by = "tests.static.test_niri_window_rules"
 expect = "[niri-dialog-floats]"
 why = "La bienvenida es un diálogo de 900x680: en mosaico ocupaba una columna entera."
+
+[[mutation]]
+name = "test-privileged-helpers: el actualizador ya no instala minisign si falta"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    if am_root && [ -x \"$PACMAN\" ]; then"
+replace = "    if false; then"
+caught_by = "python3 scripts/test-privileged-helpers.py"
+expect = "[update-installs-minisign]"
+why = "Quien actualiza desde la 1.4 (sin minisign) recibe el actualizador que exige la firma: su siguiente actualización fallaba hasta instalarlo a mano."

@@ -68,7 +68,7 @@ def update_utils(script: str, *args, env=None) -> subprocess.CompletedProcess:
     argumentos llegan a `script` como $1, $2...
     """
     return subprocess.run(
-        ["bash", "-c", f'source "$1"; shift\n{script}', "prueba", str(UPDATE_UTILS), *map(str, args)],
+        [shutil.which("bash") or "/bin/bash", "-c", f'source "$1"; shift\n{script}', "prueba", str(UPDATE_UTILS), *map(str, args)],
         capture_output=True, text=True, env=env,
     )
 
@@ -381,6 +381,46 @@ cmp -s "$msg" "{self.signed}"
         result = self.fetch(self.pubkey)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("falta minisign", result.stderr)
+
+    def env_without_minisign(self) -> dict:
+        """PATH con las órdenes del sistema salvo minisign (el host puede tenerlo)."""
+        tools = self.tmp / "tools"
+        tools.mkdir(exist_ok=True)
+        for name in ("sh", "bash", "cp", "cmp", "wc", "mktemp", "rm", "cat", "id", "tr", "grep", "cut",
+                     "awk", "python3", "sha256sum", "mv", "chmod", "dirname", "basename", "env", "uname"):
+            found = shutil.which(name, path="/usr/bin:/bin")
+            if found and not (tools / name).exists():
+                (tools / name).symlink_to(found)
+        return {**os.environ, "PATH": f"{self.tmp / 'bin'}:{tools}"}
+
+    def test_root_installs_missing_minisign(self):
+        """Quien viene de la 1.4 (sin minisign) puede seguir actualizando."""
+        self.pubkey.write_text("clave\n")
+        real = self.tmp / "bin/minisign"
+        hidden = self.tmp / "minisign.pkg"
+        real.rename(hidden)
+        executable(self.tmp / "pacman", f'''#!/bin/sh
+echo "pacman $*" >> "{self.log}"
+cp "{hidden}" "{real}"
+''')
+        result = update_utils(f'PUBKEY="$1"; PACMAN="$3"; am_root() {{ return 0; }}; fetch_manifest "$2"',
+                              self.pubkey, self.tmp / "manifest", self.tmp / "pacman",
+                              env=self.env_without_minisign())
+        self.assertEqual(result.returncode, 0, f"[update-installs-minisign] {result.stderr}")
+        log = self.log.read_text()
+        self.assertIn("pacman -S --needed --noconfirm minisign", log,
+                      "[update-installs-minisign] sin minisign el actualizador 1.5 no se instala lo que necesita")
+        self.assertIn("Firma del manifiesto verificada", result.stdout)
+
+    def test_minisign_install_failure_aborts(self):
+        self.pubkey.write_text("clave\n")
+        (self.tmp / "bin/minisign").unlink()
+        executable(self.tmp / "pacman", "#!/bin/sh\nexit 1\n")
+        result = update_utils(f'PUBKEY="$1"; PACMAN="$3"; am_root() {{ return 0; }}; fetch_manifest "$2"',
+                              self.pubkey, self.tmp / "manifest", self.tmp / "pacman",
+                              env=self.env_without_minisign())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no se pudo instalar minisign", result.stderr)
 
     def test_parse_manifest(self):
         manifest = self.tmp / "m.json"

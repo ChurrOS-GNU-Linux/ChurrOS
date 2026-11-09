@@ -42,6 +42,7 @@ case "$(uname -m)" in
 esac
 BASE="https://download.churroslinux.org/churros/${UPDATE_ARCH}/"
 PUBKEY=/usr/share/churros/churros-release.pubkey
+PACMAN=/usr/bin/pacman
 
 VERSION_FILE=/etc/churros-version
 EDITION_FILE=/etc/churros-edition
@@ -118,11 +119,29 @@ detect_edition() {
 # Firma minisign del manifiesto ya descargado. Antes se comprobaba antes de
 # descargarlo, contra un fichero vacío, así que con la clave publicada no
 # habría validado nunca (#139).
+am_root() {
+    [ "$(id -u)" -eq 0 ]
+}
+
+# La 1.4 no traía minisign y se actualiza a la 1.5 con un bundle (que no
+# instala paquetes): sin esto, su siguiente actualización moriría aquí. Como
+# root se instala del repositorio de Arch (paquete firmado, sin -y: Ajustes
+# ya ha hecho pacman -Syu justo antes). Sin root, se aborta como siempre.
+ensure_minisign() {
+    command -v minisign >/dev/null 2>&1 && return 0
+    if am_root && [ -x "$PACMAN" ]; then
+        echo "Instalando minisign para verificar la firma de las actualizaciones..."
+        "$PACMAN" -S --needed --noconfirm minisign >&2 \
+            || die "no se pudo instalar minisign: instálalo con 'sudo pacman -S minisign' y repite"
+        command -v minisign >/dev/null 2>&1 && return 0
+    fi
+    die "falta minisign para verificar la firma del manifiesto (sudo pacman -S minisign)"
+}
+
 verify_manifest() {
     local manifest="$1"
     [ -r "$PUBKEY" ] || die "falta la clave pública de releases: $PUBKEY"
-    command -v minisign >/dev/null 2>&1 \
-        || die "falta minisign para verificar la firma del manifiesto"
+    ensure_minisign
     download "$manifest.minisig" "${BASE}updates.json.minisig" \
         || die "no se pudo obtener la firma minisign del manifiesto"
     minisign -V -p "$PUBKEY" -m "$manifest" -x "$manifest.minisig" >/dev/null 2>&1 \
