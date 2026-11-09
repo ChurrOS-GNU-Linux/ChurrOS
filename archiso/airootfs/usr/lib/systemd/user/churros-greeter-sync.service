@@ -1,0 +1,17 @@
+[Unit]
+Description=Copy the desktop wallpaper to the ChurrOS login screen
+# Desktop editions only: the server has no greeter.
+ConditionPathExists=/etc/greetd/regreet.toml
+ConditionPathExists=/usr/bin/churros-settings
+ConditionPathIsDirectory=/var/lib/churros/greeter
+
+[Service]
+Type=oneshot
+# Writes /var/lib/churros/greeter/background.jpg (group wheel, no root); does
+# nothing when the wallpaper and the blur setting did not change.
+ExecStart=/usr/bin/churros-settings --sync-greeter
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

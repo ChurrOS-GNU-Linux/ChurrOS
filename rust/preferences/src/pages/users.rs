@@ -8,13 +8,13 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use crate::services::users::UsersService;
-use crate::services::wallpaper::WallpaperService;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
 use crate::widgets::row::Row;
 use crate::widgets::switch_row::SwitchRow;
 
 pub fn build(navigator: gtk::Stack) -> Page {
+    let navigator_for_greeter = navigator.clone();
     let page = Page::new(
         Some(navigator),
         "Usuarios y Login",
@@ -75,45 +75,14 @@ pub fn build(navigator: gtk::Stack) -> Page {
     }
     login_screen.add(&autologin_row);
 
-    // Sincronizar fondo del escritorio con la pantalla de login. Solo valen
-    // los fondos del sistema: uno del home no lo puede leer el greeter.
-    let sync_wp_row = Row::new(
-        "Sincronizar fondo",
-        Some("Aplicar el fondo del escritorio a la pantalla de login"),
-        Some("wallpaper.svg"),
-        None,
-        None,
-        None,
-    );
-    let feedback = sync_wp_row.subtitle_label().cloned();
-    sync_wp_row.button.connect_clicked(move |_| {
-        let wp = WallpaperService::current();
-        if wp.is_empty() {
-            return;
-        }
-        let text = if UsersService::set_regreet_wallpaper(&wp) {
-            "Fondo aplicado a la pantalla de login"
-        } else {
-            "No se pudo aplicar: la pantalla de login solo usa fondos del sistema \
-             (/usr/share/churros/wallpapers o /usr/share/backgrounds)"
-        };
-        if let Some(label) = &feedback {
-            label.set_label(text);
-        }
-    });
-    login_screen.add(&sync_wp_row);
-
-    // Mensaje de bienvenida
-    let greeting = UsersService::regreet_greeting();
-    let greeting_row = Row::new(
-        "Mensaje de bienvenida",
-        Some("Texto mostrado en la pantalla de inicio"),
-        Some("palette.svg"),
-        Some(&greeting),
-        None,
-        None,
-    );
-    login_screen.add(&greeting_row);
+    // Fondo, reloj, saludo, logo y color: Apariencia > Pantalla de inicio.
+    login_screen.add(&crate::widgets::navigation_row::new(
+        navigator_for_greeter,
+        "Personalizar la pantalla de inicio",
+        "lock_screen.svg",
+        "greeter",
+        Some("Fondo, reloj, saludo y colores"),
+    ));
 
     page.add(login_screen.widget());
 

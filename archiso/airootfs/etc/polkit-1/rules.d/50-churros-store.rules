@@ -35,8 +35,8 @@
 //   /usr/bin/churros-update-utils             (sin argumentos)            AUTH_ADMIN_KEEP
 //   /usr/local/bin/churros-write-root-config  greetd-autologin on|off     AUTH_ADMIN_KEEP
 //                                             lightdm-autologin on|off    AUTH_ADMIN_KEEP
-//                                             regreet-wallpaper <ruta>    AUTH_ADMIN_KEEP
 //                                             regreet-greeting <texto>    AUTH_ADMIN_KEEP
+//                                             greeter-set CLAVE=VALOR...  AUTH_ADMIN_KEEP (2)
 //   cualquier otra cosa                                                   NOT_HANDLED
 //
 // YES: sin contraseña, solo para lo inocuo.
@@ -44,6 +44,10 @@
 //   minutos para el mismo proceso. churros-pkexec hace `exec pkexec` para que
 //   ese proceso sea la app que llama y la contraseña sirva para varios pasos.
 // NOT_HANDLED: política por defecto de pkexec (auth_admin, contraseña cada vez).
+// (2) Solo las claves y valores de Ajustes > Pantalla de inicio, cada una
+//     con su lista o patrón cerrado; date_pattern (texto) queda fuera: solo
+//     lo fija configure-greeter-locale al instalar, como root. El fondo de la
+//     pantalla de inicio no pasa por pkexec (tmpfiles.d/churros-greeter.conf).
 // (1) `create` rota los snapshots: conserva los 5 más recientes y borra el
 //     resto. Pide contraseña para que un proceso del usuario no pueda
 //     sustituir puntos de restauración sanos por otros ya comprometidos.
@@ -99,8 +103,8 @@ polkit.addRule(function(action, subject) {
             // El helper valida el valor por su cuenta; aquí solo se acota
             // la operación.
             [/^(greetd|lightdm)-autologin (on|off)$/, ADMIN_KEEP],
-            [/^regreet-wallpaper \/.+$/, ADMIN_KEEP],
-            [/^regreet-greeting .+$/, ADMIN_KEEP]
+            [/^regreet-greeting .+$/, ADMIN_KEEP],
+            [/^greeter-set( (dim=[0-9]{1,2}|accent=#[0-9A-Fa-f]{6}|clock=(12|24)|clock_size=(small|medium|large)|(avatar|seconds|date)=(on|off)))+$/, ADMIN_KEEP]
         ]
     };
 

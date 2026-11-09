@@ -74,7 +74,7 @@ los llamadores pasan siempre la ruta absoluta canónica.
 | `/usr/bin/pacman` | `-Syu --noconfirm` | `AUTH_ADMIN_KEEP` |
 | `/usr/bin/flatpak` | `update -y` | `AUTH_ADMIN_KEEP` |
 | `/usr/bin/churros-update-utils` | (sin argumentos) | `AUTH_ADMIN_KEEP` |
-| `/usr/local/bin/churros-write-root-config` | `greetd-autologin on\|off` · `lightdm-autologin on\|off` · `regreet-wallpaper <ruta>` · `regreet-greeting <texto>` | `AUTH_ADMIN_KEEP` |
+| `/usr/local/bin/churros-write-root-config` | `greetd-autologin on\|off` · `lightdm-autologin on\|off` · `regreet-greeting <texto>` · `greeter-set CLAVE=VALOR…` (solo `dim`, `avatar`, `accent`, `clock`, `seconds`, `date`, `clock_size`, cada una con su lista o patrón) | `AUTH_ADMIN_KEEP` |
 | Acción `io.calamares.calamares.pkexec.run` (no es `pkexec` genérico) | sujeto `churros` | `YES` (2) |
 | Cualquier otra cosa | | `NOT_HANDLED` |
 
@@ -152,7 +152,7 @@ acepta contenido**, solo operaciones:
 ```bash
 churros-pkexec /usr/local/bin/churros-write-root-config greetd-autologin on
 churros-pkexec /usr/local/bin/churros-write-root-config lightdm-autologin off
-churros-pkexec /usr/local/bin/churros-write-root-config regreet-wallpaper /usr/share/churros/wallpapers/default.png
+churros-pkexec /usr/local/bin/churros-write-root-config greeter-set dim=48 accent=#F97316 clock=24
 churros-pkexec /usr/local/bin/churros-write-root-config regreet-greeting "Bienvenido a ChurrOS"
 ```
 

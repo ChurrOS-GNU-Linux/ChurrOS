@@ -15,6 +15,7 @@ Las pruebas de tarballs necesitan zstd; si no está, salen como SKIP.
 """
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -497,6 +498,7 @@ class WriteRootConfig(unittest.TestCase):
         (self.etc / "greetd/config.toml").write_text(
             GREETER + '\n[initial_session]\ncommand = "agreety"\nuser = "otro"\n')
         shutil.copy2(OVERLAY / "etc/greetd/regreet.toml", self.etc / "greetd/regreet.toml")
+        shutil.copy2(OVERLAY / "etc/greetd/regreet.css", self.etc / "greetd/regreet.css")
         self.set_edition("niri")
         self.wallpapers = self.tmp / "usr/share/churros/wallpapers"
         self.wallpapers.mkdir(parents=True)
@@ -595,28 +597,81 @@ class WriteRootConfig(unittest.TestCase):
         self.assertFalse(conf.exists())
 
     @unittest.skipIf(tomllib is None, "Python sin tomllib")
-    def test_regreet_wallpaper(self):
-        before = self.regreet()
-        for name in ("fondo.png", 'con "comillas" \\ y espacios.png'):
-            with self.subTest(name=name):
-                result = self.run_helper("regreet-wallpaper", str(self.wallpapers / name))
-                self.assertEqual(result.returncode, 0, result.stderr)
-                after = self.regreet()
-                self.assertEqual(after["background"]["path"], str(self.wallpapers / name))
-                # El resto del fichero no cambia.
-                self.assertEqual({k: v for k, v in after.items() if k != "background"},
-                                 {k: v for k, v in before.items() if k != "background"})
-                self.assertEqual(after["background"]["fit"], before["background"]["fit"])
+    def css_marked(self) -> dict:
+        """{clave: línea} de las líneas de regreet.css marcadas con churros:<clave>."""
+        css = (self.etc / "greetd/regreet.css").read_text()
+        return {m.group(2): m.group(1) for m in re.finditer(r"^(.*); /\* churros:([a-z-]+) \*/$", css, re.M)}
+
+    @unittest.skipIf(tomllib is None, "Python sin tomllib")
+    def test_greeter_set(self):
+        css_before = (self.etc / "greetd/regreet.css").read_text()
+        toml_before = self.regreet()
+        self.assertEqual(set(self.css_marked()),
+                         {"accent", "picture-opacity", "avatar-image", "avatar-padding"})
+        result = self.run_helper("greeter-set", "dim=30", "avatar=off", "accent=#3B82F6", "clock=12",
+                                 "seconds=on", "date=off", "clock_size=large")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        marked = self.css_marked()
+        self.assertEqual(marked["accent"], "@define-color accent_color #3B82F6")
+        self.assertEqual(marked["picture-opacity"].strip(), "opacity: 0.70")
+        self.assertEqual(marked["avatar-image"].strip(), "background-image: none")
+        self.assertEqual(marked["avatar-padding"].strip(), "padding-top: 0")
+        after = self.regreet()
+        self.assertEqual(after["widget"]["clock"]["format"],
+                         "<span size='88pt' weight='bold' font_features='tnum' letter_spacing='-2048'>"
+                         "%-I:%M:%S %p</span>")
+        # Solo cambia el formato del reloj.
+        after["widget"]["clock"].pop("format")
+        before_clock = dict(toml_before["widget"]["clock"])
+        before_clock.pop("format")
+        self.assertEqual(after["widget"]["clock"], before_clock)
+        self.assertEqual({k: v for k, v in after.items() if k != "widget"},
+                         {k: v for k, v in toml_before.items() if k != "widget"})
+        conf = (self.etc / "greetd/churros-greeter.conf").read_text()
+        self.assertIn("dim=30\n", conf)
+        self.assertIn("accent=#3B82F6\n", conf)
+        self.assertEqual(mode(self.etc / "greetd/regreet.css") & 0o777, 0o644)
+
+        # Los valores por defecto devuelven exactamente lo que trae la ISO.
+        result = self.run_helper("greeter-set", "dim=48", "avatar=on", "accent=#F97316", "clock=24",
+                                 "seconds=off", "date=on", "clock_size=medium")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.etc / "greetd/regreet.css").read_text().rstrip("\n"), css_before.rstrip("\n"),
+                         "greeter-set con los valores por defecto no reproduce el regreet.css de la ISO")
+        self.assertEqual(self.regreet(), toml_before,
+                         "greeter-set con los valores por defecto no reproduce el regreet.toml de la ISO")
         self.assertNoTempFiles()
 
-    def test_regreet_wallpaper_refusals(self):
-        before = (self.etc / "greetd/regreet.toml").read_text()
-        for path in ("fondo.png", str(self.tmp / "home/ana/foto.png"), str(self.wallpapers / "fuera.png"),
-                     str(self.wallpapers / "secreto.png"), str(self.wallpapers / "no-existe.png"),
-                     str(self.wallpapers), str(self.wallpapers / "../wallpapers/x\ny.png"), "/etc/shadow"):
-            with self.subTest(path=path):
-                self.assertNotEqual(self.run_helper("regreet-wallpaper", path).returncode, 0)
-        self.assertEqual((self.etc / "greetd/regreet.toml").read_text(), before)
+    def test_greeter_set_keeps_earlier_values(self):
+        self.assertEqual(self.run_helper("greeter-set", "accent=#22C55E").returncode, 0)
+        self.assertEqual(self.run_helper("greeter-set", "dim=10").returncode, 0)
+        marked = self.css_marked()
+        self.assertEqual(marked["accent"], "@define-color accent_color #22C55E")
+        self.assertEqual(marked["picture-opacity"].strip(), "opacity: 0.90")
+
+    def test_greeter_set_refusals(self):
+        files = ("regreet.css", "regreet.toml")
+        before = {name: (self.etc / "greetd" / name).read_text() for name in files}
+        for args in (["dim=81"], ["dim=-1"], ["dim=4x"], ["accent=red"], ["accent=#12345"],
+                     ["accent=#12345G"], ["clock=13"], ["clock_size=huge"], ["avatar=yes"],
+                     ["path=/etc/shadow"], ["dim"], ["dim=30", "evil=1"],
+                     ["date_pattern=%A"], ['accent=#F97316; } * { color: red'], []):
+            with self.subTest(args=args):
+                self.assertNotEqual(self.run_helper("greeter-set", *args).returncode, 0)
+        for name in files:
+            self.assertEqual((self.etc / "greetd" / name).read_text(), before[name], name)
+        self.assertFalse((self.etc / "greetd/churros-greeter.conf").exists())
+
+    @unittest.skipIf(tomllib is None, "Python sin tomllib")
+    def test_greeter_date_pattern_only_as_root(self):
+        """configure-greeter-locale lo fija al instalar, como root y sin pkexec."""
+        root_env = {k: v for k, v in self.env.items() if k != "PKEXEC_UID"}
+        result = self.run_helper("greeter-set", "date_pattern=%A, %-d de %B", env=root_env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(">%A, %-d de %B</span>", self.regreet()["widget"]["clock"]["format"])
+        for bad in ('date_pattern=%A"', "date_pattern=<b>", "date_pattern=a\\b", "date_pattern=" + "x" * 41):
+            with self.subTest(bad=bad):
+                self.assertNotEqual(self.run_helper("greeter-set", bad, env=root_env).returncode, 0)
 
     @unittest.skipIf(tomllib is None, "Python sin tomllib")
     def test_regreet_greeting(self):
