@@ -91,6 +91,9 @@ class MakeBootGrubReadable(unittest.TestCase):
         (self.boot / "vmlinuz-linux").symlink_to("vmlinuz-linux-cachyos")
         (self.boot / "initramfs-linux.img").symlink_to("initramfs-linux-cachyos.img")
         (self.boot / "grub/themes/churros/theme.txt").write_text("title-text: \"\"\n")
+        (self.boot / "grub/themes/churros/icons").mkdir()
+        for name in ("logo.png", "select_c.png", "icons/churros.png", "inter-regular-18.pf2"):
+            (self.boot / "grub/themes/churros" / name).write_bytes(b"x" * 64)
 
     def run_script(self, fs="btrfs"):
         """(código, stdout). Solo stdout, como lo enseña Calamares; stderr se descarta."""
@@ -124,6 +127,18 @@ class MakeBootGrubReadable(unittest.TestCase):
                             f"[symlink-kept] {link} pasó a ser una copia: la próxima actualización la deja vieja")
             self.assertEqual(os.readlink(path), target)
         self.assertEqual((self.boot / "vmlinuz-linux-cachyos").read_bytes(), b"kernel" * 1000)
+
+    def test_every_theme_file_is_rewritten(self):
+        """El logo, los iconos y las piezas del tema también: uno ilegible tira el tema entero."""
+        self.mark_boot_like_boot_nocow()
+        self.populate()
+        theme = self.boot / "grub/themes/churros"
+        files = ["theme.txt", "logo.png", "select_c.png", "icons/churros.png", "inter-regular-18.pf2"]
+        before = {name: (theme / name).stat().st_ino for name in files}
+        code, out = self.run_script()
+        self.assertEqual(code, 0, out)
+        same = [name for name in files if (theme / name).stat().st_ino == before[name]]
+        self.assertEqual(same, [], "[theme-rewritten] estos ficheros del tema no se reescribieron en un inodo nuevo")
 
     def test_unmarked_boot_gets_nocow(self):
         """Un /boot sin marcar (instalación antigua) recibe +C y se reescribe."""

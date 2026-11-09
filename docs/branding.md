@@ -45,10 +45,10 @@ decisión de identidad del proyecto, no un arreglo de paso.
   «Rolling Release • \m»; `motd`, un saludo, el lema y la URL del proyecto.
   `archiso/airootfs/etc/motd` es otro texto que `customize_airootfs.sh`
   sobrescribe al construir: no se ve en ninguna imagen.
-- **GRUB.** `scripts/build-grub-theme.sh` (lo llama cada build) genera las
-  fuentes `.pf2` que falten (si hay `grub-mkfont`) y, si no hay
-  `background.png`, lo copia de `wallpapers/ChurrOSDarkMinimal.png`. Detalle
-  en [boot.md](boot.md).
+- **GRUB.** `scripts/build-grub-theme.sh` (lo llama cada build) genera los
+  recursos del tema que falten: fuentes Inter y JetBrains Mono (`.pf2`), fondo,
+  píldora de selección, recuadro de la consola, logo e iconos. Están en git;
+  `--regen` los rehace tras cambiar el diseño. Detalle en [boot.md](boot.md).
 - **Plymouth.** `churros.plymouth` usa `ModuleName=text`, así que se ve el
   tema de texto: `churros.script` y `boot.png` están en el directorio, pero
   ese módulo no los carga. La edición pi no instala Plymouth.

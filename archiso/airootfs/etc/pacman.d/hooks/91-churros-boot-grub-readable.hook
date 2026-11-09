@@ -7,9 +7,9 @@ Target = boot/Image
 Target = boot/vmlinuz-*
 Target = boot/initramfs-*.img
 Target = boot/*-ucode.img
-Target = boot/grub/themes/churros/background.png
+Target = boot/grub/themes/churros/*.png
+Target = boot/grub/themes/churros/icons/*.png
 Target = boot/grub/themes/churros/*.pf2
-Target = boot/grub/themes/churros/select*.png
 Target = boot/grub/themes/churros/theme.txt
 
 [Trigger]

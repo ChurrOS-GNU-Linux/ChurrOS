@@ -62,7 +62,7 @@ La salida de `build.sh` usa la misma numeración (`[0/5]` a `[5/5]` y, al final,
 
 ### 1. Branding
 
-- `scripts/build-grub-theme.sh` genera las fuentes `.pf2` del tema GRUB si faltan (necesita `grub-mkfont`).
+- `scripts/build-grub-theme.sh` genera los recursos del tema GRUB que falten (fuentes con `grub-mkfont`, imágenes con ImageMagick); están en git, así que un build normal no los necesita. `--regen` los rehace todos.
 - Copia `branding/customize_airootfs.sh`, `branding/files/` (issue, motd, os-release), `VERSION` y `branding/stamp-os-release.sh` a `archiso/airootfs/root/`, y estampa la versión y la edición en ese `os-release`.
 - Copia `branding/grub-theme/` a `archiso/airootfs/usr/share/churros/grub-theme/`, de donde Calamares lo instala en el disco.
 

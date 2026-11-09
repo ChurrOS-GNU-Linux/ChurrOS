@@ -974,8 +974,8 @@ why = "Se borra la llave que cierra binds: niri rechaza la configuración y arra
 [[mutation]]
 name = "test_config_syntax: Fuente renombrada en theme"
 file = "branding/grub-theme/theme.txt"
-find = 'terminal-font: "DejaVu Sans Regular 16"'
-replace = 'terminal-font: "DejaVu Sans Regular 24"'
+find = 'terminal-font: "JetBrains Mono Regular 16"'
+replace = 'terminal-font: "JetBrains Mono Regular 24"'
 caught_by = "tests.static.test_config_syntax"
 expect = "ninguna .pf2 del tema se llama así"
 why = "Fuente renombrada en theme.txt sin generar su .pf2: GRUB usa otra fuente en silencio"
@@ -983,8 +983,8 @@ why = "Fuente renombrada en theme.txt sin generar su .pf2: GRUB usa otra fuente 
 [[mutation]]
 name = "test_config_syntax: Propiedad global que gfxmenu no conoce (title-align)"
 file = "branding/grub-theme/theme.txt"
-find = 'desktop-color: "#111827"'
-replace = "desktop-color: \"#111827\"\ntitle-align: \"center\""
+find = 'desktop-color: "#0B1020"'
+replace = "desktop-color: \"#0B1020\"\ntitle-align: \"center\""
 caught_by = "tests.static.test_config_syntax"
 expect = "propiedad global desconocida"
 why = "Propiedad global que gfxmenu no conoce (title-align): GRUB descarta el tema y muestra el menú de texto"
@@ -992,8 +992,8 @@ why = "Propiedad global que gfxmenu no conoce (title-align): GRUB descarta el te
 [[mutation]]
 name = "test_config_syntax: Valor global sin comillas"
 file = "branding/grub-theme/theme.txt"
-find = 'desktop-color: "#111827"'
-replace = "desktop-color: #111827"
+find = 'desktop-color: "#0B1020"'
+replace = "desktop-color: #0B1020"
 caught_by = "tests.static.test_config_syntax"
 expect = "va sin comillas"
 why = "Valor global sin comillas: theme_loader.c lo rechaza y el tema no carga"
@@ -3148,3 +3148,21 @@ replace = 'true'
 caught_by = "tests.static.test_boot_grub_readable"
 expect = "[non-btrfs-skip]"
 why = "Un /boot ext4 o la ESP no admiten chattr +C: el script tiene que salir 0 sin tocarlos."
+
+[[mutation]]
+name = "test_config_syntax: SemiBold pedido con el nombre que no tiene su .pf2"
+file = "branding/grub-theme/theme.txt"
+find = 'selected_item_font = "Inter SemiBold Regular 18"'
+replace = 'selected_item_font = "Inter SemiBold 18"'
+caught_by = "tests.static.test_config_syntax"
+expect = "font:Inter SemiBold 18"
+why = "grub-mkfont llama \"Inter SemiBold Regular 18\" a esa cara (-n): con otro nombre GRUB pinta la entrada elegida con la fuente de reserva."
+
+[[mutation]]
+name = "test_boot_grub_readable: el logo y los iconos del tema se quedan sin reescribir"
+file = "archiso/airootfs/usr/share/churros/scripts/make-boot-grub-readable"
+find = 'rewrite_all "$THEME_DIR"/*.png "$THEME_DIR"/icons/*.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/theme.txt'
+replace = 'rewrite_all "$THEME_DIR"/background.png "$THEME_DIR"/*.pf2 "$THEME_DIR"/select*.png "$THEME_DIR"/theme.txt'
+caught_by = "tests.static.test_boot_grub_readable"
+expect = "[theme-rewritten]"
+why = "Un fichero del tema que GRUB no puede leer en btrfs (zstd) hace que descarte el tema entero."
