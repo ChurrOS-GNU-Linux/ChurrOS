@@ -401,7 +401,7 @@ Sesión grande: terminadas las fases de personalización faltantes (5c, 5d), arr
 
 ### Bug crítico: `niri validate` fallaba y rompía el arranque del live ISO
 
-- `archiso/airootfs/etc/skel/.config/niri/config.kdl` tenía una cláusula `match app-id=r#"firefox$"# title="^Picture-in-Picture$"` que no es KDL válido (raw string literal). Cambiado a dos sentencias `match` separadas que actúan con AND semántico (cada `window-rule` aplica si todos sus `match` coinciden).
+- `archiso/airootfs/etc/skel/.config/niri/config.kdl` tenía una cláusula `match app-id=r#"firefox$"# title="^Picture-in-Picture$"` que no es KDL válido (raw string literal). Cambiado a dos sentencias `match` separadas que actúan con AND semántico (cada `window-rule` aplica si todos sus `match` coinciden). (Corrección del 2026-11-08: en niri varios `match` son O, no Y; con eso todo Firefox abría flotante. Ahora es un solo `match app-id="^firefox$" title="^Picture-in-Picture$"`, y lo vigila `tests/static/test_niri_window_rules.py`.)
 - Conflictos de atajos: `Mod+V` estaba asignado tanto a `churros-settings` como a `toggle-window-floating`. Reorganizados (tabla de entonces; los atajos actuales están en [desktop-config.md](desktop-config.md#atajos)):
 
 | Atajo | Acción |

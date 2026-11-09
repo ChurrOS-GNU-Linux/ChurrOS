@@ -14,6 +14,7 @@ pub mod fastfetch;
 pub mod fonts;
 pub mod foot;
 pub mod fuzzel;
+pub mod greeter;
 pub mod icons;
 pub mod input;
 pub mod keyboard;

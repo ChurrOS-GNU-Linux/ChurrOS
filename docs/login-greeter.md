@@ -43,7 +43,7 @@ En i686 la ISO se construye como edición niri, pero `archiso/packages.i686` no 
 
 Estilo de pantalla de bloqueo, sin tarjeta: el reloj grande arriba y los controles directamente sobre el fondo. Usa la identidad de ChurrOS (Inter, naranja `#F97316`, el logo como avatar), no la de ningún otro sistema.
 
-- **Fondo**: `/usr/share/churros/greeter/background.jpg`, el fondo por defecto ya difuminado (generado una vez desde `wallpapers/default.png` y versionado: difuminar en GTK con `filter: blur()` cuesta en equipos sin aceleración). Sobre `#0B1020`, la imagen va al 74 % de opacidad para que el texto blanco se lea también en fondos claros. «Sincronizar fondo» de Ajustes (sección 5) pone un fondo nítido; se oscurece igual.
+- **Fondo**: `/var/lib/churros/greeter/background.jpg`. Por defecto es el fondo del escritorio, difuminado, y se actualiza solo (sección 5). `tmpfiles.d/churros-greeter.conf` lo siembra con `/usr/share/churros/greeter/background.jpg`, el fondo de fábrica ya difuminado. Difuminar en GTK con `filter: blur()` cuesta en equipos sin aceleración, así que se difumina al escribir el fichero. Sobre `#0B1020`, la imagen va al 52 % de opacidad (ajustable) para que el texto blanco se lea también en fondos claros.
 - **Reloj**: fecha en pequeño y hora grande debajo. ReGreet 0.5 pinta el reloj con `set_markup`, así que `format` es marcado Pango (dos `<span>` con `size`; `tnum` deja las cifras de ancho fijo y la hora no baila). `configure-greeter-locale` solo traduce la fecha del primer `<span>`.
 - **Avatar y saludo**: un círculo translúcido con el logo (`/usr/share/pixmaps/churros-logo.png`) pintado como fondo del texto de saludo (`greeting_msg`).
 - **Campos en píldora**: usuario, sesión y contraseña son píldoras translúcidas con el foco en halo naranja. Las etiquetas «User:»/«Session:» y el aviso de PAM quedan transparentes. Su columna sigue ocupando 100 px, y la columna de los botones de editar se ensancha lo mismo con margen, para que las píldoras queden centradas.
@@ -130,11 +130,27 @@ session    include      system-local-login
 
 ## 5. Integración con Ajustes (`churros-settings`)
 
-En el crate `preferences` (`churros-settings` → *Usuarios y Login*):
+*Usuarios y Login* tiene el **inicio automático**: `churros-write-root-config greetd-autologin on|off` vía `churros-pkexec` (pide la contraseña de administrador). El helper genera `/etc/greetd/config.toml`: el usuario es quien lo pide y la sesión, la de la edición instalada, con la misma tabla que usa el instalador (`/usr/share/churros/scripts/edition-session.sh`; en Niri, `/usr/bin/churros-niri-session`). Desde ahí se enlaza a la página siguiente.
 
-- **Inicio automático (autologin)**: activa o desactiva el autologin en el sistema instalado con `churros-write-root-config greetd-autologin on|off` vía `churros-pkexec` (pide la contraseña de administrador). El helper genera `/etc/greetd/config.toml`: el usuario es quien lo pide y la sesión, la de la edición instalada, con la misma tabla que usa el instalador (`/usr/share/churros/scripts/edition-session.sh`; en Niri, `/usr/bin/churros-niri-session`).
-- **Sincronizar fondo**: pone el wallpaper actual del escritorio como fondo en `/etc/greetd/regreet.toml` (`regreet-wallpaper`). Solo admite fondos del sistema (`/usr/share/churros/wallpapers`, `/usr/share/backgrounds`, `/usr/share/wallpapers`): uno del home no lo puede leer el greeter. Si no se puede, la fila lo indica.
-- **Mensaje de bienvenida**: muestra el saludo configurado en la pantalla de inicio.
+*Apariencia → Pantalla de inicio* (`pages/greeter.rs`, `services/greeter.rs`):
+
+| Opción | Dónde se guarda | Cómo se aplica |
+|---|---|---|
+| Usar el fondo del escritorio, imagen propia, difuminar | `~/.config/churros/settings.json` (`greeter.*`) | La sesión escribe `/var/lib/churros/greeter/background.jpg`, **sin contraseña** |
+| Oscurecer (0–80 %), mostrar el logo, color de acento | `/etc/greetd/churros-greeter.conf` | `churros-write-root-config greeter-set` reescribe las líneas de `regreet.css` marcadas con `churros:<clave>` |
+| Reloj: 24/12 h, segundos, fecha, tamaño | `/etc/greetd/churros-greeter.conf` | `greeter-set` regenera `format` en `regreet.toml` |
+| Mensaje de bienvenida | `regreet.toml` (`greeting_msg`) | `churros-write-root-config regreet-greeting` |
+
+**Fondo sin contraseña.** `/var/lib/churros/greeter` es del grupo `wheel` con setgid (`tmpfiles.d/churros-greeter.conf`): la sesión de un administrador escribe ahí la imagen y el greeter solo la lee. Root nunca abre esa imagen ni la del usuario. El trabajo lo hace `churros-settings --sync-greeter`:
+
+- Toma el fondo del escritorio (Noctalia o `settings.json`; en XFCE, el `last-image` de `xfce4-desktop.xml`) o la imagen elegida.
+- Lo reduce a 1920×1080, o lo difumina: reducido a 320 px, tres pasadas de desenfoque de caja y ampliado a 1280 px.
+- Lo guarda como JPEG con una escritura atómica.
+- Si ni el origen ni el difuminado cambiaron, no hace nada (marca en `~/.cache/churros/greeter-sync`).
+
+Lo lanzan la unidad de usuario `churros-greeter-sync.path`, que vigila los ficheros donde Noctalia, Ajustes y xfdesktop guardan el fondo, y `churros-greeter-sync.service` al iniciar sesión (habilitadas para todos en `/etc/systemd/user/default.target.wants`). Un fichero de imagen malicioso solo llega al proceso del greeter, que no es root: el mismo riesgo que cualquier fondo que el usuario ya puede poner en su escritorio.
+
+**Opciones del sistema.** `greeter-set` solo acepta esas claves con valores de una lista o un patrón cerrado (`accent` es `#RRGGBB`, `dim` es un número de 0 a 80): nada libre llega a `regreet.css`. `date_pattern` (el formato de la fecha según el idioma) solo lo fija `configure-greeter-locale` al instalar, como root. Con los valores por defecto, `greeter-set` reproduce exactamente el `regreet.css` y el `regreet.toml` de la ISO (`scripts/test-privileged-helpers.py`).
 
 Los permisos de `churros-write-root-config` están en [privileged-execution.md](privileged-execution.md).
 
@@ -146,4 +162,4 @@ Los permisos de `churros-write-root-config` están en [privileged-execution.md](
 2. **Casilla de inicio automático**: viene desmarcada (`doAutologin: false` en `users.conf`). Si se marca, Calamares escribe `[initial_session]` con el usuario creado.
 3. **`/usr/share/churros/scripts/configure-greetd-session`** (paso `shellprocess@post-install`): reescribe `/etc/greetd/config.toml` con la sesión de la edición (tabla de `edition-session.sh`), conserva el usuario de autologin que dejó Calamares, si lo hay, y escribe `/etc/greetd/environments`. En la edición server sale sin hacer nada.
 4. **XFCE, sesión X11**: ReGreet no usa el comando de `[initial_session]`; descubre las sesiones en `/usr/share/xsessions` y `/usr/share/wayland-sessions`. `xfce4-session` trae una sesión `xfce-wayland` que exige labwc y una `xfce.desktop` que lanza `startxfce4` sin el wrapper. En la edición xfce, `configure-greetd-session` ejecuta `/usr/share/churros/scripts/fix-xfce-sessions` para dejar solo la sesión X11 con `churros-xfce-session`; sin eso, iniciar sesión sin autologin vuelve al greeter en bucle. El hook de pacman `92-churros-xfce-x11-session.hook` lo vuelve a aplicar cuando una actualización reinstala esos ficheros.
-5. **Idioma**: el script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta el saludo (`greeting_msg`) y la fecha del reloj (el primer `<span>` de `format`; la hora y el marcado no cambian) según el idioma elegido en Calamares.
+5. **Idioma**: el script post-instalación `/usr/share/churros/scripts/configure-greeter-locale` adapta el saludo (`greeting_msg`) y el formato de la fecha del reloj (`churros-write-root-config greeter-set date_pattern=…`; la hora y el resto de opciones no cambian) según el idioma elegido en Calamares.

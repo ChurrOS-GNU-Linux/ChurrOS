@@ -10,6 +10,7 @@ Ejecutar: python3 -m unittest tests.static.test_greeter_theme -v
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -22,6 +23,8 @@ from tests import testlib
 REGREET_TOML = testlib.AIROOTFS / "etc/greetd/regreet.toml"
 REGREET_CSS = testlib.AIROOTFS / "etc/greetd/regreet.css"
 LOCALE_SCRIPT = testlib.AIROOTFS / "usr/share/churros/scripts/configure-greeter-locale"
+HELPER = testlib.AIROOTFS / "usr/local/bin/churros-write-root-config"
+TMPFILES = testlib.AIROOTFS / "etc/tmpfiles.d/churros-greeter.conf"
 
 
 class GreeterTheme(unittest.TestCase):
@@ -33,11 +36,19 @@ class GreeterTheme(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / "regreet.toml").write_text(testlib.read_text(REGREET_TOML))
+            (tmp / "regreet.css").write_text(testlib.read_text(REGREET_CSS))
             (tmp / "locale.conf").write_text(f"LANG={lang}\n")
+            # El script delega el reloj en churros-write-root-config greeter-set.
+            helper = testlib.read_text(HELPER).replace("/etc/greetd", str(tmp))
+            helper = helper.replace("/usr/share/churros/scripts/edition-session.sh",
+                                    str(testlib.AIROOTFS / "usr/share/churros/scripts/edition-session.sh"))
+            (tmp / "helper").write_text(helper)
             script = testlib.read_text(LOCALE_SCRIPT)
             script = script.replace("/etc/greetd/regreet.toml", str(tmp / "regreet.toml"))
             script = script.replace("/etc/locale.conf", str(tmp / "locale.conf"))
-            result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)
+            script = script.replace("/usr/local/bin/churros-write-root-config", f"bash {tmp / 'helper'}")
+            env = {k: v for k, v in os.environ.items() if k not in ("PKEXEC_UID", "SUDO_UID")}
+            result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30, env=env)
             self.assertEqual(result.returncode, 0, result.stderr)
             return (tmp / "regreet.toml").read_text()
 
@@ -64,6 +75,20 @@ class GreeterTheme(unittest.TestCase):
                                 f"[greeter-clock-markup] {lang}: el script rompió la hora grande: {fmt!r}")
                 self.assertIn(f">{date}</span>", fmt, f"[greeter-clock-date] {lang}: {fmt!r}")
                 self.assertEqual(text.count("\nformat = "), 1)
+
+    def test_background_is_the_synced_file(self):
+        """ReGreet lee el fondo que escribe la sesión; tmpfiles lo siembra y deja escribir a wheel."""
+        path = tomllib.loads(testlib.read_text(REGREET_TOML))["background"]["path"]
+        tmpfiles = testlib.read_text(TMPFILES)
+        seed = re.search(r"^C\s+(\S+)\s+-\s+-\s+-\s+-\s+(\S+)$", tmpfiles, re.M)
+        self.assertIsNotNone(seed, "[greeter-bg-seed] tmpfiles no copia el fondo por defecto")
+        self.assertEqual(seed.group(1), path, "[greeter-bg-seed] tmpfiles siembra otro fichero que el de regreet.toml")
+        self.assertTrue((testlib.AIROOTFS / seed.group(2).lstrip("/")).is_file(), seed.group(2))
+        parent = str(Path(path).parent)
+        self.assertRegex(tmpfiles, rf"(?m)^d\s+{re.escape(parent)}\s+2775\s+root\s+wheel\b",
+                         "[greeter-bg-dir] la sesión (grupo wheel) no puede escribir el fondo")
+        service = testlib.read_text(testlib.ROOT / "rust/preferences/src/services/greeter.rs")
+        self.assertIn(f'"{path}"', service, "[greeter-bg-path] Ajustes escribe el fondo en otra ruta")
 
     def test_css_assets_ship(self):
         css = re.sub(r"/\*.*?\*/", "", testlib.read_text(REGREET_CSS), flags=re.S)

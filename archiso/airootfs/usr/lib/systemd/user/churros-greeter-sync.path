@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch the desktop wallpaper for the ChurrOS login screen
+ConditionPathExists=/etc/greetd/regreet.toml
+
+[Path]
+# Noctalia (Niri), Settings and xfdesktop (XFCE) keep the wallpaper here.
+PathChanged=%h/.local/state/noctalia/settings.toml
+PathChanged=%h/.config/noctalia/config.toml
+PathChanged=%h/.config/churros/settings.json
+PathChanged=%h/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+Unit=churros-greeter-sync.service
+
+[Install]
+WantedBy=default.target
