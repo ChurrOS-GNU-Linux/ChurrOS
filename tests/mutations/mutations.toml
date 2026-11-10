@@ -3357,3 +3357,12 @@ replace = "    if false; then"
 caught_by = "python3 scripts/test-privileged-helpers.py"
 expect = "[update-installs-minisign]"
 why = "Quien actualiza desde la 1.4 (sin minisign) recibe el actualizador que exige la firma: su siguiente actualización fallaba hasta instalarlo a mano."
+
+[[mutation]]
+name = "test_editions: el build ya no crea el repositorio de Flatpak con Flathub"
+file = "branding/customize_airootfs.sh"
+find = "    flatpak remotes --system >/dev/null\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "[flathub:customize_airootfs]"
+why = "remotes.d solo se aplica cuando root crea /var/lib/flatpak/repo: Bazaar (como usuario) no lo crea y pedía configurar Flathub a mano en el Live y en el sistema instalado."
