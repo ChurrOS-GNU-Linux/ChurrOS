@@ -16,6 +16,10 @@ pub struct RunningShells {
     pub waybar: bool,
     pub mako: bool,
     pub noctalia: bool,
+    /// El compositor niri corre: solo entonces cuenta su `config.kdl`. En
+    /// XFCE el skel también trae la configuración de niri (con Noctalia en
+    /// el autostart), pero nadie la usa.
+    pub niri: bool,
 }
 
 /// `true` si `config.kdl` arranca `binary` con `spawn-at-startup` o
@@ -40,9 +44,10 @@ pub fn niri_autostart_has(config: &str, binary: &str) -> bool {
     false
 }
 
-/// Noctalia es el shell si ya corre o si el autostart de Niri lo va a lanzar.
+/// Noctalia es el shell si ya corre o si el autostart de Niri lo va a lanzar
+/// (solo en una sesión de niri).
 pub fn noctalia_is_shell(running: RunningShells, niri_config: &str) -> bool {
-    running.noctalia || niri_autostart_has(niri_config, "noctalia")
+    running.noctalia || (running.niri && niri_autostart_has(niri_config, "noctalia"))
 }
 
 /// La página de Ajustes de Waybar o Mako solo tiene sentido si esa sesión
@@ -59,7 +64,9 @@ pub fn session_uses(which: OptionalShell, running: RunningShells, niri_config: &
     if running.noctalia {
         return false;
     }
-    niri_autostart_has(niri_config, binary) && !niri_autostart_has(niri_config, "noctalia")
+    running.niri
+        && niri_autostart_has(niri_config, binary)
+        && !niri_autostart_has(niri_config, "noctalia")
 }
 
 /// Lee `/proc` y el `config.kdl` del usuario. En la ISO de Niri, Noctalia
@@ -78,6 +85,7 @@ pub fn running_shells() -> RunningShells {
         waybar: comm_running("waybar"),
         mako: comm_running("mako"),
         noctalia: comm_running("noctalia"),
+        niri: comm_running("niri"),
     }
 }
 
@@ -341,6 +349,25 @@ fn unquote(value: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Sesión de niri sin ningún shell en marcha todavía.
+    fn in_niri() -> RunningShells {
+        RunningShells {
+            niri: true,
+            ..RunningShells::default()
+        }
+    }
+
+    #[test]
+    fn xfce_ignores_the_niri_config_in_skel() {
+        // XFCE: la configuración de niri del skel arranca Noctalia, pero niri
+        // no corre. Ajustes leía el fondo de Noctalia en vez del de XFCE.
+        let xfce = RunningShells::default();
+        assert!(!noctalia_is_shell(xfce, SHIPPED_NIRI));
+        assert!(!session_uses(OptionalShell::Waybar, xfce, SHIPPED_NIRI));
+        assert!(wallpaper_candidates("/xfce.png", None, Some(SHIPPED_NOCTALIA), noctalia_is_shell(xfce, SHIPPED_NIRI))
+            == vec!["/xfce.png".to_string()]);
+    }
+
     const SHIPPED_NIRI: &str =
         include_str!("../../../archiso/airootfs/etc/skel/.config/niri/config.kdl");
     const SHIPPED_NOCTALIA: &str =
@@ -355,14 +382,14 @@ mod tests {
 
         let up = RunningShells {
             noctalia: true,
-            ..RunningShells::default()
+            ..in_niri()
         };
         assert!(noctalia_is_shell(up, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Waybar, up, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Mako, up, SHIPPED_NIRI));
 
         // Ajustes abierto antes de que el proceso exista: el autostart basta.
-        let idle = RunningShells::default();
+        let idle = in_niri();
         assert!(noctalia_is_shell(idle, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Waybar, idle, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Mako, idle, SHIPPED_NIRI));
@@ -371,7 +398,7 @@ mod tests {
     #[test]
     fn waybar_and_mako_sessions_keep_their_pages() {
         let replaced = "spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\n";
-        let idle = RunningShells::default();
+        let idle = in_niri();
         assert!(!noctalia_is_shell(idle, replaced));
         assert!(session_uses(OptionalShell::Waybar, idle, replaced));
         assert!(session_uses(OptionalShell::Mako, idle, replaced));
@@ -384,6 +411,7 @@ mod tests {
             waybar: true,
             noctalia: true,
             mako: false,
+            niri: true,
         };
         assert!(session_uses(OptionalShell::Waybar, alongside, both));
         assert!(!session_uses(OptionalShell::Mako, alongside, both));
@@ -410,14 +438,14 @@ spawn-at-startup \"/usr/bin/noctalia\" // barra
         assert!(!niri_autostart_has(config, "noctalia"));
         assert!(session_uses(
             OptionalShell::Waybar,
-            RunningShells::default(),
+            in_niri(),
             config
         ));
     }
 
     #[test]
     fn session_without_niri_config_hides_optional_shells() {
-        let idle = RunningShells::default();
+        let idle = in_niri();
         assert!(!noctalia_is_shell(idle, ""));
         assert!(!session_uses(OptionalShell::Waybar, idle, ""));
         assert!(!session_uses(OptionalShell::Mako, idle, ""));

@@ -76,7 +76,7 @@ listbox row {
     margin-bottom: 18px;
 }
 
-.title {
+.app-title {
     font-size: 38px;
     font-weight: 800;
     letter-spacing: -0.04em;
@@ -323,7 +323,7 @@ window.light .tour {
                 0 1px 0 rgba(255, 255, 255, 0.80) inset;
 }
 
-window.light .title,
+window.light .app-title,
 window.light .title-plain,
 window.light .page-title {
     color: #111827;

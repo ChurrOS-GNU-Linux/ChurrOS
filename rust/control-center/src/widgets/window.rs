@@ -182,7 +182,7 @@ impl ControlCenterWindow {
         titles.set_hexpand(true);
 
         let title = gtk::Label::new(Some("ChurrOS"));
-        title.add_css_class("title");
+        title.add_css_class("app-title");
         title.set_xalign(0.0);
 
         let subtitle = gtk::Label::new(Some("Control Center"));

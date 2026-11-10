@@ -1220,6 +1220,33 @@ class RustAssets(unittest.TestCase):
                         findings[f"rust-asset:{crate.name}:{rel_path}"] = f"{item.where(match.start())}: CARGO_MANIFEST_DIR{rel_path} no existe"
         testlib.assert_findings(self, "rust-asset", findings)
 
+    def test_css_leaves_the_gtk_window_title_alone(self):
+        """GTK 4 pone la clase .title a la etiqueta del título de la barra de la ventana.
+
+        Un `.title { font-size: 52px }` de la app agranda también ese título:
+        en XFCE (decoración del cliente) la bienvenida salía con «ChurrOS
+        Welcome» gigante sobre la ventana. Las apps usan su propia clase.
+        """
+        findings = {}
+        token = re.compile(r"\.title(?![\w-])")
+        for crate in testlib.crates():
+            for css in sorted((crate.directory / "assets").rglob("*.css")):
+                text = re.sub(r"/\*.*?\*/", "", css.read_text(), flags=re.S)
+                for selector in re.findall(r"([^{}]+)\{", text):
+                    for part in selector.split(","):
+                        if token.search(part) and not re.search(r"\b(headerbar|windowtitle)\b", part):
+                            findings[f"gtk-title-class:{crate.name}:{part.strip()}"] = (
+                                f"{testlib.rel(css)}: el selector '{part.strip()}' también cambia el título "
+                                "de la barra de la ventana de GTK")
+            for item in crate_files(crate):
+                for match in re.finditer(r"\badd_css_class\(\s*" + LIT, item.code):
+                    if item.strings[int(match.group(1))] != "title":
+                        continue
+                    findings[f"gtk-title-class:{crate.name}:add_css_class"] = (
+                        f"{item.where(match.start())}: add_css_class(\"title\") comparte la clase con el título "
+                        "de la ventana de GTK")
+        testlib.assert_findings(self, "gtk-title-class", findings)
+
     def test_system_paths_exist_in_airootfs(self):
         """Rutas de /usr/share/churros y /etc/skel que el código Rust lee en la ISO."""
         generated = {f"/{p}" for p in deployment().files}
