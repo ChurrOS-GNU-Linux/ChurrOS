@@ -3357,3 +3357,11 @@ replace = "    if false; then"
 caught_by = "python3 scripts/test-privileged-helpers.py"
 expect = "[update-installs-minisign]"
 why = "Quien actualiza desde la 1.4 (sin minisign) recibe el actualizador que exige la firma: su siguiente actualización fallaba hasta instalarlo a mano."
+[[mutation]]
+name = "supply chain: trust vendored AUR PGP key without checking its full fingerprint"
+file = "scripts/build-aur.sh"
+find = 'if [ "$actual_key" != "${key^^}" ]; then'
+replace = 'if [ "$actual_key" = "${key^^}" ]; then'
+caught_by = "tests.static.test_supply_chain"
+expect = "actual_key"
+why = "Offline AUR public keys must be checked against the PKGBUILD validpgpkeys fingerprint before import; otherwise an altered key could bypass signature identity."
