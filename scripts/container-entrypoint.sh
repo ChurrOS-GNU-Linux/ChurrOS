@@ -26,9 +26,12 @@ gid="${CHURROS_HOST_GID:-1000}"
 if [ "${CHURROS_CONTAINER_UPGRADE:-0}" = 1 ]; then
     # La imagen puede tener días; makepkg -s instala dependencias y con una
     # base de datos vieja pediría versiones que los mirrors ya no tienen.
+    # Sincronizar las bases puede fallar temporalmente por DNS/mirrors: reintenta
+    # con límites, pero no fuerces un DNS público que quizá no exista en la red.
     echo "[container] Actualizando el contenedor (pacman -Syu)..."
     # shellcheck disable=SC2046
-    pacman -Sy --noconfirm --needed $(pacman -Qq | grep -- '-keyring$')
+    source /churros/scripts/lib/pacman-sync-retry.sh
+    pacman_sync_with_retry pacman -Sy --noconfirm --needed $(pacman -Qq | grep -- '-keyring$')
     pacman -Su --noconfirm
 fi
 

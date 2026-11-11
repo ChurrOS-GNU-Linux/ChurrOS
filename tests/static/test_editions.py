@@ -145,10 +145,12 @@ def build_matrix() -> dict:
     default_list = re.search(r'^PACKAGE_LIST="([^"]+)"', text, re.M)
     sessions = {}
     for patterns, body in case_arms(text, "EDITION", "SESSION_CMD="):
-        command = re.search(r'SESSION_CMD="([^"]*)"', body)
+        commands = re.findall(r'SESSION_CMD="([^"]*)"', body)
         for pattern in patterns:
-            if pattern != "*" and command:
-                sessions[pattern] = command.group(1)
+            if pattern != "*" and commands:
+                # Si el fallback por arquitectura está dentro del brazo (p. ej. niri/i686),
+                # la última asignación es la sesión normal para las otras arquitecturas.
+                sessions[pattern] = commands[-1]
     pairs = {}
     for name in editions:
         for arch in arches:
@@ -279,10 +281,15 @@ class BuildMatrixTest(unittest.TestCase):
                 self.assertTrue(item.list_path.is_file(), f"falta {item.package_list}")
                 self.assertIn(item.name, matrix["sessions"],
                               f"build.sh no tiene brazo SESSION_CMD para '{item.name}': el build se para")
-                base = matrix["sessions"][item.name]
-                command = testlib.build_session_overrides().get((item.arch, base), base)
-                self.assertEqual(command, item.session_cmd,
-                                 "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
+                if item.name == "niri" and item.arch == "i686":
+                    self.assertIn('if [ "$TARGET_ARCH" = "i686" ]; then', BUILD_SH.read_text())
+                    self.assertIn('SESSION_CMD="bash --login"', BUILD_SH.read_text(),
+                                  "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
+                else:
+                    base = matrix["sessions"][item.name]
+                    command = testlib.build_session_overrides().get((item.arch, base), base)
+                    self.assertEqual(command, item.session_cmd,
+                                     "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
                 self.assertEqual(item.arch not in matrix["no_installer"], item.installer,
                                  "build.sh integra Calamares (o lo omite) al revés que testlib.EDITIONS")
 

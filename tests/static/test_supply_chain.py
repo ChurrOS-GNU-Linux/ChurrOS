@@ -55,6 +55,11 @@ class TestSupplyChainAndReproducibility(unittest.TestCase):
         calamares = (ROOT / "scripts/build-calamares.sh").read_text(encoding="utf-8")
         self.assertRegex(aur, r"git checkout --detach \"\$\{AUR_COMMITS\[\$name\]\}\"")
         self.assertRegex(calamares, r"git -C \"\$WORK_DIR\" checkout --detach \"\$CALAMARES_AUR_COMMIT\"")
+        self.assertIn('key_file="$SCRIPT_DIR/keys/pgp/${key^^}.asc"', aur)
+        self.assertIn('gpg --show-keys --with-colons "$key_file"', aur)
+        self.assertIn('if [ "$actual_key" != "${key^^}" ]; then', aur)
+        self.assertTrue((ROOT / "scripts/keys/pgp/155DC67DC25496572CDD608FF635E931C2834999.asc").is_file(),
+                        "python-pywal signing key must be available offline and pinned by its full fingerprint")
 
 
 if __name__ == "__main__":
