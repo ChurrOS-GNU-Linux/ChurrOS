@@ -2950,3 +2950,13 @@ replace = 'main_sha="$(git rev-parse HEAD)"'
 caught_by = "tests.static.test_visual_iso_plan"
 expect = "[base-first-parent]"
 why = "On a pull_request merge commit HEAD^1 is main; using HEAD would compare the PR against itself."
+
+
+[[mutation]]
+name = "supply chain: trust vendored AUR PGP key without checking its full fingerprint"
+file = "scripts/build-aur.sh"
+find = 'if [ "$actual_key" != "${key^^}" ]; then'
+replace = 'if [ "$actual_key" = "${key^^}" ]; then'
+caught_by = "tests.static.test_supply_chain"
+expect = "actual_key"
+why = "Offline AUR public keys must be checked against the PKGBUILD validpgpkeys fingerprint before import; otherwise an altered key could bypass signature identity."
