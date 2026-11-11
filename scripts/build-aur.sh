@@ -53,13 +53,31 @@ build_aur() {
         mapfile -t PGP_KEYS < <(grep -oP 'validpgpkeys=\(\K[^)]+' PKGBUILD | tr -d '"' | tr ' ' '\n' | grep -v '^$' || true)
         for key in "${PGP_KEYS[@]}"; do
             imported=0
-            for hk in hkps://keyserver.ubuntu.com hkps://keys.openpgp.org hkps://pgp.mit.edu; do
-                if gpg --keyserver "$hk" --recv-keys "$key"; then
-                    imported=1
-                    break
+            key_file="$SCRIPT_DIR/keys/pgp/${key^^}.asc"
+            if [ -f "$key_file" ]; then
+                # The python-pywal key is vendored from Arch's package source
+                # at 1f7db3512d060f38792195d930fcd128462d1410. Always verify
+                # the complete primary fingerprint against validpgpkeys first.
+                actual_key="$(gpg --show-keys --with-colons "$key_file" 2>/dev/null \
+                    | awk -F: '$1 == "fpr" { print toupper($10); exit }')"
+                if [ "$actual_key" != "${key^^}" ]; then
+                    echo "[error] la clave PGP local para $name no coincide con validpgpkeys: $key" >&2
+                    exit 1
                 fi
-                echo "[warn] no se pudo recibir la clave $key desde $hk" >&2
-            done
+                if ! gpg --import "$key_file"; then
+                    echo "[error] no se pudo importar la clave PGP local $key para $name" >&2
+                    exit 1
+                fi
+                imported=1
+            else
+                for hk in hkps://keyserver.ubuntu.com hkps://keys.openpgp.org hkps://pgp.mit.edu; do
+                    if gpg --keyserver "$hk" --recv-keys "$key"; then
+                        imported=1
+                        break
+                    fi
+                    echo "[warn] no se pudo recibir la clave $key desde $hk" >&2
+                done
+            fi
             if [ "$imported" -ne 1 ]; then
                 echo "[error] no se pudo importar la clave PGP $key para $name; makepkg no verificará firmas" >&2
                 exit 1
