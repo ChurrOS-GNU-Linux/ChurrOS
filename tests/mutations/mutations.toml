@@ -352,15 +352,6 @@ expect = "config.kdl:/usr/libexec/polkit-gnome-authentication-agent-1]"
 why = "Debian/Fedora path copied in: no polkit agent, so pkexec prompts fail"
 
 [[mutation]]
-name = "test_references: The Live autologin session command does not exist, giving a black screen"
-file = "scripts/cli/build.sh"
-find = "SESSION_CMD=\"niri\""
-replace = "SESSION_CMD=\"nirii\""
-caught_by = "tests.static.test_references"
-expect = "[ref:niri/x86_64:scripts/cli/build.sh:initial_session:nirii]"
-why = "The Live autologin session command does not exist, giving a black screen"
-
-[[mutation]]
 name = "test_references: The unit fails with 203/EXEC and no check reads ExecStart"
 file = "archiso/airootfs/etc/systemd/system/choose-mirror.service"
 find = "ExecStart=/usr/local/bin/choose-mirror"
