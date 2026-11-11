@@ -283,7 +283,8 @@ class BuildMatrixTest(unittest.TestCase):
                               f"build.sh no tiene brazo SESSION_CMD para '{item.name}': el build se para")
                 if item.name == "niri" and item.arch == "i686":
                     self.assertIn('if [ "$TARGET_ARCH" = "i686" ]; then', BUILD_SH.read_text())
-                    self.assertIn('SESSION_CMD="bash --login"', BUILD_SH.read_text())
+                    self.assertIn('SESSION_CMD="bash --login"', BUILD_SH.read_text(),
+                                  "SESSION_CMD de build.sh distinto del de testlib.EDITIONS")
                 else:
                     base = matrix["sessions"][item.name]
                     command = testlib.build_session_overrides().get((item.arch, base), base)
