@@ -259,6 +259,7 @@ apply_xfce() {
 
     echo "$LOG_PREFIX aplicando fondo en XFCE con xfconf-query: $path" >&2
 
+    # Propiedades que ya existen (las del skel y las que xfdesktop creó).
     local props
     props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E "last-image|image-path" || true)
 
@@ -266,11 +267,64 @@ apply_xfce() {
         while IFS= read -r prop; do
             [ -n "$prop" ] && xfconf-query -c xfce4-desktop -p "$prop" -s "$path" 2>/dev/null || true
         done <<< "$props"
-        return 0
     fi
 
-    xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image -s "$path" 2>/dev/null || true
-    return 0
+    # xfdesktop lee /backdrop/screen0/monitor<salida RandR>/workspace<N>/.
+    # El skel solo trae monitor0/monitor1/monitorVirtual1 (QEMU): en un
+    # portátil la salida es eDP (amdgpu) o eDP-1 (i915) y esas propiedades no
+    # existen, así que xfdesktop pinta su fondo de fábrica e ignora el
+    # cambio. Se crean (-n) para cada salida conectada y cada escritorio.
+    local outputs out ws count rc=1
+    outputs=$(xfce_outputs)
+    count=$(xfconf-query -c xfwm4 -p /general/workspace_count 2>/dev/null || true)
+    case "$count" in
+        ''|*[!0-9]*) count=4 ;;
+    esac
+    [ "$count" -ge 1 ] || count=1
+
+    for out in $outputs; do
+        ws=0
+        while [ "$ws" -lt "$count" ]; do
+            local base="/backdrop/screen0/monitor${out}/workspace${ws}"
+            if xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$path" 2>/dev/null; then
+                rc=0
+            fi
+            xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5 2>/dev/null || true
+            xfconf-query -c xfce4-desktop -p "$base/color-style" -n -t int -s 0 2>/dev/null || true
+            ws=$((ws + 1))
+        done
+        echo "$LOG_PREFIX XFCE: fondo en monitor${out} ($count escritorios)" >&2
+    done
+
+    if [ -z "$outputs" ] && [ -z "$props" ]; then
+        xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image \
+            -n -t string -s "$path" 2>/dev/null && rc=0
+    elif [ -n "$props" ]; then
+        rc=0
+    fi
+
+    return "$rc"
+}
+
+# Salidas RandR conectadas (eDP, eDP-1, HDMI-A-0, Virtual-1...), una por línea.
+xfce_outputs() {
+    command -v xrandr >/dev/null 2>&1 || return 0
+    [ -n "${DISPLAY:-}" ] || return 0
+    xrandr --query 2>/dev/null | awk '$2 == "connected" { print $1 }'
+}
+
+# Fondo que el usuario ve ya en XFCE: el last-image de workspace0 de la
+# primera salida conectada que apunte a un archivo existente.
+xfce_current_image() {
+    command -v xfconf-query >/dev/null 2>&1 || return 0
+    local out img
+    for out in $(xfce_outputs); do
+        img=$(xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitor${out}/workspace0/last-image" 2>/dev/null || true)
+        if [ -n "$img" ] && [ -f "$img" ]; then
+            printf '%s\n' "$img"
+            return 0
+        fi
+    done
 }
 
 apply() {
@@ -322,6 +376,18 @@ apply() {
     echo "$LOG_PREFIX NINGUN backend pudo aplicar $path" >&2
     return 1
 }
+
+# --session: autostart de XFCE (/etc/xdg/autostart/churros-wallpaper-xfce.desktop).
+# Si la salida conectada ya tiene un fondo propio (elegido en xfdesktop o en
+# Ajustes) no se toca; si no, se aplica el guardado o el de ChurrOS a todas
+# las salidas reales, que el skel no conoce.
+if [ "${1:-}" = "--session" ]; then
+    if [ -n "$(xfce_current_image)" ]; then
+        echo "$LOG_PREFIX XFCE: la salida ya tiene fondo, no se cambia" >&2
+        exit 0
+    fi
+    shift
+fi
 
 # Un argumento explícito, aunque sea "", no es "sin argumentos": apply()
 # imprime el error y el proceso tiene que salir con ese código.

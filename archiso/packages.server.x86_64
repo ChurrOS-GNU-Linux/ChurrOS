@@ -64,7 +64,8 @@ libusb-compat
 libxmlb
 libyaml
 xfce4-screensaver
-linux
+linux-cachyos
+linux-cachyos-headers
 linux-atm
 linux-firmware
 linux-firmware-marvell
