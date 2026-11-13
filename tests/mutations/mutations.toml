@@ -3371,7 +3371,7 @@ why = "Offline AUR public keys must be checked against the PKGBUILD validpgpkeys
 [[mutation]]
 name = "churros-services: XFCE takes the shared niri autostart for Noctalia"
 file = "rust/services/src/noctalia.rs"
-find = "    !other_desktop && niri_autostart_has(niri_config, \"noctalia\")"
+find = "    in_niri && niri_autostart_has(niri_config, \"noctalia\")"
 replace = "    niri_autostart_has(niri_config, \"noctalia\")"
 caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services xfce_session_ignores_the_shared_niri_autostart"
 expect = "xfce_session_ignores_the_shared_niri_autostart"
@@ -3425,3 +3425,22 @@ replace = "linux\n"
 caught_by = "tests.static.test_editions"
 expect = "edition-kernel:xfce"
 why = "94a612a switched the kernel only in packages.x86_64; the XFCE ISO kept installing Arch's linux instead of linux-cachyos."
+
+[[mutation]]
+name = "test_rust_contract: la bienvenida vuelve a usar la clase title de GTK"
+file = "rust/churros-welcome/assets/style.css"
+find = ".app-title {"
+replace = ".title {"
+caught_by = "tests.static.test_rust_contract"
+expect = "[gtk-title-class:churros-welcome:.title]"
+why = "GTK 4 da la clase .title al título de la barra de la ventana: en XFCE «ChurrOS Welcome» salía a 52 px."
+
+[[mutation]]
+name = "churros-services: el config.kdl de niri vuelve a contar en XFCE"
+file = "rust/services/src/noctalia.rs"
+find = "    running.noctalia || (running.niri && niri_autostart_has(niri_config, \"noctalia\"))"
+replace = "    running.noctalia || niri_autostart_has(niri_config, \"noctalia\")"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services xfce_ignores_the_niri_config_in_skel"
+expect = "xfce_ignores_the_niri_config_in_skel"
+requires = "container"
+why = "El skel de XFCE trae la configuración de niri con Noctalia en el autostart: Ajustes mostraba el fondo de Noctalia como «Wallpaper actual» y --sync-greeter copiaba ese fondo a la pantalla de inicio."
