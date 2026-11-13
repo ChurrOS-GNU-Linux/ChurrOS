@@ -773,6 +773,41 @@ class XmlConfigs(unittest.TestCase):
         check_each(self, "xfconf", paths, check)
 
 
+class XorgTouchpad(unittest.TestCase):
+    """El touchpad de XFCE (X11 + libinput) responde a un toque.
+
+    libinput deja Tapping apagado por defecto. En un clickpad sin botones
+    físicos separados (HP Laptop 15, Ryzen 5 7500U) el puntero se mueve pero
+    "el clic no funciona" hasta que se activa en xorg.conf.d.
+    """
+
+    def test_touchpad_tapping_enabled(self):
+        path = testlib.AIROOTFS / "etc/X11/xorg.conf.d/30-touchpad.conf"
+        self.assertTrue(path.is_file(), f"[xorg-touchpad] falta {rel(path)}")
+        options: dict[str, str] = {}
+        section = None
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            words = re.findall(r'"([^"]*)"|(\S+)', line)
+            tokens = [quoted or bare for quoted, bare in words]
+            if tokens[0] == "Section":
+                section = tokens[1]
+            elif tokens[0] == "EndSection":
+                section = None
+            elif section == "InputClass" and tokens[0] in ("Option", "MatchIsTouchpad", "Driver"):
+                key = tokens[1] if tokens[0] == "Option" else tokens[0]
+                options[key] = tokens[-1]
+        self.assertIsNone(section, f"[xorg-touchpad] Section sin EndSection en {rel(path)}")
+        self.assertEqual(options.get("MatchIsTouchpad"), "on", "[xorg-touchpad] no casa con touchpads")
+        self.assertEqual(options.get("Driver"), "libinput", "[xorg-touchpad] driver distinto de libinput")
+        self.assertIn(options.get("Tapping", "").lower(), ("on", "true", "yes", "1"),
+                      "[xorg-touchpad] Tapping no está activado: el toque no hace clic")
+        self.assertIn("xf86-input-libinput", testlib.packages(testlib.edition("xfce", "x86_64")),
+                      "[xorg-touchpad] XFCE sin xf86-input-libinput")
+
+
 class DesktopEntries(unittest.TestCase):
 
     def test_desktop_entry_structure(self):

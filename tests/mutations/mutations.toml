@@ -3375,6 +3375,7 @@ find = "    !other_desktop && niri_autostart_has(niri_config, \"noctalia\")"
 replace = "    niri_autostart_has(niri_config, \"noctalia\")"
 caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services xfce_session_ignores_the_shared_niri_autostart"
 expect = "xfce_session_ignores_the_shared_niri_autostart"
+requires = "container"
 why = "The XFCE ISO ships the same skel, including spawn-at-startup \"noctalia\" in niri/config.kdl. If that counts in XFCE, ThemeService::is_dark() reads Noctalia's mode = \"dark\" and Settings never switches to light."
 
 [[mutation]]
@@ -3384,4 +3385,43 @@ find = "    --bg-window:  rgb(13, 16, 22);"
 replace = "    --bg-window:  rgba(13, 16, 22, 0.65);"
 caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services shipped_solid_css_makes_window_tokens_opaque"
 expect = "shipped_solid_css_makes_window_tokens_opaque"
+requires = "container"
 why = "With alpha left in --bg-window, turning Transparency off in Settings still leaves the ChurrOS windows see-through."
+
+# --- XFCE en hardware real: touchpad y fondo ---
+
+[[mutation]]
+name = "xorg touchpad: tapping left at the libinput default"
+file = "archiso/airootfs/etc/X11/xorg.conf.d/30-touchpad.conf"
+find = 'Option "Tapping" "on"'
+replace = 'Option "Tapping" "off"'
+caught_by = "tests.static.test_config_syntax"
+expect = "[xorg-touchpad]"
+why = "libinput defaults tapping to off: on a clickpad without separate buttons (HP Laptop 15, Ryzen 5 7500U) the pointer moves but a tap never clicks in XFCE."
+
+[[mutation]]
+name = "apply-wallpaper: XFCE only rewrites the skel monitors"
+file = "archiso/airootfs/usr/bin/churros-apply-wallpaper"
+find = "    outputs=$(xfce_outputs)\n"
+replace = "    outputs=\"\"\n"
+caught_by = "bash scripts/test-apply-wallpaper.sh"
+expect = "monitoreDP"
+why = "The skel xfce4-desktop.xml only knows monitor0/monitorVirtual1 (QEMU). On a laptop the RandR output is eDP, xfdesktop keeps its stock wallpaper and changing it from Settings does nothing."
+
+[[mutation]]
+name = "apply-wallpaper: --session overrides the user's XFCE wallpaper"
+file = "archiso/airootfs/usr/bin/churros-apply-wallpaper"
+find = '    if [ -n "$(xfce_current_image)" ]; then'
+replace = '    if false; then'
+caught_by = "bash scripts/test-apply-wallpaper.sh"
+expect = "piso el fondo elegido"
+why = "The XFCE autostart runs at every login: it must not replace a wallpaper the user picked in xfdesktop."
+
+[[mutation]]
+name = "packages.xfce: back to the stock Arch kernel"
+file = "archiso/packages.xfce.x86_64"
+find = "linux-cachyos\nlinux-cachyos-headers\n"
+replace = "linux\n"
+caught_by = "tests.static.test_editions"
+expect = "edition-kernel:xfce"
+why = "94a612a switched the kernel only in packages.x86_64; the XFCE ISO kept installing Arch's linux instead of linux-cachyos."
