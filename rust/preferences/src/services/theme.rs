@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use gtk::gdk;
 use serde_json::json;
 
 use crate::services::settings;
@@ -18,6 +19,7 @@ use crate::services::settings;
 thread_local! {
     static THEME_LISTENERS: RefCell<Vec<Box<dyn Fn(bool)>>> = RefCell::new(Vec::new());
     static APPLYING: Cell<bool> = const { Cell::new(false) };
+    static SOLID_PROVIDER: RefCell<Option<gtk::CssProvider>> = const { RefCell::new(None) };
 }
 
 fn cache_dir() -> PathBuf {
@@ -273,6 +275,62 @@ impl ThemeService {
 
     pub fn toggle() {
         Self::set(!Self::is_dark());
+    }
+
+    /// ¿Las ventanas ChurrOS llevan transparencia (efecto vidrio)?
+    pub fn transparency() -> bool {
+        !churros_services::appearance::solid_windows()
+    }
+
+    /// Carga solid.css al arrancar si el usuario quitó la transparencia.
+    pub fn init_solid_css() {
+        Self::apply_solid_css(churros_services::appearance::solid_windows());
+    }
+
+    fn apply_solid_css(solid: bool) {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        SOLID_PROVIDER.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if let Some(old) = slot.take() {
+                gtk::style_context_remove_provider_for_display(&display, &old);
+            }
+            if !solid {
+                return;
+            }
+            let Some(path) = churros_services::appearance::solid_css_path() else {
+                crate::logging::log("[transparency] falta solid.css");
+                return;
+            };
+            let provider = gtk::CssProvider::new();
+            provider.load_from_path(&path);
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
+                    + churros_services::appearance::SOLID_CSS_PRIORITY_OFFSET,
+            );
+            *slot = Some(provider);
+        });
+    }
+
+    /// Activa o quita la transparencia: Ajustes en vivo, las demás apps al
+    /// abrirse y, en XFCE, la opacidad de las ventanas inactivas y popups
+    /// de xfwm4 (96 % en el skel).
+    pub fn set_transparency(on: bool) -> bool {
+        let saved = churros_services::appearance::set_solid_windows(!on).is_ok();
+        crate::logging::log(&format!("[transparency] on={on} guardado={saved}"));
+        Self::apply_solid_css(!on);
+        if churros_services::which("xfconf-query") {
+            let value = if on { "96" } else { "100" };
+            for prop in ["/general/inactive_opacity", "/general/popup_opacity"] {
+                let _ = Command::new("xfconf-query")
+                    .args(["-c", "xfwm4", "-p", prop, "-n", "-t", "int", "-s", value])
+                    .output();
+            }
+        }
+        saved
     }
 }
 

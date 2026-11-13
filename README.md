@@ -449,7 +449,7 @@ El detalle completo está en [`docs/roadmap.md`](docs/roadmap.md). La guía inic
 
 ## Estado actual
 
-Versión del proyecto: **1.5** ( [`VERSION`](VERSION) ); última versión publicada conocida en este repositorio (noviembre de 2026).
+Versión del proyecto: **1.5.1** ( [`VERSION`](VERSION) ); última versión publicada conocida en este repositorio (noviembre de 2026).
 
 ChurrOS cuenta con ISO personalizada, ediciones Niri, XFCE y servidor, construcción basada en archiso, CLI de desarrollo, Calamares, aplicaciones Rust, actualizador, rollback Btrfs, branding propio, tema GRUB y CI. La guía inicial está en [`docs/user-guide.md`](docs/user-guide.md); todavía faltan la prueba automatizada de instalación en disco, la firma obligatoria de actualizaciones y el repositorio remoto firmado.
 

@@ -87,6 +87,27 @@ pub fn build(navigator: gtk::Stack) -> Page {
         })),
     ));
 
+    // Transparencia (efecto vidrio). En XFCE es la única forma de quitarla:
+    // el «Modo rendimiento» y las «Reglas de ventana» son de Niri.
+    let feedback_rc = Rc::clone(&feedback);
+    theme_group.add(&SwitchRow::new(
+        "Transparencia",
+        Some("appearance.svg"),
+        Some("Fondo translúcido en las ventanas de ChurrOS"),
+        ThemeService::transparency(),
+        Some(Box::new(move |active| {
+            let ok = ThemeService::set_transparency(active);
+            set_feedback(
+                &feedback_rc,
+                match (ok, active) {
+                    (false, _) => "No se pudo guardar la transparencia",
+                    (true, true) => "Transparencia activada",
+                    (true, false) => "Transparencia desactivada (las demás apps, al volver a abrirlas)",
+                },
+            );
+        })),
+    ));
+
     page.add(theme_group.widget());
 
     // ============ Fondo de pantalla ============

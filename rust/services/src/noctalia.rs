@@ -45,6 +45,26 @@ pub fn noctalia_is_shell(running: RunningShells, niri_config: &str) -> bool {
     running.noctalia || niri_autostart_has(niri_config, "noctalia")
 }
 
+/// Como `noctalia_is_shell`, pero sabiendo en qué escritorio corre Ajustes
+/// (`XDG_CURRENT_DESKTOP`). El skel es el mismo en todas las ediciones, así
+/// que XFCE también trae `~/.config/niri/config.kdl` con
+/// `spawn-at-startup "noctalia"`: ese autostart solo cuenta en una sesión
+/// Niri (o si no se sabe cuál es). En XFCE el modo oscuro y el fondo no los
+/// lleva Noctalia; si se le hace caso, el modo claro no se aplica nunca.
+pub fn noctalia_is_session_shell(running: RunningShells, niri_config: &str, current_desktop: &str) -> bool {
+    if running.noctalia {
+        return true;
+    }
+    let desktop = current_desktop.trim();
+    let other_desktop = !desktop.is_empty()
+        && !desktop.split(':').any(|name| name.eq_ignore_ascii_case("niri"));
+    !other_desktop && niri_autostart_has(niri_config, "noctalia")
+}
+
+fn current_desktop() -> String {
+    std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default()
+}
+
 /// La página de Ajustes de Waybar o Mako solo tiene sentido si esa sesión
 /// los usa de verdad. Con Noctalia en marcha (y el otro programa apagado)
 /// se ocultan: aplicar Waybar lanzaría una segunda barra.
@@ -83,7 +103,7 @@ pub fn running_shells() -> RunningShells {
 
 /// Noctalia es el shell de esta sesión (proceso en marcha o autostart de Niri).
 pub fn shell_active() -> bool {
-    noctalia_is_shell(running_shells(), &read_user_niri())
+    noctalia_is_session_shell(running_shells(), &read_user_niri(), &current_desktop())
 }
 
 /// `mode` de la tabla `[theme]` (no de `[theme.templates]` ni otras).
@@ -366,6 +386,23 @@ mod tests {
         assert!(noctalia_is_shell(idle, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Waybar, idle, SHIPPED_NIRI));
         assert!(!session_uses(OptionalShell::Mako, idle, SHIPPED_NIRI));
+    }
+
+    #[test]
+    fn xfce_session_ignores_the_shared_niri_autostart() {
+        // La ISO XFCE trae el mismo skel que la de Niri, autostart incluido.
+        let idle = RunningShells::default();
+        assert!(!noctalia_is_session_shell(idle, SHIPPED_NIRI, "XFCE"));
+        assert!(noctalia_is_session_shell(idle, SHIPPED_NIRI, "niri"));
+        assert!(noctalia_is_session_shell(idle, SHIPPED_NIRI, "GNOME:niri"));
+        // Sin escritorio conocido (tty, script) se mantiene lo de antes.
+        assert!(noctalia_is_session_shell(idle, SHIPPED_NIRI, ""));
+        // Si Noctalia corre de verdad, es el shell en cualquier escritorio.
+        let up = RunningShells {
+            noctalia: true,
+            ..RunningShells::default()
+        };
+        assert!(noctalia_is_session_shell(up, SHIPPED_NIRI, "XFCE"));
     }
 
     #[test]

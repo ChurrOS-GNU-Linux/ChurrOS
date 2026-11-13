@@ -1,0 +1,21 @@
+/*
+    ChurrOS — ventanas sin transparencia
+    ────────────────────────────────────
+    Se carga encima de churros.css y del style.css de cada app cuando existe
+    ~/.config/churros/solid-windows (Ajustes > Apariencia > Transparencia).
+    Vuelve opacos los tokens de fondo: sin alfa, el compositor (picom/xfwm4
+    en XFCE, niri) no deja ver ni desenfoca lo que hay detrás.
+*/
+window {
+    --bg-window:  rgb(13, 16, 22);
+    --bg-sidebar: rgb(18, 22, 30);
+    --bg-surface: rgb(18, 22, 30);
+    --popover-bg: rgb(18, 22, 30);
+}
+
+window.light {
+    --bg-window:  rgb(240, 244, 250);
+    --bg-sidebar: rgb(248, 250, 253);
+    --bg-surface: rgb(255, 255, 255);
+    --popover-bg: rgb(255, 255, 255);
+}
