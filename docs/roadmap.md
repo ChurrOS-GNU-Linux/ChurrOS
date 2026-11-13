@@ -6,7 +6,7 @@ Hoja de ruta de ChurrOS: qué está hecho y qué falta. Puede cambiar conforme e
 
 ## Estado actual
 
-La última versión publicada en el sitio de descarga es la **1.4** (25 de octubre de 2026); la GitHub Release v1.4 se publicó el 26 de octubre y adjunta el manifiesto SHA-256, no las ISO: ISOs x86_64 de las ediciones Niri y XFCE en [download.churroslinux.org](https://download.churroslinux.org/). En el repositorio también se construyen la edición Servidor (x86_64) y la edición Niri para aarch64, y de forma experimental la edición Raspberry Pi Lite (aarch64) y un port i686 sin sesión gráfica ni instalador. Detalle en el [README](../README.md#ediciones).
+La última versión publicada en el sitio de descarga es la **1.5** (9 de noviembre de 2026); la GitHub Release v1.5 adjunta el manifiesto SHA-256, no las ISO: ISOs x86_64 de las ediciones Niri y XFCE en [download.churroslinux.org](https://download.churroslinux.org/). En el repositorio también se construyen la edición Servidor (x86_64) y la edición Niri para aarch64, y de forma experimental la edición Raspberry Pi Lite (aarch64) y un port i686 sin sesión gráfica ni instalador. Detalle en el [README](../README.md#ediciones).
 
 ChurrOS sigue en etapa temprana. El objetivo principal es consolidar la base: identidad de arranque, actualizaciones autenticadas, instalación validada y documentación de usuario, antes de ampliar el alcance, como piden los [principios](principios.md). La guía inicial ya existe en [docs/user-guide.md](user-guide.md); un manual completo y la wiki siguen pendientes.
 
@@ -112,7 +112,7 @@ Publicar versiones de forma periódica y abrir el proyecto a más gente.
 - [ ] Primera versión estable. Criterios propuestos más arriba; requieren revisión del proceso de release antes de usarse como política oficial.
 - [x] Sitio web: [churroslinux.org](https://www.churroslinux.org/). Falta actualizar sus enlaces al repositorio de la organización ChurrOS-GNU-Linux.
 - [x] Descargas en download.churroslinux.org. GitHub Release v1.4 adjunta `SHA256SUMS`, no las ISO; los adjuntos de ISO comprimida están en v0.1.1 y v0.6 y el bundle OTA en v1.0.
-- [ ] Firma de releases y cobertura de sumas para cada publicación. La ISO 1.4 tiene `SHA256SUMS` publicado (también adjunto en GitHub Release), pero no está firmado ni autentica al servidor de descarga.
+- [ ] Firma de releases y cobertura de sumas para cada publicación. La ISO 1.5 tiene `SHA256SUMS` publicado (también adjunto en GitHub Release), pero no está firmado ni autentica al servidor de descarga. El manifiesto OTA sí va firmado (minisign, `FAEC06AD6400A2FE`).
 - [ ] Mirrors para las ISO y para el repositorio de paquetes.
 - [x] Guía inicial de uso: probar, instalar, actualizar y recuperar ([user-guide.md](user-guide.md)).
 - [ ] Completar un manual de usuario y crear la wiki oficial. La guía inicial está en [user-guide.md](user-guide.md); la wiki de GitHub solo tiene un esbozo de julio de 2026.

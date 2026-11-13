@@ -272,7 +272,14 @@ for ed in $(list_editions); do
     # En build.sh el brazo que importa es el que asigna el comando de sesion;
     # el case del nombre que ve el slideshow tambien menciona la edicion y no
     # cuenta.
-    if ! grep -qE "$(arm_pattern "$ed")[^#]*SESSION_CMD=" scripts/cli/build.sh; then
+    if [ "$ed" = "niri" ]; then
+        # El case actual asigna `niri` dentro de una rama por arquitectura
+        # y usa `bash --login` en i686; no tiene un patrón `niri)` exterior.
+        if ! grep -q 'SESSION_CMD="niri"' scripts/cli/build.sh \
+            || ! grep -q 'SESSION_CMD="bash --login"' scripts/cli/build.sh; then
+            problems="$problems build.sh-sin-brazo-de-sesion"
+        fi
+    elif ! grep -qE "$(arm_pattern "$ed")[^#]*SESSION_CMD=" scripts/cli/build.sh; then
         problems="$problems build.sh-sin-brazo-de-sesion"
     fi
 

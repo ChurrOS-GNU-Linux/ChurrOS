@@ -6,7 +6,7 @@ Esta guía ayuda a probar, instalar, actualizar y recuperar ChurrOS. Las instruc
 
 - Descarga una ISO desde el sitio oficial enlazado en el [README](../README.md). Confirma que el nombre de la edición y la arquitectura coincidan con tu equipo.
 - Haz una copia de seguridad de tus documentos. El particionado automático puede borrar el disco o las particiones que selecciones.
-- Si vas a verificar la descarga, compara el hash completo con [`SHA256SUMS`](https://download.churroslinux.org/SHA256SUMS) publicado junto a las ISO 1.4. En Linux usa `sha256sum -c SHA256SUMS`; en PowerShell calcula el valor con `Get-FileHash archivo.iso -Algorithm SHA256` y compáralo con el publicado. **El archivo de sumas está en el mismo servidor y no está firmado: ayuda a detectar daños accidentales, pero no autentica al publicador.** Consulta el estado de firmas en [Publicaciones](release.md).
+- Si vas a verificar la descarga, compara el hash completo con [`SHA256SUMS`](https://download.churroslinux.org/SHA256SUMS) publicado junto a las ISO 1.5. En Linux usa `sha256sum -c SHA256SUMS`; en PowerShell calcula el valor con `Get-FileHash archivo.iso -Algorithm SHA256` y compáralo con el publicado. **El archivo de sumas está en el mismo servidor y no está firmado: ayuda a detectar daños accidentales, pero no autentica al publicador.** Consulta el estado de firmas en [Publicaciones](release.md).
 - Graba la ISO en una memoria USB con una herramienta de escritura de imágenes. La operación borra el contenido de la memoria; confirma cuidadosamente el dispositivo de destino.
 
 ## Probar el sistema Live
