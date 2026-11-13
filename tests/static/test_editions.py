@@ -430,6 +430,26 @@ class PackageListTest(unittest.TestCase):
         for arch in sorted({item.arch for item in testlib.EDITIONS}):
             self.assertTrue(kernels(arch), f"no encuentro /boot/vmlinuz-* en unpackfs.conf de {arch}")
 
+    def test_desktop_editions_ship_cachyos_kernel(self):
+        """niri y XFCE en x86_64 arrancan con linux-cachyos (BORE), no con linux.
+
+        94a612a cambió el kernel solo en packages.x86_64: la ISO XFCE siguió
+        instalando el linux de Arch sin que nada lo notara.
+        """
+        findings = {}
+        for item in testlib.EDITIONS:
+            if item.arch != "x86_64" or item.desktop not in ("niri", "xfce"):
+                continue
+            have = testlib.packages(item)
+            for package in ("linux-cachyos", "linux-cachyos-headers"):
+                if package not in have:
+                    findings[f"edition-kernel:{item.id}:{package}"] = (
+                        f"{item.id}: falta '{package}' en {item.package_list}")
+            if "linux" in have:
+                findings[f"edition-kernel:{item.id}:linux"] = (
+                    f"{item.id}: {item.package_list} instala también 'linux': dos kernels y dos entradas en GRUB")
+        testlib.assert_findings(self, "edition-kernel", findings)
+
     def test_required_packages(self):
         findings = {}
         initcpio = testlib.require_module(self, "yaml").safe_load(

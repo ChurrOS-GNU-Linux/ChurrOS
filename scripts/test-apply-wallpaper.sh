@@ -132,4 +132,89 @@ set -e
 [[ "$(cat "$count")" == "$calls_before" ]] || fail "sin Noctalia no habia que llamar al IPC"
 [[ -s "$sway_log" ]] || fail "sin Noctalia no arranco swaybg"
 
+# XFCE en un portátil: la salida real es eDP (amdgpu) y el skel solo conoce
+# monitor0/monitorVirtual1. El fondo tiene que escribirse en monitoreDP para
+# cada escritorio, creando la propiedad.
+xf_log="$tmp/xfconf.log"
+xf_store="$tmp/xfconf.store"
+cat >"$tmp/bin/xfconf-query" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"${CHURROS_TEST_XFCONF_LOG:?}"
+store="${CHURROS_TEST_XFCONF_STORE:?}"
+prop="" value="" list=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -l) list=1 ;;
+        -p) prop="$2"; shift ;;
+        -s) value="$2"; shift ;;
+        -t) shift ;;
+    esac
+    shift
+done
+if [[ "$list" == 1 ]]; then
+    echo /backdrop/screen0/monitorVirtual1/workspace0/last-image
+    exit 0
+fi
+if [[ "$prop" == /general/workspace_count ]]; then
+    echo 2
+    exit 0
+fi
+if [[ -n "$value" ]]; then
+    printf '%s=%s\n' "$prop" "$value" >>"$store"
+    exit 0
+fi
+line="$(grep -F "$prop=" "$store" 2>/dev/null | tail -n 1 || true)"
+[[ -n "$line" ]] || exit 1
+printf '%s\n' "${line#*=}"
+EOF
+cat >"$tmp/bin/xrandr" <<'EOF'
+#!/usr/bin/env bash
+echo "Screen 0: minimum 320 x 200, current 1920 x 1080, maximum 16384 x 16384"
+echo "eDP connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 344mm x 194mm"
+echo "HDMI-A-0 disconnected (normal left inverted right x axis y axis)"
+EOF
+chmod +x "$tmp/bin/xfconf-query" "$tmp/bin/xrandr"
+
+run_xfce() {
+    env -u WAYLAND_DISPLAY \
+        PATH="$tmp/bin:$PATH" \
+        HOME="$tmp" \
+        XDG_CONFIG_HOME="$tmp/cfg" \
+        XDG_RUNTIME_DIR="$tmp/runtime" \
+        XDG_CURRENT_DESKTOP=XFCE \
+        DISPLAY=:0 \
+        CHURROS_TEST_XFCONF_LOG="$xf_log" \
+        CHURROS_TEST_XFCONF_STORE="$xf_store" \
+        "$script" "$@"
+}
+
+: >"$xf_log"
+: >"$xf_store"
+set +e
+run_xfce "$img"
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || fail "XFCE: aplicar el fondo salio con rc=$rc"
+for ws in 0 1; do
+    grep -qxF "/backdrop/screen0/monitoreDP/workspace$ws/last-image=$img" "$xf_store" \
+        || fail "XFCE: no se escribio el fondo en monitoreDP/workspace$ws: $(cat "$xf_log")"
+done
+grep -q "monitorHDMI-A-0" "$xf_store" && fail "XFCE: se escribio una salida desconectada"
+
+# --session respeta el fondo que la salida ya tiene (aunque Ajustes guarde otro)...
+mkdir -p "$tmp/cfg/churros"
+printf '{"wallpaper": {"path": "%s"}}\n' "$img" >"$tmp/cfg/churros/settings.json"
+other="$tmp/other.png"
+printf 'y' >"$other"
+: >"$xf_store"
+printf '/backdrop/screen0/monitoreDP/workspace0/last-image=%s\n' "$other" >"$xf_store"
+run_xfce --session || true
+grep -qF "=$img" "$xf_store" && fail "XFCE --session piso el fondo elegido por el usuario"
+
+# ...y sin fondo propio aplica el guardado en Ajustes.
+: >"$xf_store"
+run_xfce --session
+grep -qxF "/backdrop/screen0/monitoreDP/workspace0/last-image=$img" "$xf_store" \
+    || fail "XFCE --session no aplico el fondo guardado a la salida real"
+
 printf 'ok\n'
