@@ -3357,3 +3357,59 @@ replace = 'terminal-font: "Inter Regular 18"'
 caught_by = "tests.static.test_config_syntax"
 expect = "terminal-box:inter-regular-18.pf2"
 why = "Sin U+2500..U+2518 el editor (e) y la consola (c) de GRUB dibujan el marco como «AAAA»."
+
+[[mutation]]
+name = "test-privileged-helpers: el actualizador ya no instala minisign si falta"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    if am_root && [ -x \"$PACMAN\" ]; then"
+replace = "    if false; then"
+caught_by = "python3 scripts/test-privileged-helpers.py"
+expect = "[update-installs-minisign]"
+why = "Quien actualiza desde la 1.4 (sin minisign) recibe el actualizador que exige la firma: su siguiente actualización fallaba hasta instalarlo a mano."
+[[mutation]]
+name = "supply chain: trust vendored AUR PGP key without checking its full fingerprint"
+file = "scripts/build-aur.sh"
+find = 'if [ "$actual_key" != "${key^^}" ]; then'
+replace = 'if [ "$actual_key" = "${key^^}" ]; then'
+caught_by = "tests.static.test_supply_chain"
+expect = "actual_key"
+why = "Offline AUR public keys must be checked against the PKGBUILD validpgpkeys fingerprint before import; otherwise an altered key could bypass signature identity."
+
+
+# --- XFCE en hardware real: touchpad y fondo ---
+
+[[mutation]]
+name = "xorg touchpad: tapping left at the libinput default"
+file = "archiso/airootfs/etc/X11/xorg.conf.d/30-touchpad.conf"
+find = 'Option "Tapping" "on"'
+replace = 'Option "Tapping" "off"'
+caught_by = "tests.static.test_config_syntax"
+expect = "[xorg-touchpad]"
+why = "libinput defaults tapping to off: on a clickpad without separate buttons (HP Laptop 15, Ryzen 5 7500U) the pointer moves but a tap never clicks in XFCE."
+
+[[mutation]]
+name = "apply-wallpaper: XFCE only rewrites the skel monitors"
+file = "archiso/airootfs/usr/bin/churros-apply-wallpaper"
+find = "    outputs=$(xfce_outputs)\n"
+replace = "    outputs=\"\"\n"
+caught_by = "bash scripts/test-apply-wallpaper.sh"
+expect = "monitoreDP"
+why = "The skel xfce4-desktop.xml only knows monitor0/monitorVirtual1 (QEMU). On a laptop the RandR output is eDP, xfdesktop keeps its stock wallpaper and changing it from Settings does nothing."
+
+[[mutation]]
+name = "apply-wallpaper: --session overrides the user's XFCE wallpaper"
+file = "archiso/airootfs/usr/bin/churros-apply-wallpaper"
+find = '    if [ -n "$(xfce_current_image)" ]; then'
+replace = '    if false; then'
+caught_by = "bash scripts/test-apply-wallpaper.sh"
+expect = "piso el fondo elegido"
+why = "The XFCE autostart runs at every login: it must not replace a wallpaper the user picked in xfdesktop."
+
+[[mutation]]
+name = "packages.xfce: back to the stock Arch kernel"
+file = "archiso/packages.xfce.x86_64"
+find = "linux-cachyos\nlinux-cachyos-headers\n"
+replace = "linux\n"
+caught_by = "tests.static.test_editions"
+expect = "edition-kernel:xfce"
+why = "94a612a switched the kernel only in packages.x86_64; the XFCE ISO kept installing Arch's linux instead of linux-cachyos."

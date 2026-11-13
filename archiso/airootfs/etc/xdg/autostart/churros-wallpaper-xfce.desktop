@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ChurrOS wallpaper (XFCE)
+Comment=Aplica el fondo de ChurrOS a las pantallas reales (eDP, HDMI...)
+Exec=/usr/bin/churros-apply-wallpaper --session
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-XFCE-Autostart-Override=true

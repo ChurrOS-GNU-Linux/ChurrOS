@@ -23,9 +23,6 @@
 
 
 # --- test_references ---
-[[issue]]
-id = "ref:server/x86_64:archiso/airootfs/etc/skel/.config/xfce4/panel/launcher-10/10.desktop:firefox"
-note = "El panel XFCE (plugin-10 de xfce4-panel.xml) tiene un lanzador de Firefox, pero packages.server.x86_64 no trae firefox: en la sesión Live de la ISO server el botón no hace nada. El TryExec=firefox que añadió #348 no lo arregla (Exec sigue apuntando a un programa ausente); falta quitar el lanzador en server o instalar firefox."
 
 
 # --- test_rust_contract ---
