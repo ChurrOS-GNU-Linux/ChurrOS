@@ -543,6 +543,30 @@ class BootLinksTest(unittest.TestCase):
         testlib.assert_findings(self, "boot-link", findings)
 
 
+class FlathubTest(unittest.TestCase):
+    """Bazaar necesita Flathub ya aplicado en el repositorio de sistema.
+
+    /etc/flatpak/remotes.d solo se aplica cuando root crea /var/lib/flatpak/repo:
+    Bazaar, como usuario, no lo crea y pedía configurar Flathub a mano.
+    tests/iso/check_iso.py mira el resultado dentro de airootfs.sfs.
+    """
+
+    def test_build_creates_the_flatpak_system_repo(self):
+        with_flatpak = sorted({item.name for item in testlib.EDITIONS if "flatpak" in testlib.packages(item)})
+        if not with_flatpak:
+            self.skipTest("ninguna edición instala flatpak")
+        code = "\n".join(line.split("#", 1)[0] for line in
+                         testlib.read_text(ROOT / "branding/customize_airootfs.sh").splitlines())
+        findings = {}
+        if not re.search(r"^\s*flatpak\s+(remotes|remote-list|remote-add)\b[^\n]*--system", code, re.M):
+            findings["flathub:customize_airootfs"] = (
+                f"{', '.join(with_flatpak)} instalan flatpak, pero customize_airootfs.sh no crea el repositorio "
+                "de sistema: Bazaar muestra «Flathub is not set up»")
+        if not testlib.airootfs("/etc/flatpak/remotes.d/flathub.flatpakrepo").is_file():
+            findings["flathub:remotes.d"] = "falta /etc/flatpak/remotes.d/flathub.flatpakrepo en el airootfs"
+        testlib.assert_findings(self, "flathub", findings)
+
+
 class PacmanConfTest(unittest.TestCase):
     """pacman.<arch>.conf con el que pacstrap construye cada arquitectura."""
 

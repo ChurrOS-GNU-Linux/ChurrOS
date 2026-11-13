@@ -121,6 +121,20 @@ fi
 echo "Installing Bazaar..."
 # Bazaar se instala desde la lista de paquetes del perfil (packages.<arch>) vía pacstrap, desde el repo local [churros], patcheado para fix de libdex. Ya no se usa bsdtar.
 
+# Flathub para Bazaar. /etc/flatpak/remotes.d/flathub.flatpakrepo solo se
+# aplica cuando root crea el repositorio de sistema (/var/lib/flatpak/repo);
+# Bazaar, como usuario, no lo crea y mostraba «Flathub is not set up» en el
+# Live y en el sistema instalado (unpackfs copia este airootfs). Listar los
+# remotos como root lo crea y aplica el fichero, sin red: la clave GPG va dentro.
+if command -v flatpak >/dev/null 2>&1; then
+    flatpak remotes --system >/dev/null
+    if grep -qF '[remote "flathub"]' /var/lib/flatpak/repo/config; then
+        echo "✓ Flathub configured."
+    else
+        echo "WARNING: /var/lib/flatpak/repo/config has no flathub remote" >&2
+    fi
+fi
+
 if compgen -G '/root/packages/*.pkg.tar.*' >/dev/null; then
     echo "  (paquetes del repo local quedan en /root/packages para Calamares/netinstall)"
 fi

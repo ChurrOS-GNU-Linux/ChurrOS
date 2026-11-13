@@ -392,6 +392,10 @@ def audit(iso: Path, edition_name: str | None, audit_: Audit, workdir: Path) -> 
     audit_.check("display-manager.service es greetd", bool(dm and dm["target"] and dm["target"].endswith("greetd.service")),
                  str(dm and dm["target"]))
 
+    if "flatpak" in testlib.packages(item):
+        flatpak_repo = squash.read("/var/lib/flatpak/repo/config") or ""
+        audit_.check("Flathub está configurado en /var/lib/flatpak (Bazaar)", '[remote "flathub"]' in flatpak_repo)
+
     pacman_conf = squash.read("/etc/pacman.conf") or ""
     audit_.facts["pacman_conf_has_churros_repo"] = "[churros]" in pacman_conf
 
