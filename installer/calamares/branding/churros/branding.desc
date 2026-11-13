@@ -14,10 +14,10 @@ navigation: widget
 strings:
   productName: "ChurrOS"
   shortProductName: ChurrOS
-  version: 1.5
-  shortVersion: 1.5
-  versionedName: ChurrOS 1.5
-  shortVersionedName: ChurrOS 1.5
+  version: 1.5.1
+  shortVersion: 1.5.1
+  versionedName: ChurrOS 1.5.1
+  shortVersionedName: ChurrOS 1.5.1
   bootloaderEntryName: ChurrOS
   productUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS
   supportUrl: https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues

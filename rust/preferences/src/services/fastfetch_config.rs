@@ -568,7 +568,7 @@ fn default_config() -> Value {
         },
         "modules": [
             { "type": "custom", "format": "┌──────────────────────────┐" },
-            { "type": "custom", "format": "│       ChurrOS 1.5        │" },
+            { "type": "custom", "format": "│      ChurrOS 1.5.1       │" },
             { "type": "custom", "format": "└──────────────────────────┘" },
             { "type": "separator" },
             { "type": "os",       "key": "OS",       "keyColor": "yellow" },
