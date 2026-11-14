@@ -45,6 +45,19 @@ fn load_css() {
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1, // Cambiado de USER+1 a APPLICATION+1
     );
 
+    // Sin transparencia (Ajustes > Apariencia > Transparencia): solid.css
+    // vuelve opacos los fondos; por encima del style.css de la app.
+    if let Some(path) = churros_services::appearance::solid_css_to_load() {
+        let provider = gtk::CssProvider::new();
+        provider.load_from_path(&path);
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
+                + churros_services::appearance::SOLID_CSS_PRIORITY_OFFSET,
+        );
+    }
+
     // Accent CSS (misma prioridad que Preferences)
     let home = churros_services::home_dir();
     let accent_path = std::path::PathBuf::from(home).join(".config/churros/accent.css");

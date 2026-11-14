@@ -3,6 +3,7 @@
 // (port Rust de usr/share/churros/services/*.py)
 // ==========================================
 
+pub mod appearance;
 pub mod audio;
 pub mod battery;
 pub mod bluetooth;

@@ -22,7 +22,7 @@ pub fn build() -> gtk::Box {
     title.set_markup(
         "<span foreground='white'>¡Bienvenido a Churr</span><span foreground='#ff8c00'>OS</span><span foreground='white'>!</span>",
     );
-    title.add_css_class("title");
+    title.add_css_class("app-title");
     title.set_halign(gtk::Align::Center);
 
     // =====================================

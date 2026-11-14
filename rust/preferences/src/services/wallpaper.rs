@@ -87,7 +87,9 @@ impl WallpaperService {
         let config = fs::read_to_string(home.join(".config/noctalia/config.toml")).ok();
         let niri = fs::read_to_string(home.join(".config/niri/config.kdl")).unwrap_or_default();
         let running = churros_services::noctalia::running_shells();
-        let noctalia_is_shell = churros_services::noctalia::noctalia_is_shell(running, &niri);
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        let noctalia_is_shell =
+            churros_services::noctalia::noctalia_is_session_shell(running, &niri, &desktop);
         for path in churros_services::noctalia::wallpaper_candidates(
             &settings_path,
             state.as_deref(),

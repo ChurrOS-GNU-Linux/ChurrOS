@@ -3366,6 +3366,27 @@ caught_by = "tests.static.test_supply_chain"
 expect = "actual_key"
 why = "Offline AUR public keys must be checked against the PKGBUILD validpgpkeys fingerprint before import; otherwise an altered key could bypass signature identity."
 
+# --- Ajustes en XFCE: modo claro y transparencia ---
+
+[[mutation]]
+name = "churros-services: XFCE takes the shared niri autostart for Noctalia"
+file = "rust/services/src/noctalia.rs"
+find = "    in_niri && niri_autostart_has(niri_config, \"noctalia\")"
+replace = "    niri_autostart_has(niri_config, \"noctalia\")"
+caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services xfce_session_ignores_the_shared_niri_autostart"
+expect = "xfce_session_ignores_the_shared_niri_autostart"
+requires = "container"
+why = "The XFCE ISO ships the same skel, including spawn-at-startup \"noctalia\" in niri/config.kdl. If that counts in XFCE, ThemeService::is_dark() reads Noctalia's mode = \"dark\" and Settings never switches to light."
+
+[[mutation]]
+name = "solid.css: dark window background keeps its alpha"
+file = "archiso/airootfs/usr/share/churros/styles/solid.css"
+find = "    --bg-window:  rgb(13, 16, 22);"
+replace = "    --bg-window:  rgba(13, 16, 22, 0.65);"
+caught_by = "cargo test --locked --manifest-path rust/Cargo.toml -p churros-services shipped_solid_css_makes_window_tokens_opaque"
+expect = "shipped_solid_css_makes_window_tokens_opaque"
+requires = "container"
+why = "With alpha left in --bg-window, turning Transparency off in Settings still leaves the ChurrOS windows see-through."
 
 # --- XFCE en hardware real: touchpad y fondo ---
 
@@ -3404,3 +3425,22 @@ replace = "linux\n"
 caught_by = "tests.static.test_editions"
 expect = "edition-kernel:xfce"
 why = "94a612a switched the kernel only in packages.x86_64; the XFCE ISO kept installing Arch's linux instead of linux-cachyos."
+
+[[mutation]]
+name = "test_rust_contract: la bienvenida vuelve a usar la clase title de GTK"
+file = "rust/churros-welcome/assets/style.css"
+find = ".app-title {"
+replace = ".title {"
+caught_by = "tests.static.test_rust_contract"
+expect = "[gtk-title-class:churros-welcome:.title]"
+why = "GTK 4 da la clase .title al título de la barra de la ventana: en XFCE «ChurrOS Welcome» salía a 52 px."
+
+[[mutation]]
+name = "churros-services: el config.kdl de niri vuelve a contar en XFCE"
+file = "rust/services/src/noctalia.rs"
+find = "    running.noctalia || (running.niri && niri_autostart_has(niri_config, \"noctalia\"))"
+replace = "    running.noctalia || niri_autostart_has(niri_config, \"noctalia\")"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services xfce_ignores_the_niri_config_in_skel"
+expect = "xfce_ignores_the_niri_config_in_skel"
+requires = "container"
+why = "El skel de XFCE trae la configuración de niri con Noctalia en el autostart: Ajustes mostraba el fondo de Noctalia como «Wallpaper actual» y --sync-greeter copiaba ese fondo a la pantalla de inicio."

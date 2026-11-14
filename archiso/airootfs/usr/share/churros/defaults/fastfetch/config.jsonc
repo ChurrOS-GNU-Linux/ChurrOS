@@ -20,7 +20,7 @@
     },
     "modules": [
         { "type": "custom", "format": "┌──────────────────────────┐" },
-        { "type": "custom", "format": "│       ChurrOS 1.5        │" },
+        { "type": "custom", "format": "│      ChurrOS 1.5.2       │" },
         { "type": "custom", "format": "└──────────────────────────┘" },
         { "type": "separator" },
         { "type": "os",         "key": "OS",        "keyColor": "yellow" },

@@ -4,7 +4,7 @@ Cómo se publica una versión de ChurrOS y por dónde se distribuye. El proceso 
 
 ## Versionado
 
-- `VERSION` guarda la versión de la distro en formato `MAJOR.MINOR` (por ejemplo `1.3`). Cada versión publicada debe llevar un tag anotado `vMAJOR.MINOR`. Los crates de Rust usan `MAJOR.MINOR.0`.
+- `VERSION` guarda la versión de la distro en formato `MAJOR.MINOR` (por ejemplo `1.3`). Una actualización solo de utilidades (bundle OTA, sin ISO nueva) añade un tercer número: `1.5.1`. Cada versión publicada debe llevar un tag anotado `vMAJOR.MINOR` (o `vMAJOR.MINOR.PATCH`). Los crates de Rust usan `MAJOR.MINOR.0`, o `MAJOR.MINOR.PATCH` en esas actualizaciones. `churros-update-utils` y Ajustes ofrecen la actualización cuando la versión del manifiesto es distinta de `/etc/churros-version`.
 - `VERSION` lo leen `./churros version`, `./churros info`, el build (lo estampa en el `os-release` de la ISO), `scripts/build-churros-release.sh` y las apps Rust al compilar (`churros-services` lo incluye con `include_str!`). La versión también está escrita a mano en otros ficheros, que hay que cambiar en el mismo PR:
   - `rust/Cargo.toml` y el `Cargo.toml` de cada crate (`version = "X.Y.0"`). Después, `cargo update --workspace --manifest-path rust/Cargo.toml` para actualizar `rust/Cargo.lock`: `./churros rust` usa `--locked` y falla si el lock no está al día.
   - `archiso/airootfs/etc/churros-version`.

@@ -37,7 +37,7 @@ scrolledwindow viewport {
 
 /* ── HEADER ───────────────────────────────────────────── */
 
-.title {
+.app-title {
     font-size: 25px;
     font-weight: 700;
     color: white;
@@ -172,7 +172,7 @@ window.light label {
     color: #111827;
 }
 
-window.light .title {
+window.light .app-title {
     color: #111827;
     text-shadow: none;
 }

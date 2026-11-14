@@ -29,11 +29,11 @@ pub fn build() -> gtk::Box {
     title_box.set_halign(gtk::Align::Center);
 
     let title_plain = gtk::Label::new(Some("Churr"));
-    title_plain.add_css_class("title");
+    title_plain.add_css_class("app-title");
     title_plain.add_css_class("title-plain");
 
     let title_accent = gtk::Label::new(Some("OS"));
-    title_accent.add_css_class("title");
+    title_accent.add_css_class("app-title");
     title_accent.add_css_class("title-accent");
 
     title_box.append(&title_plain);

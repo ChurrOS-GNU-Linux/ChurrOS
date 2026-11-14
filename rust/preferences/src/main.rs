@@ -71,6 +71,9 @@ fn load_css() {
         );
     }
 
+    // Sin transparencia: singleton para poder quitarlo/ponerlo en vivo.
+    ThemeService::init_solid_css();
+
     // accent.css gestionado como singleton en AccentService (prioridad USER)
     AccentService::init_css_provider();
 }
