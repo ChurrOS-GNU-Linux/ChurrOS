@@ -104,7 +104,7 @@ comprueba que cada uno sigue escrito así en el código.
 | Llamador | Comandos |
 |----------|----------|
 | `rust/preferences/src/services/update.rs` | `pacman -Syu --noconfirm`, `flatpak update -y`, `churros-update-utils`, `churros-snapshot list --json`, `churros-snapshot create manual`, `churros-snapshot delete <stamp>` |
-| `archiso/airootfs/usr/local/bin/churros-update-auto` | `pacman -Syu --noconfirm`, `flatpak update -y`, `churros-update-utils` |
+| `archiso/airootfs/usr/local/bin/churros-update-auto` (solo como root: timer de sistema del servidor) | `pacman -Syu --noconfirm`, `flatpak update -y`, `churros-update-utils` |
 | `rust/preferences/src/services/datetime.rs` | `timedatectl set-timezone <tz>`, `timedatectl set-ntp true\|false` |
 | `rust/preferences/src/services/users.rs` | `churros-write-root-config` con las cuatro operaciones |
 
@@ -121,8 +121,10 @@ Fuera de la tabla:
 - En el Live, el instalador se lanza con `/usr/local/bin/calamares`, que eleva
   con `sudo -n` gracias al NOPASSWD del Live (ver [Entorno Live](#entorno-live)).
 - En las ediciones de escritorio, `churros-update-auto` corre desde un timer de
-  usuario, sin agente de polkit: sus pasos piden contraseña y fallan. Que pase
-  a comprobar y avisar en vez de instalar es #142. En la edición server,
+  usuario: como no es root, solo comprueba (`checkupdates`, `flatpak remote-ls
+  --updates` y la versión del manifiesto) y avisa con una notificación; no
+  llama a `churros-pkexec` ni instala nada (#142). Instalar es siempre un gesto
+  del usuario en Ajustes > Actualizaciones. En la edición server,
   `configure-server` habilita además el timer de sistema `churros-update.timer`
   (cada día hacia las 04:00), que corre como root: ahí `churros-pkexec` ejecuta los
   comandos directamente y la actualización desatendida con `--noconfirm` sí se

@@ -47,13 +47,13 @@ pub fn build(navigator: gtk::Stack) -> Page {
     let log_view: Rc<RefCell<Option<gtk::TextView>>> = Rc::new(RefCell::new(None));
 
     // ---------- Automáticas ----------
-    let mut auto_group = Group::new("Actualizaciones automáticas");
+    let mut auto_group = Group::new("Avisos de actualización");
 
     let enabled = UpdateService::enabled();
     auto_group.add(&SwitchRow::new(
-        "Activar actualizaciones automáticas",
+        "Avisar de actualizaciones",
         Some("system.svg"),
-        Some("Actualiza pacman y flatpak según la frecuencia elegida"),
+        Some("Comprueba si hay novedades y te avisa; no instala nada sin ti"),
         enabled,
         Some(Box::new(|active| {
             UpdateService::set_enabled(active);
@@ -66,7 +66,7 @@ pub fn build(navigator: gtk::Stack) -> Page {
         "Frecuencia",
         &INTERVAL_LABELS,
         Some(interval_label(&interval)),
-        Some("Cada cuánto actualizar automáticamente"),
+        Some("Cada cuánto comprobar"),
         Some("system.svg"),
         Some(Box::new(|label| {
             if let Some(id) = interval_id(label) {
