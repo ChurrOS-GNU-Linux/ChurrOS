@@ -111,11 +111,6 @@ pub struct NetworkInfo {
     pub saved: bool,
 }
 
-pub struct BluetoothDevice {
-    pub mac: String,
-    pub name: String,
-}
-
 // ---------------------------------------------------------------- servicio
 
 pub struct ConnectivityService;
@@ -360,33 +355,12 @@ impl ConnectivityService {
         if !Self::bluetooth_available() {
             return;
         }
+        // Con el modo avión (rfkill) activado, "power on" falla sin decir nada.
+        // /dev/rfkill es del usuario de la sesión (uaccess): no hace falta root.
+        if enabled && churros_services::which("rfkill") {
+            run_no_output(&["rfkill", "unblock", "bluetooth"]);
+        }
         run_no_output(&["bluetoothctl", "power", if enabled { "on" } else { "off" }]);
-    }
-
-    /// Dispositivos emparejados conocidos (bluetoothctl devices).
-    pub fn bluetooth_devices() -> Vec<BluetoothDevice> {
-        if !Self::bluetooth_available() {
-            return Vec::new();
-        }
-        let out = match nm_run(&["bluetoothctl", "devices"]) {
-            Some(o) => o,
-            None => return Vec::new(),
-        };
-        let mut devices = Vec::new();
-        for line in out.lines() {
-            if !line.starts_with("Device") {
-                continue;
-            }
-            let mut parts = line.split_whitespace();
-            parts.next(); // "Device"
-            let mac = parts.next().unwrap_or("").to_string();
-            let name = parts.collect::<Vec<_>>().join(" ");
-            if mac.is_empty() {
-                continue;
-            }
-            devices.push(BluetoothDevice { mac, name });
-        }
-        devices
     }
 }
 

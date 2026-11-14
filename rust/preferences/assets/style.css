@@ -685,6 +685,35 @@ entry:focus {
     border-radius: 8px;
 }
 
+/* ── Emparejar Bluetooth (pages/bluetooth.rs) ────────── */
+/* Opaca, como la confirmación de restablecer: el código tiene que leerse bien. */
+window.bt-pairing {
+    background-color: #0D1016;
+}
+
+window.bt-pairing.light {
+    background-color: #F0F4FA;
+}
+
+.bt-pairing-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.bt-pairing-kind {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.bt-pairing-code {
+    font-family: monospace;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    color: var(--accent);
+}
+
 /* ── Confirmación de restablecer ─────────────────────── */
 /* --bg-window lleva alfa ~0.6 y deja ver la página de detrás. */
 window.reset-confirm {

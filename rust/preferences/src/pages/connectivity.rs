@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 
+use crate::pages::bluetooth;
 use crate::services::connectivity::ConnectivityService;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
@@ -24,11 +25,12 @@ struct WifiData {
     networks: Vec<(String, i64, String, bool, bool)>, // ssid, signal, security, connected, saved
 }
 
+/// Adaptador y encendido; los dispositivos los lee el panel por D-Bus
+/// (pages/bluetooth.rs), sin bloquear.
 #[derive(Default)]
 struct BtData {
     available: bool,
     enabled: bool,
-    devices: Vec<(String, String)>, // name, mac
 }
 
 struct ConnectivityData {
@@ -50,10 +52,6 @@ fn load_data() -> ConnectivityData {
         bluetooth: BtData {
             available: ConnectivityService::bluetooth_available(),
             enabled: ConnectivityService::bluetooth_enabled(),
-            devices: ConnectivityService::bluetooth_devices()
-                .into_iter()
-                .map(|d| (d.name, d.mac))
-                .collect(),
         },
     }
 }
@@ -83,10 +81,11 @@ pub fn build(navigator: gtk::Stack) -> Page {
     // Se guarda en un Rc para poder pasarla a los callbacks de los switches
     // y a la fila "Recargar redes".
     let reload: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+    let bluetooth_panel = bluetooth::Panel::new(Rc::clone(&bluetooth_group), Rc::clone(&reload));
 
     let start_load = {
         let wg = Rc::clone(&wifi_group);
-        let bg = Rc::clone(&bluetooth_group);
+        let bg = Rc::clone(&bluetooth_panel);
         let reload = Rc::clone(&reload);
         move || {
             let (tx, rx) = std::sync::mpsc::channel::<ConnectivityData>();
@@ -124,7 +123,7 @@ fn trigger_reload(reload: &Rc<RefCell<Option<Rc<dyn Fn()>>>>) {
 
 fn populate(
     wifi_group: &Rc<RefCell<Group>>,
-    bluetooth_group: &Rc<RefCell<Group>>,
+    bluetooth_panel: &Rc<bluetooth::Panel>,
     data: ConnectivityData,
     reload: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) {
@@ -229,52 +228,7 @@ fn populate(
     }
 
     // ============ Bluetooth ============
-    bluetooth_group.borrow_mut().clear();
-
-    if !data.bluetooth.available {
-        bluetooth_group.borrow_mut().add(&Row::new(
-            "No se encontró un adaptador Bluetooth",
-            None,
-            None,
-            None,
-            None,
-            None,
-        ));
-    } else {
-        let bluetooth_reload = Rc::clone(reload);
-        bluetooth_group.borrow_mut().add(&SwitchRow::new(
-            "Activar Bluetooth",
-            None,
-            None,
-            data.bluetooth.enabled,
-            Some(Box::new(move |active| {
-                ConnectivityService::set_bluetooth(active);
-                trigger_reload(&bluetooth_reload);
-            })),
-        ));
-
-        if data.bluetooth.devices.is_empty() {
-            bluetooth_group.borrow_mut().add(&Row::new(
-                "No hay dispositivos",
-                None,
-                None,
-                None,
-                None,
-                None,
-            ));
-        } else {
-            for (name, mac) in &data.bluetooth.devices {
-                bluetooth_group.borrow_mut().add(&Row::new(
-                    name,
-                    Some(mac),
-                    None,
-                    None,
-                    None,
-                    None,
-                ));
-            }
-        }
-    }
+    bluetooth_panel.set_status(data.bluetooth.available, data.bluetooth.enabled);
 }
 
 fn parent_window(widget: &impl IsA<gtk::Widget>) -> Option<gtk::Window> {

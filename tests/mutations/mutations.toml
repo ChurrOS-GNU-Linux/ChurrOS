@@ -3444,3 +3444,22 @@ caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p ch
 expect = "xfce_ignores_the_niri_config_in_skel"
 requires = "container"
 why = "El skel de XFCE trae la configuración de niri con Noctalia en el autostart: Ajustes mostraba el fondo de Noctalia como «Wallpaper actual» y --sync-greeter copiaba ese fondo a la pantalla de inicio."
+
+[[mutation]]
+name = "test_systemd_units: la Live deja de arrancar bluetoothd"
+file = "archiso/airootfs/root/scripts/services.sh"
+find = "enable_unit bluetooth.service\n"
+replace = ""
+caught_by = "tests.static.test_systemd_units"
+expect = "[live-bluetooth:services.sh]"
+why = "Sin bluetooth.service en la Live, Ajustes > Conectividad dice que no hay adaptador y no se puede emparejar nada hasta instalar."
+
+[[mutation]]
+name = "churros-settings: la lista de Bluetooth ofrece balizas sin nombre"
+file = "rust/preferences/src/services/bluez.rs"
+find = "    let mut available: Vec<Device> = mine.filter(|d| !d.paired && d.name.is_some()).cloned().collect();"
+replace = "    let mut available: Vec<Device> = mine.filter(|d| !d.paired).cloned().collect();"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings paired_first_connected_on_top"
+expect = "paired_first_connected_on_top_and_available_by_signal_without_nameless"
+requires = "container"
+why = "Al buscar aparecen decenas de aparatos que solo anuncian su MAC (balizas, relojes ajenos): sin el filtro, «Dispositivos disponibles» se llena de direcciones y el que se quiere emparejar queda abajo."

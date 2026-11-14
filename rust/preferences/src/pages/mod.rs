@@ -5,6 +5,7 @@ pub mod applications;
 pub mod audio;
 pub mod backup;
 pub mod battery;
+pub mod bluetooth;
 pub mod connectivity;
 pub mod cursor;
 pub mod datetime;
