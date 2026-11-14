@@ -1,6 +1,6 @@
 [package]
 name = "churros-tour"
-version = "1.5.2"
+version = "1.5.3"
 edition = "2024"
 license.workspace = true
 
