@@ -1416,6 +1416,87 @@ expect = "test_without_pubkey_aborts"
 why = "Sin la clave pública, el hash del bundle procede del mismo manifiesto no autenticado y un origen comprometido instala código como root."
 
 [[mutation]]
+name = "test-privileged-helpers: la reparación deja las unidades del llavero en memoria"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        rm -f -- \"$SYSTEMD_DIR/$unit\" \"$SYSTEMD_DIR/multi-user.target.wants/$unit\"\n"
+replace = "        :\n"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-live-keyring]"
+why = "Sin borrar pacman-init y etc-pacman.d-gnupg.mount, el siguiente arranque vuelve a montar un llavero vacío en memoria."
+
+[[mutation]]
+name = "test-privileged-helpers: la reparación sigue sin poder desmontar el llavero"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        umount \"$GNUPG_DIR\" || die \"no se pudo desmontar $GNUPG_DIR: no se ha cambiado nada\"\n"
+replace = "        umount \"$GNUPG_DIR\" || true\n"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-live-keyring]"
+why = "Si el tmpfs sigue montado, el llavero que se inicializa es el de memoria y se pierde al reiniciar: hay que parar antes de tocar nada."
+
+[[mutation]]
+name = "test_calamares_config: el sistema instalado conserva el llavero en memoria del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = " /etc/systemd/system/etc-pacman.d-gnupg.mount"
+replace = ""
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-unit:etc-pacman.d-gnupg.mount]"
+why = "1.4/1.5: systemctl mask no podía con pacman-init (fichero en /etc/systemd/system) y el instalado montaba un tmpfs vacío en /etc/pacman.d/gnupg en cada arranque."
+
+[[mutation]]
+name = "test-privileged-helpers: tras reparar, pacman avisa en cada orden del campo de CachyOS"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    forget_cachyos_db_key\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-forgets-db-key]"
+why = "El pacman de CachyOS escribe %INSTALLED_DB% en la base de datos local; con el de Arch, cada orden avisaba «unknown key» por cada paquete (70 en la VM)."
+
+[[mutation]]
+name = "test-privileged-helpers: la reparación deja los headers de CachyOS sin uso"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "            \"$PACMAN\" -Rs --noconfirm linux-cachyos-headers \\\n                || die \"no se pudo quitar linux-cachyos-headers\"\n"
+replace = "            :\n"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-drops-headers]"
+why = "Con [cachyos] al final, linux-cachyos-headers pide el pahole de CachyOS y el de Arch va delante: cada desfase bloquearía pacman -Syu en Niri 1.4/1.5."
+
+[[mutation]]
+name = "test-privileged-helpers: la reparación cambia el pahole de los headers DKMS por el de Arch"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        if [ \"$name\" = pahole ] && [ \"$keep_pahole\" = yes ]; then"
+replace = "        if false; then"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-keeps-dkms-headers]"
+why = "Con un módulo DKMS los headers de CachyOS se quedan, y su dependencia pahole>=1:1.32-2 no la cumple el de Arch: la transacción entera fallaría."
+
+[[mutation]]
+name = "test-privileged-helpers: la reparación toca un sistema sano"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    repair_needed || return 0\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-idempotent]"
+why = "La reparación se ejecuta en cada actualización: en un sistema ya reparado (o instalado con una ISO buena) no puede hacer nada."
+
+[[mutation]]
+name = "test-privileged-helpers: la reparación empieza sin espacio libre"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    [ \"${free:-0}\" -ge \"$REPAIR_MIN_FREE_MB\" ] \\\n"
+replace = "    true \\\n"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-free-space]"
+why = "Una transacción que se queda sin disco a mitad deja paquetes a medio instalar: se comprueba antes de tocar nada."
+
+[[mutation]]
+name = "test-privileged-helpers: el actualizador instala el bundle sin reparar antes"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "\n    repair_cachyos_packages\n"
+replace = "\n    :\n"
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-before-bundle]"
+why = "Las utilidades nuevas se compilan contra el Arch actual: con pacman, mesa o python congelados podrían no arrancar."
+
+[[mutation]]
 name = "test_privileged_helpers: el actualizador acepta un manifiesto firmado de otra arquitectura"
 file = "archiso/airootfs/usr/bin/churros-update-utils"
 find = "if actual_arch != expected_arch:"

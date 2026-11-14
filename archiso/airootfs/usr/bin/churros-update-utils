@@ -43,6 +43,19 @@ esac
 BASE="https://download.churroslinux.org/churros/${UPDATE_ARCH}/"
 PUBKEY=/usr/share/churros/churros-release.pubkey
 PACMAN=/usr/bin/pacman
+PACMAN_KEY=/usr/bin/pacman-key
+PACMAN_CONF=/etc/pacman.conf
+CACHYOS_MIRRORLIST=/etc/pacman.d/cachyos-mirrorlist
+CACHYOS_KEYRING=/usr/share/pacman/keyrings/cachyos.gpg
+# Existe en el Live de archiso: ahí no hay nada que reparar (no persiste).
+LIVE_MARKER=/run/archiso
+LOCAL_DB=/var/lib/pacman/local
+GNUPG_DIR=/etc/pacman.d/gnupg
+SYSTEMD_DIR=/etc/systemd/system
+# Unidades del Live que Calamares intentaba enmascarar sin conseguirlo.
+LIVE_UNITS=(pacman-init.service etc-pacman.d-gnupg.mount choose-mirror.service livecd-talk.service)
+# Espacio libre mínimo en / para reparar (firmware, mesa, python...).
+REPAIR_MIN_FREE_MB=1500
 
 VERSION_FILE=/etc/churros-version
 EDITION_FILE=/etc/churros-edition
@@ -350,6 +363,222 @@ install_stage() {
     done
 }
 
+# ------------------------------------- reparación de la 1.4 y la 1.5 (CachyOS)
+#
+# Las ISO 1.4 y 1.5 se construyeron con [cachyos] delante de [core] (#378):
+# instalaron de CachyOS pacman, mesa, python, xz, zstd, linux-firmware,
+# archlinux-keyring... y el sistema instalado no tiene [cachyos]. Los que
+# llevan epoch (archlinux-keyring 1:, mesa 3:) no se actualizan nunca y
+# linux-cachyos (Niri) tampoco. La reparación, una vez y solo si hace falta:
+#   1. con linux-cachyos, añade [cachyos] al final de pacman.conf y su clave;
+#   2. sincroniza;
+#   3. quita linux-cachyos-headers si nada lo usa (pide el pahole de CachyOS
+#      y, con [cachyos] al final, bloquearía pacman -Syu);
+#   4. en UNA transacción (-Su) actualiza todo y vuelve a instalar desde Arch
+#      (core/pacman, extra/mesa...) cada paquete empaquetado por CachyOS que
+#      Arch también tiene. Lo que solo tiene CachyOS (linux-cachyos,
+#      cachyos-*) se queda. El hook 50-churros-snapshot hace un snapshot antes
+#      de cada transacción.
+
+# cachyos_built — paquetes instalados empaquetados por CachyOS (campo Packager).
+cachyos_built() {
+    LC_ALL=C "$PACMAN" -Qi 2>/dev/null \
+        | awk -F' *: ' '/^Name /{name=$2} /^Packager /{if ($2 ~ /CachyOS/) print name}'
+}
+
+# arch_repo_packages — "repo/nombre" de core, extra y multilib (base sincronizada).
+arch_repo_packages() {
+    LC_ALL=C "$PACMAN" -Sl 2>/dev/null \
+        | awk '$1=="core" || $1=="extra" || $1=="multilib" {print $1 "/" $2}'
+}
+
+# headers_in_use — ¿algo instalado necesita linux-cachyos-headers (DKMS)?
+headers_in_use() {
+    local required
+    required="$(LC_ALL=C "$PACMAN" -Qi linux-cachyos-headers 2>/dev/null \
+        | awk -F' *: ' '/^Required By /{print $2}')"
+    [ -n "$required" ] && [ "$required" != "None" ] && return 0
+    # Sin tuberías a grep -q: con pipefail, su salida temprana (SIGPIPE en
+    # quien escribe) haría creer que no hay DKMS y se quitarían headers en uso.
+    local installed
+    installed="$(LC_ALL=C "$PACMAN" -Qq 2>/dev/null || true)"
+    case $'\n'"$installed"$'\n' in
+        *-dkms$'\n'*) return 0 ;;
+    esac
+    return 1
+}
+
+# repair_targets — "repo/nombre" que hay que volver a instalar desde Arch.
+repair_targets() {
+    local keep_pahole="$1" name entry
+    local -A arch=()
+    while IFS= read -r entry; do
+        [ -n "$entry" ] && arch["${entry#*/}"]="$entry"
+    done < <(arch_repo_packages)
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        # Con los headers de CachyOS en uso, su pahole (>= el de Arch) se queda.
+        if [ "$name" = pahole ] && [ "$keep_pahole" = yes ]; then
+            continue
+        fi
+        if [ -n "${arch[$name]:-}" ]; then
+            printf '%s\n' "${arch[$name]}"
+        fi
+    done < <(cachyos_built)
+}
+
+# ensure_cachyos_repo — con linux-cachyos, [cachyos] al final y su clave cargada.
+ensure_cachyos_repo() {
+    "$PACMAN" -Q linux-cachyos >/dev/null 2>&1 || return 0
+    if grep -q '^\[cachyos\]' "$PACMAN_CONF"; then
+        return 0
+    fi
+    [ -f "$CACHYOS_MIRRORLIST" ] \
+        || die "linux-cachyos sin $CACHYOS_MIRRORLIST: no se puede añadir [cachyos]"
+    [ -f "$CACHYOS_KEYRING" ] \
+        || die "linux-cachyos sin la clave de CachyOS ($CACHYOS_KEYRING)"
+    echo "Añadiendo [cachyos] al final de $PACMAN_CONF (solo para el kernel)..."
+    "$PACMAN_KEY" --populate cachyos >/dev/null 2>&1 \
+        || die "no se pudo cargar la clave de CachyOS (pacman-key --populate cachyos)"
+    printf '\n# Solo lo que Arch no tiene (linux-cachyos, cachyos-*): va al final.\n[cachyos]\nInclude = %s\n' \
+        "$CACHYOS_MIRRORLIST" >> "$PACMAN_CONF"
+}
+
+# forget_cachyos_db_key — el pacman de CachyOS (con parches) apunta en la base
+# de datos local de qué repositorio salió cada paquete (%INSTALLED_DB%). El de
+# Arch no conoce ese campo: tras volver a él, cada orden avisaba «unknown key
+# '%INSTALLED_DB%'» por cada paquete que hubiese instalado el de CachyOS. Solo
+# si el pacman instalado se queja, se quita ese bloque de cada desc (escritura
+# atómica; pacman no usa ese dato).
+forget_cachyos_db_key() {
+    local warnings
+    # -Qi lee cada desc (con -Qq, que solo lista nombres, pacman no avisa).
+    # Se guarda la salida antes de buscar: con pipefail, `pacman | grep -q`
+    # falla en cuanto grep sale (SIGPIPE) y la limpieza no se hacía nunca.
+    warnings="$(LC_ALL=C "$PACMAN" -Qi 2>&1 >/dev/null || true)"
+    case "$warnings" in
+        *"unknown key '%INSTALLED_DB%'"*) ;;
+        *) return 0 ;;
+    esac
+    echo "Limpiando un campo del pacman de CachyOS en la base de datos local..."
+    CHURROS_LOCAL_DB="$LOCAL_DB" python3 - <<'PY' || die "no se pudo limpiar la base de datos local de pacman"
+import os
+import re
+import tempfile
+
+root = os.environ["CHURROS_LOCAL_DB"]
+block = re.compile(r"%INSTALLED_DB%\n[^\n]*\n(?:\n|\Z)")
+for entry in sorted(os.listdir(root)):
+    path = os.path.join(root, entry, "desc")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        continue
+    if "%INSTALLED_DB%" not in text:
+        continue
+    mode = os.stat(path).st_mode & 0o7777
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".desc.")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(block.sub("", text))
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+PY
+}
+
+# live_units_present — ¿se coló el llavero en memoria del Live en el sistema?
+live_units_present() {
+    [ -f "$SYSTEMD_DIR/etc-pacman.d-gnupg.mount" ] || [ -f "$SYSTEMD_DIR/pacman-init.service" ]
+}
+
+# fix_live_keyring — 1.4/1.5 instaladas: Calamares no pudo enmascarar
+# pacman-init (el Live lo trae como fichero en /etc/systemd/system) y cada
+# arranque montaba un tmpfs vacío en /etc/pacman.d/gnupg: llavero regenerado,
+# pacman -Sy fallando hasta que pacman-init terminaba y claves añadidas a mano
+# perdidas. Se deja el llavero del disco completo y después se quitan las
+# unidades; si algo falla antes, no se toca nada.
+fix_live_keyring() {
+    local unit escaped
+    live_units_present || return 0
+    echo "Quitando el llavero de pacman en memoria que se coló del Live..."
+    systemctl stop pacman-init.service >/dev/null 2>&1 || true
+    # Arch activa sockets de gpg dentro del llavero (gpg-agent@, keyboxd@,
+    # dirmngr@etc-pacman.d-gnupg.socket): los tiene abiertos systemd y el
+    # tmpfs no se puede desmontar ("target is busy") hasta pararlos.
+    escaped="$(systemd-escape --path "$GNUPG_DIR")"
+    systemctl stop "*@$escaped.socket" "*@$escaped.service" >/dev/null 2>&1 || true
+    gpgconf --homedir "$GNUPG_DIR" --kill all >/dev/null 2>&1 || true
+    if mountpoint -q "$GNUPG_DIR"; then
+        umount "$GNUPG_DIR" || die "no se pudo desmontar $GNUPG_DIR: no se ha cambiado nada"
+    fi
+    # El del disco lo creó Calamares; --init no borra claves y --populate
+    # añade todas las de /usr/share/pacman/keyrings (Arch y, si está, CachyOS).
+    "$PACMAN_KEY" --init >/dev/null 2>&1 || die "no se pudo inicializar el llavero de pacman en el disco"
+    "$PACMAN_KEY" --populate >/dev/null 2>&1 || die "no se pudo cargar el llavero de pacman en el disco"
+    for unit in "${LIVE_UNITS[@]}"; do
+        rm -f -- "$SYSTEMD_DIR/$unit" "$SYSTEMD_DIR/multi-user.target.wants/$unit"
+    done
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    # De vuelta los sockets de gpg, ahora sobre el llavero del disco.
+    systemctl start sockets.target >/dev/null 2>&1 || true
+}
+
+free_mb() {
+    df -Pm / | awk 'NR==2 {print $4}'
+}
+
+# repair_needed — ¿hay paquetes de CachyOS que Arch también tiene? Mira la
+# base de datos ya sincronizada (Ajustes acaba de hacer pacman -Syu).
+repair_needed() {
+    live_units_present && return 0
+    [ -n "$(repair_targets no)" ] && return 0
+    "$PACMAN" -Q linux-cachyos >/dev/null 2>&1 && ! grep -q '^\[cachyos\]' "$PACMAN_CONF"
+}
+
+repair_cachyos_packages() {
+    local keep_pahole=no free
+    local -a targets=()
+
+    am_root || return 0
+    [ -e "$LIVE_MARKER" ] && return 0
+    repair_needed || return 0
+
+    echo "Reparando paquetes del sistema que la ISO instaló desde CachyOS..."
+    free="$(free_mb)"
+    [ "${free:-0}" -ge "$REPAIR_MIN_FREE_MB" ] \
+        || die "hacen falta ${REPAIR_MIN_FREE_MB} MB libres en / para reparar (hay ${free:-0} MB): libera espacio y repite"
+
+    # Primero el llavero: lo necesita el -Sy de abajo.
+    fix_live_keyring
+    ensure_cachyos_repo
+    "$PACMAN" -Sy --noconfirm || die "no se pudieron sincronizar los repositorios"
+
+    if "$PACMAN" -Q linux-cachyos-headers >/dev/null 2>&1; then
+        if headers_in_use; then
+            echo "AVISO: linux-cachyos-headers está en uso (DKMS): se conserva, con el pahole de CachyOS."
+            keep_pahole=yes
+        else
+            echo "Quitando linux-cachyos-headers (nada lo usa; bloquearía las actualizaciones)..."
+            "$PACMAN" -Rs --noconfirm linux-cachyos-headers \
+                || die "no se pudo quitar linux-cachyos-headers"
+        fi
+    fi
+
+    mapfile -t targets < <(repair_targets "$keep_pahole")
+    if [ "${#targets[@]}" -gt 0 ]; then
+        echo "Volviendo a los paquetes de Arch: ${targets[*]}"
+    fi
+    # Una sola transacción: todo el sistema al día y, a la vez, cada paquete
+    # de CachyOS sustituido por el de Arch (aunque baje de versión).
+    "$PACMAN" -Su --noconfirm "${targets[@]}" \
+        || die "la reparación no se completó; el sistema no se ha tocado o hay un snapshot previo (Ajustes > Actualizaciones > Rollback)"
+    forget_cachyos_db_key
+    # Al disco antes de decir «listo»: btrfs escribe cada 30 s y un corte de
+    # luz justo después devolvía las unidades del Live (visto en la VM).
+    sync
+    echo "Sistema reparado. Reinicia el equipo para usar el kernel, mesa y el firmware nuevos."
+}
+
 # -------------------------------------------------------------------- main
 
 main() {
@@ -359,6 +588,10 @@ main() {
         die "este comando no acepta argumentos (el origen está fijado en $BASE)"
     fi
     trap cleanup EXIT
+
+    # Antes que el bundle: si el sistema no está sano, las utilidades nuevas
+    # (compiladas contra el Arch de hoy) podrían no arrancar.
+    repair_cachyos_packages
 
     edition="$(detect_edition)"
     echo "Comprobando utilidades de ChurrOS ($BASE) [edición: $edition]..."

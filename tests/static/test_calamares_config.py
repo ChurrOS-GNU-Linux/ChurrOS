@@ -1617,3 +1617,39 @@ class CalamaresConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveUnitsTest(unittest.TestCase):
+    """El sistema instalado no se queda con las unidades del Live.
+
+    services-systemd.conf enmascara pacman-init, choose-mirror... pero el Live
+    las trae como ficheros en /etc/systemd/system y `systemctl mask` no puede
+    crear su enlace a /dev/null encima ("File exists"): fallaba en silencio y
+    pacman-init seguía montando un tmpfs vacío en /etc/pacman.d/gnupg en cada
+    arranque del sistema instalado. La limpieza tiene que borrar el fichero.
+    """
+
+    def test_masked_live_units_are_removed(self):
+        yaml = testlib.require_module(self, "yaml")
+        modules = CALAMARES / "modules"
+        units = yaml.safe_load(testlib.read_text(modules / "services-systemd.conf")).get("units") or []
+        cleanup = " ".join(entry.get("command", "") if isinstance(entry, dict) else str(entry)
+                           for entry in yaml.safe_load(testlib.read_text(modules / "shellprocess-cleanup.conf"))["script"])
+        live = testlib.ROOT / "archiso/airootfs/etc/systemd/system"
+        wanted = {entry["name"] for entry in units if isinstance(entry, dict) and entry.get("action") == "mask"}
+        # pacman-init lo arrastra (Requires/BindsTo): sin borrarlo, el tmpfs sigue.
+        wanted.add("etc-pacman.d-gnupg.mount")
+        findings = {}
+        for unit in sorted(wanted):
+            if not (live / unit).is_file() or (live / unit).is_symlink():
+                continue
+            if f"/etc/systemd/system/{unit}" not in cleanup.split():
+                findings[f"live-unit:{unit}"] = (
+                    f"{unit} viene del Live como fichero en /etc/systemd/system: `systemctl mask` no puede "
+                    "con él y el sistema instalado lo conserva. shellprocess-cleanup.conf tiene que borrarlo")
+            link = live / "multi-user.target.wants" / unit
+            if link.is_symlink() and f"/etc/systemd/system/multi-user.target.wants/{unit}" not in cleanup.split():
+                findings[f"live-unit:{unit}:wants"] = (
+                    f"multi-user.target.wants/{unit} sigue en el sistema instalado: borra también el enlace")
+        testlib.assert_findings(self, "live-unit", findings)
+
