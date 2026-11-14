@@ -40,6 +40,9 @@ esac
 
 # Latin-1 + Latin Extended-A (á é í ó ú ñ ü...), punctuation, arrows and ↵.
 GLYPHS="0x20-0x7E,0xA0-0x17F,0x2010-0x2027,0x2030-0x203A,0x2190-0x2193,0x21B5-0x21B5"
+# The console and the entry editor (terminal-font) draw their frame with box
+# drawing characters; without them GRUB prints a fallback glyph ("AAAA").
+MONO_GLYPHS="$GLYPHS,0x2500-0x257F"
 
 need() { [ "$regen" = 1 ] || [ ! -f "$THEME_DIR/$1" ]; }
 
@@ -67,7 +70,7 @@ font inter-medium-14.pf2 14 10 "Inter Medium"
 if need jetbrains-mono-16.pf2; then
     if command -v grub-mkfont >/dev/null 2>&1 && [ -f "$MONO_TTF" ]; then
         echo "  jetbrains-mono-16.pf2"
-        grub-mkfont -o "$THEME_DIR/jetbrains-mono-16.pf2" -s 16 -r "$GLYPHS" "$MONO_TTF" 2>/dev/null
+        grub-mkfont -o "$THEME_DIR/jetbrains-mono-16.pf2" -s 16 -r "$MONO_GLYPHS" "$MONO_TTF" 2>/dev/null
     else
         echo "  ! jetbrains-mono-16.pf2: falta grub-mkfont o $MONO_TTF; se mantiene la del repositorio"
     fi

@@ -683,6 +683,25 @@ def pf2_name(path: Path) -> str | None:
     return None
 
 
+def pf2_codepoints(path: Path) -> set[int]:
+    """Códigos Unicode del índice CHIX de una PFF2 (entradas de 9 bytes: código BE, flags, offset)."""
+    data, pos = path.read_bytes(), 12
+    while pos + 8 <= len(data):
+        tag, length = data[pos:pos + 4], int.from_bytes(data[pos + 4:pos + 8], "big")
+        if tag == b"CHIX":
+            table = data[pos + 8:pos + 8 + length]
+            return {int.from_bytes(table[i:i + 4], "big") for i in range(0, len(table) - 8, 9)}
+        if tag == b"DATA":
+            break
+        pos += 8 + length
+    return set()
+
+
+# Marco de la consola (c) y del editor de entradas (e): grub-core/normal
+# (menu_text.c, term.c) dibuja con estos caracteres de la terminal-font.
+GRUB_BOX_DRAWING = {0x2500, 0x2502, 0x250C, 0x2510, 0x2514, 0x2518}
+
+
 @lru_cache(maxsize=None)
 def grub_theme_rebuilt() -> dict[Path, frozenset[str]]:
     """Ficheros que scripts/build-grub-theme.sh regenera con `cp` en cada build.
@@ -919,6 +938,13 @@ class GrubThemes(unittest.TestCase):
                     findings[f"property:{key}"] = f"{where}: propiedad global desconocida; GRUB descarta el tema"
                 if component is None and key in GRUB_ENUMS and value not in GRUB_ENUMS[key]:
                     findings[f"value:{key}"] = f"{where} = {value!r} no es uno de {sorted(GRUB_ENUMS[key])}"
+                if key == "terminal-font" and value in fonts:
+                    missing = GRUB_BOX_DRAWING - pf2_codepoints(theme_dir / fonts[value])
+                    if missing:
+                        findings[f"terminal-box:{fonts[value]}"] = (
+                            f"{where} = {value!r}: a {fonts[value]} le faltan los caracteres de caja "
+                            f"{', '.join(f'U+{c:04X}' for c in sorted(missing))}; el editor (e) y la consola (c) "
+                            "dibujan su marco con ellos (sale «AAAA»)")
                 if re.search(r"(^|[-_])font$", key) and value not in fonts and value not in GRUB_BUILTIN_FONTS:
                     findings[f"font:{value}"] = (f"{where} = {value!r}: ninguna .pf2 del tema se llama así "
                                                  f"(NAME disponibles: {sorted(fonts)}); GRUB usaría otra fuente")
