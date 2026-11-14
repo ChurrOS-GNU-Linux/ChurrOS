@@ -2358,6 +2358,16 @@ requires = "container"
 why = "The original bug: a regex such as ^org\\.churros\\.popup written as \"^org\\.churros\\.popup\" is an invalid KDL escape, and niri rejects the whole config.kdl after saving any window rule in churros-settings."
 
 [[mutation]]
+name = "churros-settings: Churr vuela con huecos imposibles de alcanzar"
+file = "rust/preferences/src/widgets/churr_game.rs"
+find = "            Some(prev) => ((prev.gap_y - 70.0).max(low), (prev.gap_y + 70.0).min(high)),"
+replace = "            Some(_) => (low, high),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings gaps_always_fit_and_follow_each_other_within_reach"
+expect = "gaps_always_fit_and_follow_each_other_within_reach"
+requires = "container"
+why = "Sin límite entre un hueco y el siguiente, a toda velocidad uno puede quedar arriba del todo y el siguiente abajo del todo: no hay aleteo que llegue y el juego se vuelve injusto."
+
+[[mutation]]
 name = "churros-settings: update_rule re-serializes the whole window-rule"
 file = "rust/preferences/src/services/window_rules_service.rs"
 find_re = "^        Some\\(rule\\) => update_block\\(&lines\\[start\\.\\.=end\\], rule\\),$"
