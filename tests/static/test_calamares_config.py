@@ -1629,6 +1629,16 @@ class LiveUnitsTest(unittest.TestCase):
     arranque del sistema instalado. La limpieza tiene que borrar el fichero.
     """
 
+    def test_the_journal_is_kept_on_disk(self):
+        yaml = testlib.require_module(self, "yaml")
+        volatile = "/etc/systemd/journald.conf.d/volatile-storage.conf"
+        if not (testlib.ROOT / "archiso/airootfs" / volatile.lstrip("/")).is_file():
+            return
+        cleanup = " ".join(entry.get("command", "") if isinstance(entry, dict) else str(entry)
+                           for entry in yaml.safe_load(testlib.read_text(CALAMARES / "modules/shellprocess-cleanup.conf"))["script"])
+        self.assertIn(volatile, cleanup.split(),
+                      "[live-volatile-journal] el instalado perdería el registro del sistema en cada reinicio")
+
     def test_masked_live_units_are_removed(self):
         yaml = testlib.require_module(self, "yaml")
         modules = CALAMARES / "modules"

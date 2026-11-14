@@ -1443,6 +1443,42 @@ expect = "[live-unit:etc-pacman.d-gnupg.mount]"
 why = "1.4/1.5: systemctl mask no podía con pacman-init (fichero en /etc/systemd/system) y el instalado montaba un tmpfs vacío en /etc/pacman.d/gnupg en cada arranque."
 
 [[mutation]]
+name = "test-privileged-helpers: la reparación deja el journal en memoria"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    persist_journal\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py RepairCachyosPackages"
+expect = "[repair-volatile-journal]"
+why = "1.4/1.5 instaladas guardan el journal solo en RAM (volatile-storage.conf del Live): tras un fallo y un reinicio no queda nada que mirar."
+
+[[mutation]]
+name = "test_calamares_config: el instalado vuelve a quedarse con el journal en memoria"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = '  - command: "rm -f /etc/systemd/journald.conf.d/volatile-storage.conf"'
+replace = '  - command: "true"'
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-volatile-journal]"
+why = "El Live trae Storage=volatile; sin borrarlo, el sistema instalado pierde el registro en cada reinicio."
+
+[[mutation]]
+name = "test-privileged-helpers: un candado de pacman de antes del arranque se queda"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = '    [ -n "$boot" ] && [ "$created" -lt "$boot" ] || return 0'
+replace = '    return 0'
+caught_by = "python3 scripts/test-privileged-helpers.py StalePacmanLock"
+expect = "[stale-pacman-lock]"
+why = "Tras un apagón a mitad de actualización, db.lck bloquea pacman para siempre: «unable to lock database» en cada intento."
+
+[[mutation]]
+name = "test-privileged-helpers: se quita el candado de un pacman en marcha"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    pacman_running && return 0\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py StalePacmanLock"
+expect = "[stale-pacman-lock]"
+why = "Dos pacman a la vez sobre la misma base de datos la corrompen."
+
+[[mutation]]
 name = "test-privileged-helpers: tras reparar, pacman avisa en cada orden del campo de CachyOS"
 file = "archiso/airootfs/usr/bin/churros-update-utils"
 find = "    forget_cachyos_db_key\n"

@@ -528,6 +528,42 @@ def world_traversable(path: Path) -> bool:
 
 @unittest.skipUnless(world_traversable(Path(tempfile.gettempdir())),
                      "el directorio temporal no es accesible para otros usuarios")
+class StalePacmanLock(unittest.TestCase):
+    """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
+
+    def run_clear(self, age_vs_boot: int, running: bool = False):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-lock-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        lock = tmp / "db.lck"
+        lock.write_text("")
+        boot = 1_700_000_000
+        os.utime(lock, (boot + age_vs_boot, boot + age_vs_boot))
+        script = (f'PACMAN_LOCK="$1"; am_root() {{ return 0; }}; boot_time() {{ echo {boot}; }}; '
+                  f'pacman_running() {{ {"return 0" if running else "return 1"}; }}; clear_stale_pacman_lock')
+        result = update_utils(script, lock)
+        return result, lock.exists()
+
+    def test_a_lock_from_before_this_boot_is_removed(self):
+        result, exists = self.run_clear(-3600)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(exists, "[stale-pacman-lock] tras un apagón, pacman quedaría bloqueado para siempre")
+        self.assertIn("candado", result.stdout)
+
+    def test_a_lock_from_this_boot_is_kept(self):
+        result, exists = self.run_clear(+60)
+        self.assertTrue(exists, "[stale-pacman-lock] puede ser de un pacman de verdad: no se toca")
+
+    def test_a_lock_is_kept_while_pacman_runs(self):
+        result, exists = self.run_clear(-3600, running=True)
+        self.assertTrue(exists, "[stale-pacman-lock] con un pacman en marcha nunca se quita")
+
+    def test_main_clears_the_lock_before_repairing(self):
+        source = (OVERLAY / "usr/bin/churros-update-utils").read_text()
+        main = source[source.index("main() {"):]
+        self.assertLess(main.index("clear_stale_pacman_lock"), main.index("repair_cachyos_packages"),
+                        "[stale-pacman-lock] la reparación necesita pacman libre")
+
+
 class RepairCachyosPackages(unittest.TestCase):
     """Reparación única de las ISO 1.4/1.5 (pacman, mesa... de CachyOS).
 
@@ -630,6 +666,7 @@ esac
         script = (
             'PACMAN="$1"; PACMAN_KEY="$2"; PACMAN_CONF="$3"; CACHYOS_MIRRORLIST="$4"; '
             'CACHYOS_KEYRING="$5"; LIVE_MARKER="$6"; LOCAL_DB="$7"; SYSTEMD_DIR="$8"; GNUPG_DIR=/gnupg; '
+            f'VOLATILE_JOURNAL="{self.tmp / "volatile-storage.conf"}"; journalctl() {{ log "journalctl $*"; }}; '
             'LOGF="$9"; am_root() { return 0; }; log() { echo "$*" >> "$LOGF"; }; '
             'systemctl() { log "systemctl $*"; }; gpgconf() { log "gpgconf $*"; }; '
             f'mountpoint() {{ log "mountpoint $*"; {"return 0" if mounted else "return 1"}; }}; '
@@ -694,6 +731,16 @@ esac
         self.assertEqual(left, ["ModemManager.service"],
                          "[repair-live-keyring] pacman-init y compañía siguen: el tmpfs vuelve en el próximo arranque")
         self.assertIn("systemctl daemon-reload", commands)
+
+    def test_the_volatile_journal_goes_away(self):
+        volatile = self.tmp / "volatile-storage.conf"
+        volatile.write_text("[Journal]\nStorage=volatile\n")
+        self.installed = {"firefox": self.INSTALLED["firefox"]}
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(volatile.exists(), "[repair-volatile-journal] el registro se seguiría perdiendo en cada reinicio")
+        commands = self.commands()
+        self.assertLess(commands.index("systemctl restart systemd-journald.service"), commands.index("journalctl --flush"))
 
     def test_the_live_keyring_is_left_alone_if_it_cannot_be_unmounted(self):
         systemd = self.live_units()

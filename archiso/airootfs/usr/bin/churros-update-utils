@@ -50,8 +50,10 @@ CACHYOS_KEYRING=/usr/share/pacman/keyrings/cachyos.gpg
 # Existe en el Live de archiso: ahí no hay nada que reparar (no persiste).
 LIVE_MARKER=/run/archiso
 LOCAL_DB=/var/lib/pacman/local
+PACMAN_LOCK=/var/lib/pacman/db.lck
 GNUPG_DIR=/etc/pacman.d/gnupg
 SYSTEMD_DIR=/etc/systemd/system
+VOLATILE_JOURNAL=/etc/systemd/journald.conf.d/volatile-storage.conf
 # Unidades del Live que Calamares intentaba enmascarar sin conseguirlo.
 LIVE_UNITS=(pacman-init.service etc-pacman.d-gnupg.mount choose-mirror.service livecd-talk.service)
 # Espacio libre mínimo en / para reparar (firmware, mesa, python...).
@@ -523,6 +525,17 @@ fix_live_keyring() {
     systemctl start sockets.target >/dev/null 2>&1 || true
 }
 
+# persist_journal — el Live guarda el journal solo en memoria
+# (journald.conf.d/volatile-storage.conf) y se coló en 1.4/1.5: el registro
+# del sistema se perdía en cada reinicio y no había forma de saber qué falló.
+persist_journal() {
+    [ -e "$VOLATILE_JOURNAL" ] || return 0
+    echo "Guardando el registro del sistema en disco (se perdía en cada reinicio)..."
+    rm -f -- "$VOLATILE_JOURNAL"
+    systemctl restart systemd-journald.service >/dev/null 2>&1 || true
+    journalctl --flush >/dev/null 2>&1 || true
+}
+
 free_mb() {
     df -Pm / | awk 'NR==2 {print $4}'
 }
@@ -531,6 +544,7 @@ free_mb() {
 # base de datos ya sincronizada (Ajustes acaba de hacer pacman -Syu).
 repair_needed() {
     live_units_present && return 0
+    [ -e "$VOLATILE_JOURNAL" ] && return 0
     [ -n "$(repair_targets no)" ] && return 0
     "$PACMAN" -Q linux-cachyos >/dev/null 2>&1 && ! grep -q '^\[cachyos\]' "$PACMAN_CONF"
 }
@@ -550,6 +564,7 @@ repair_cachyos_packages() {
 
     # Primero el llavero: lo necesita el -Sy de abajo.
     fix_live_keyring
+    persist_journal
     ensure_cachyos_repo
     "$PACMAN" -Sy --noconfirm || die "no se pudieron sincronizar los repositorios"
 
@@ -579,6 +594,29 @@ repair_cachyos_packages() {
     echo "Sistema reparado. Reinicia el equipo para usar el kernel, mesa y el firmware nuevos."
 }
 
+# --------------------------------------------- candado huérfano de pacman
+#
+# Un apagón o un reinicio a mitad de una transacción deja db.lck y pacman no lo
+# borra nunca: cada actualización siguiente falla con «unable to lock
+# database». Solo se quita si es seguro que está huérfano: se creó antes del
+# arranque actual (ningún proceso sobrevive a un reinicio) y no hay ningún
+# pacman en marcha.
+
+boot_time() { awk '/^btime /{print $2}' /proc/stat; }
+pacman_running() { pgrep -x pacman >/dev/null 2>&1; }
+
+clear_stale_pacman_lock() {
+    local created boot
+    [ -e "$PACMAN_LOCK" ] || return 0
+    am_root || return 0
+    pacman_running && return 0
+    created="$(stat -c %Y -- "$PACMAN_LOCK" 2>/dev/null)" || return 0
+    boot="$(boot_time)"
+    [ -n "$boot" ] && [ "$created" -lt "$boot" ] || return 0
+    echo "Quitando el candado de pacman de una actualización que se cortó (apagón o reinicio)..."
+    rm -f -- "$PACMAN_LOCK"
+}
+
 # -------------------------------------------------------------------- main
 
 main() {
@@ -591,6 +629,7 @@ main() {
 
     # Antes que el bundle: si el sistema no está sano, las utilidades nuevas
     # (compiladas contra el Arch de hoy) podrían no arrancar.
+    clear_stale_pacman_lock
     repair_cachyos_packages
 
     edition="$(detect_edition)"
@@ -637,6 +676,7 @@ main() {
         printf '%s\n' "$version" > "$VERSION_FILE"
     fi
 
+    sync
     echo "Utilidades de ChurrOS actualizadas a v$version."
 }
 
