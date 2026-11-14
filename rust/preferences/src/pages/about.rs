@@ -28,7 +28,7 @@ pub fn build(_navigator: gtk::Stack) -> Page {
         Some("system.svg"),
         Some(AboutService::version()),
         None,
-        None,
+        Some(crate::widgets::churr::on_version_tap()),
     ));
     system.add(&Row::new(
         "Edición",

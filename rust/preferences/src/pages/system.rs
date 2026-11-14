@@ -25,7 +25,8 @@ pub fn build(navigator: gtk::Stack) -> Page {
         Some("system.svg"),
         Some(&version_label),
         None,
-        None,
+        // Cinco toques seguidos: Churr saluda (widgets/churr.rs).
+        Some(crate::widgets::churr::on_version_tap()),
     ));
     information.add(&Row::new(
         "Edición",
