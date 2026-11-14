@@ -65,7 +65,8 @@ libxmlb
 libyaml
 xfce4-screensaver
 linux-cachyos
-linux-cachyos-headers
+cachyos-keyring
+cachyos-mirrorlist
 linux-atm
 linux-firmware
 linux-firmware-marvell

@@ -394,6 +394,14 @@ def audit(iso: Path, edition_name: str | None, audit_: Audit, workdir: Path) -> 
 
     pacman_conf = squash.read("/etc/pacman.conf") or ""
     audit_.facts["pacman_conf_has_churros_repo"] = "[churros]" in pacman_conf
+    if "linux-cachyos" in testlib.packages(item):
+        # linux-cachyos solo se actualiza con [cachyos]; al final, para que no
+        # sustituya paquetes de Arch (pacman, mesa...) en el siguiente -Syu.
+        conf_repos = re.findall(r"(?m)^\[([^\]]+)\]", pacman_conf)
+        audit_.check("/etc/pacman.conf termina en [cachyos] (el kernel se actualiza)",
+                     bool(conf_repos) and conf_repos[-1] == "cachyos", " ".join(conf_repos))
+        audit_.check("la clave de CachyOS está en la imagen",
+                     "/usr/share/pacman/keyrings/cachyos.gpg" in squash.entries)
 
     if item.installer:
         repo_settings = testlib.read_text(testlib.ROOT / "installer/calamares/settings.conf")
