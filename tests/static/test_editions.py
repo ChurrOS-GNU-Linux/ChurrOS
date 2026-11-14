@@ -431,7 +431,7 @@ class PackageListTest(unittest.TestCase):
             self.assertTrue(kernels(arch), f"no encuentro /boot/vmlinuz-* en unpackfs.conf de {arch}")
 
     def test_desktop_editions_ship_cachyos_kernel(self):
-        """niri y XFCE en x86_64 arrancan con linux-cachyos (BORE), no con linux.
+        """niri y XFCE en x86_64 arrancan con linux-cachyos (BORE), no con linux; sin headers.
 
         94a612a cambió el kernel solo en packages.x86_64: la ISO XFCE siguió
         instalando el linux de Arch sin que nada lo notara.
@@ -441,10 +441,19 @@ class PackageListTest(unittest.TestCase):
             if item.arch != "x86_64" or item.desktop not in ("niri", "xfce"):
                 continue
             have = testlib.packages(item)
-            for package in ("linux-cachyos", "linux-cachyos-headers"):
-                if package not in have:
-                    findings[f"edition-kernel:{item.id}:{package}"] = (
-                        f"{item.id}: falta '{package}' en {item.package_list}")
+            if "linux-cachyos" not in have:
+                findings[f"edition-kernel:{item.id}:linux-cachyos"] = (
+                    f"{item.id}: falta 'linux-cachyos' en {item.package_list}")
+            # Los headers piden el pahole de CachyOS (pahole>=1:1.32-2 cuando
+            # Arch tenía 1:1.32-1) y arrastran clang, llvm y lld. Con [cachyos]
+            # detrás de Arch, pacman toma el pahole de Arch y la lista no
+            # resuelve; en un sistema instalado, cada desfase así bloquearía
+            # pacman -Syu. Nada de la ISO los usa (no hay DKMS): quien los
+            # necesite los instala después.
+            if "linux-cachyos-headers" in have:
+                findings[f"edition-kernel:{item.id}:linux-cachyos-headers"] = (
+                    f"{item.id}: {item.package_list} instala linux-cachyos-headers, que depende del pahole de CachyOS: "
+                    "con [cachyos] detrás de Arch, la lista no resuelve en cuanto Arch va una revisión por detrás")
             if "linux" in have:
                 findings[f"edition-kernel:{item.id}:linux"] = (
                     f"{item.id}: {item.package_list} instala también 'linux': dos kernels y dos entradas en GRUB")
@@ -543,6 +552,40 @@ class BootLinksTest(unittest.TestCase):
         testlib.assert_findings(self, "boot-link", findings)
 
 
+class CachyosKernelTest(unittest.TestCase):
+    """Con linux-cachyos, el sistema instalado tiene que poder actualizarlo.
+
+    El kernel sale de [cachyos]. Sin ese repositorio en /etc/pacman.conf (o
+    sin su clave) pacman -Syu no lo actualiza nunca: el sistema se queda con
+    el kernel de la ISO. Va al final, igual que en el build.
+    """
+
+    def test_installed_system_keeps_updating_the_kernel(self):
+        customize = "\n".join(line.split("#", 1)[0] for line in
+                              testlib.read_text(ROOT / "branding/customize_airootfs.sh").splitlines())
+        calamares = testlib.read_text(ROOT / "installer/calamares/modules/shellprocess-pacman.conf")
+        findings = {}
+        for item in testlib.EDITIONS:
+            packages = testlib.packages(item)
+            if "linux-cachyos" not in packages:
+                continue
+            for needed in ("cachyos-keyring", "cachyos-mirrorlist"):
+                if needed not in packages:
+                    findings[f"cachyos-kernel:{item.name}:{needed}"] = (
+                        f"{item.package_list} instala linux-cachyos pero no {needed}: el sistema instalado no "
+                        "podría actualizar el kernel")
+        if any("linux-cachyos" in testlib.packages(item) for item in testlib.EDITIONS):
+            if not re.search(r"\[cachyos\]\\nInclude = /etc/pacman\.d/cachyos-mirrorlist\\n'\s*>>\s*/etc/pacman\.conf", customize):
+                findings["cachyos-kernel:customize_airootfs"] = (
+                    "customize_airootfs.sh no añade [cachyos] (Include = /etc/pacman.d/cachyos-mirrorlist) al final de "
+                    "/etc/pacman.conf: en el sistema instalado linux-cachyos no se actualiza nunca")
+            if not re.search(r"pacman-key --populate cachyos", calamares):
+                findings["cachyos-kernel:calamares-populate"] = (
+                    "shellprocess-pacman.conf no carga la clave de CachyOS (pacman-key --populate cachyos): el primer "
+                    "pacman -Syu del sistema instalado aborta por firma desconocida")
+        testlib.assert_findings(self, "cachyos-kernel", findings)
+
+
 class PacmanConfTest(unittest.TestCase):
     """pacman.<arch>.conf con el que pacstrap construye cada arquitectura."""
 
@@ -578,6 +621,16 @@ class PacmanConfTest(unittest.TestCase):
                 levels = " ".join(keys.get("SigLevel", [])).split()
                 self.assertTrue({"Optional", "Never", "PackageOptional", "PackageNever"} & set(levels),
                                 f"{path.name}: los paquetes de [churros] no van firmados; SigLevel tiene que admitirlo")
+                # [cachyos] solo puede dar lo que Arch no tiene (linux-cachyos y
+                # cachyos-*): detrás de todos los repositorios de Arch. Delante
+                # de [core] la ISO instalaba su pacman, mesa, python y
+                # archlinux-keyring, que el sistema instalado ya no actualizaba.
+                names = [name for name, _ in repos]
+                if "cachyos" in names:
+                    arch_repos = [name for name in ("core", "extra", "multilib") if name in names]
+                    late = [name for name in arch_repos if names.index(name) > names.index("cachyos")]
+                    self.assertFalse(late, f"{path.name}: [cachyos] va delante de {late}: tiene que ser el último "
+                                           "repositorio [cachyos-order]")
                 for repo, repo_keys in repos[1:]:
                     if not any(server.startswith("https://") for server in repo_keys.get("Server", [])):
                         continue

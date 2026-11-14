@@ -1928,12 +1928,12 @@ why = "Arch dropped nvidia and nvidia-dkms when the driver moved to the open ker
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
 file = "archiso/packages.x86_64"
-find_re = '^linux-cachyos\nlinux-cachyos-headers$'
-replace = "linux-zen\nlinux-zen-headers"
-caught_by = "tests.container.test_arch_repos"
+find_re = '^linux-cachyos$'
+replace = "linux-zen"
+caught_by = "python3 -m unittest -v tests.container.test_arch_repos.KernelTest"
 expect = "kernel:packages.x86_64:linux]"
 requires = "container"
-why = "Kernel swap. GRUB, syslinux, unpackfs and linux.preset hardcode vmlinuz-linux, and customize_airootfs.sh only links that name to vmlinuz-linux-cachyos when that package is installed. linux-cachyos-headers depends on linux-cachyos, so replacing the kernel line alone leaves it installed and the alias still valid. linux-zen ships vmlinuz-linux-zen and does not provide the linux package."
+why = "Kernel swap. GRUB, syslinux, unpackfs and linux.preset hardcode vmlinuz-linux, and customize_airootfs.sh only links that name to vmlinuz-linux-cachyos when that package is installed. linux-zen ships vmlinuz-linux-zen and does not provide the linux package."
 
 
 [[mutation]]
@@ -3429,7 +3429,7 @@ why = "The XFCE autostart runs at every login: it must not replace a wallpaper t
 [[mutation]]
 name = "packages.xfce: back to the stock Arch kernel"
 file = "archiso/packages.xfce.x86_64"
-find = "linux-cachyos\nlinux-cachyos-headers\n"
+find = "linux-cachyos\n"
 replace = "linux\n"
 caught_by = "tests.static.test_editions"
 expect = "edition-kernel:xfce"
@@ -3472,3 +3472,58 @@ caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p ch
 expect = "paired_first_connected_on_top_and_available_by_signal_without_nameless"
 requires = "container"
 why = "Al buscar aparecen decenas de aparatos que solo anuncian su MAC (balizas, relojes ajenos): sin el filtro, «Dispositivos disponibles» se llena de direcciones y el que se quiere emparejar queda abajo."
+
+[[mutation]]
+name = "test_editions: [cachyos] vuelve delante de los repos de Arch"
+file = "archiso/pacman.x86_64.conf"
+find = "#[core-testing]\n#Include = /etc/pacman.d/mirrorlist\n\n[core]"
+replace = "[cachyos]\nSigLevel = Required DatabaseOptional\nServer = https://mirror.cachyos.org/repo/$arch/$repo\n\n#[core-testing]\n#Include = /etc/pacman.d/mirrorlist\n\n[core]"
+caught_by = "tests.static.test_editions"
+expect = "[cachyos-order]"
+why = "Delante de [core], la ISO 1.4/1.5 instaló pacman, mesa, python y archlinux-keyring de CachyOS; el sistema instalado (sin [cachyos]) no los actualizaba más y, con epoch, nunca."
+
+[[mutation]]
+name = "test_editions: el sistema instalado sin [cachyos] (el kernel no se actualiza)"
+file = "branding/customize_airootfs.sh"
+find = "        printf '\\n[cachyos]\\nInclude = /etc/pacman.d/cachyos-mirrorlist\\n' >> /etc/pacman.conf\n"
+replace = "        :\n"
+caught_by = "tests.static.test_editions"
+expect = "[cachyos-kernel:customize_airootfs]"
+why = "linux-cachyos sale de [cachyos]: sin ese repositorio en /etc/pacman.conf, pacman -Syu no lo actualiza nunca y el sistema se queda con el kernel de la ISO."
+
+[[mutation]]
+name = "test_editions: Calamares no carga la clave de CachyOS"
+file = "installer/calamares/modules/shellprocess-pacman.conf"
+find = "  - command: \"[ ! -f /usr/share/pacman/keyrings/cachyos.gpg ] || pacman-key --populate cachyos\"\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "[cachyos-kernel:calamares-populate]"
+why = "Con [cachyos] en /etc/pacman.conf y sin su clave, el primer pacman -Syu del sistema instalado aborta por firma desconocida."
+
+[[mutation]]
+name = "test_editions: XFCE con linux-cachyos pero sin cachyos-mirrorlist"
+file = "archiso/packages.xfce.x86_64"
+find = "cachyos-mirrorlist\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "[cachyos-kernel:xfce:cachyos-mirrorlist]"
+why = "Sin la lista de mirrors, [cachyos] no tiene servidores en el sistema instalado y el kernel no se actualiza."
+
+[[mutation]]
+name = "test_arch_repos: un paquete de Arch vuelve a salir de [cachyos]"
+file = "archiso/pacman.x86_64.conf"
+find = "#[core-testing]\n#Include = /etc/pacman.d/mirrorlist\n\n[core]"
+replace = "[cachyos]\nSigLevel = Required DatabaseOptional\nServer = https://mirror.cachyos.org/repo/$arch/$repo\n\n#[core-testing]\n#Include = /etc/pacman.d/mirrorlist\n\n[core]"
+caught_by = "python3 -m unittest -v tests.container.test_arch_repos.CachyosRepoTest"
+expect = "cachyos-leak"
+requires = "container"
+why = "La prueba de verdad: pacman resuelve las listas contra los repos reales y ningún paquete que exista en Arch puede salir de [cachyos]."
+
+[[mutation]]
+name = "test_editions: linux-cachyos-headers vuelve a la lista de Niri"
+file = "archiso/packages.x86_64"
+find = "linux-cachyos\n"
+replace = "linux-cachyos\nlinux-cachyos-headers\n"
+caught_by = "tests.static.test_editions"
+expect = "[edition-kernel:niri/x86_64:linux-cachyos-headers]"
+why = "Los headers piden el pahole de CachyOS (pahole>=1:1.32-2 cuando Arch tenía 1:1.32-1): con [cachyos] detrás de Arch la lista no resuelve y, en un sistema instalado, cada desfase bloquea pacman -Syu."
