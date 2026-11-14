@@ -1,6 +1,6 @@
 [package]
 name = "churros-popup"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2024"
 license.workspace = true
 
