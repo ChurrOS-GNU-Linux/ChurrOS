@@ -776,3 +776,48 @@ window.churr-egg.light {
 .churr-egg-button:hover {
     background-color: var(--accent-strong);
 }
+
+/* Minijuego «Churr vuela» (widgets/churr_game.rs). */
+.churr-egg-play {
+    background-color: var(--accent-strong);
+}
+
+window.churr-game {
+    background-color: #ffd5b0;
+}
+
+.churr-game-title {
+    font-size: 30px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 3px 0 #5b3b2f, 0 0 12px rgba(91, 59, 47, 0.4);
+}
+
+.churr-game-hint {
+    font-size: 14px;
+    font-weight: 700;
+    color: #5b3b2f;
+    background-color: rgba(255, 251, 244, 0.85);
+    border-radius: 999px;
+    padding: 6px 14px;
+}
+
+.churr-game-card {
+    font-size: 16px;
+    font-weight: 800;
+    color: #5b3b2f;
+    background-color: rgba(255, 251, 244, 0.93);
+    border: 3px solid #5b3b2f;
+    border-radius: 16px;
+    padding: 16px 22px;
+}
+
+.churr-game-mute {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 999px;
+    font-weight: 900;
+    color: #5b3b2f;
+    background-color: rgba(255, 251, 244, 0.85);
+}

@@ -303,7 +303,7 @@ pub fn particles_at(t: f64, canvas_w: f64, canvas_h: f64) -> Vec<Particle> {
 // ------------------------------------------------------------------
 
 /// Fotograma ya rasterizado (un píxel de superficie por píxel del sprite).
-fn rasterize(sprite: &Sprite, layers: &[&str]) -> Option<cairo::ImageSurface> {
+pub(crate) fn rasterize(sprite: &Sprite, layers: &[&str]) -> Option<cairo::ImageSurface> {
     let pixels = sprite.compose(layers);
     let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, sprite.width as i32, sprite.height as i32).ok()?;
     let stride = surface.stride() as usize;
@@ -465,12 +465,28 @@ pub fn show(parent: Option<&gtk::Window>) {
 
     let close = gtk::Button::with_label("¡Hola, Churr!");
     close.add_css_class("churr-egg-button");
-    close.set_halign(gtk::Align::Center);
-    close.set_margin_top(10);
     {
         let window = window.clone();
         close.connect_clicked(move |_| window.close());
     }
+    // El minijuego (widgets/churr_game.rs): se abre sobre la ventana de
+    // Ajustes y cierra esta.
+    let play = gtk::Button::with_label("¡Jugar con Churr!");
+    play.add_css_class("churr-egg-button");
+    play.add_css_class("churr-egg-play");
+    {
+        let window = window.clone();
+        let parent = parent.cloned();
+        play.connect_clicked(move |_| {
+            window.close();
+            super::churr_game::open(parent.as_ref());
+        });
+    }
+    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    buttons.set_halign(gtk::Align::Center);
+    buttons.set_margin_top(10);
+    buttons.append(&close);
+    buttons.append(&play);
 
     let keys = gtk::EventControllerKey::new();
     {
@@ -488,7 +504,7 @@ pub fn show(parent: Option<&gtk::Window>) {
     content.append(&area);
     content.append(&title);
     content.append(&subtitle);
-    content.append(&close);
+    content.append(&buttons);
     window.set_child(Some(&content));
 
     if animated {

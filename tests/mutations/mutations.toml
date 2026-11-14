@@ -3472,3 +3472,13 @@ caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p ch
 expect = "paired_first_connected_on_top_and_available_by_signal_without_nameless"
 requires = "container"
 why = "Al buscar aparecen decenas de aparatos que solo anuncian su MAC (balizas, relojes ajenos): sin el filtro, «Dispositivos disponibles» se llena de direcciones y el que se quiere emparejar queda abajo."
+
+[[mutation]]
+name = "churros-settings: Churr vuela con huecos imposibles de alcanzar"
+file = "rust/preferences/src/widgets/churr_game.rs"
+find = "            Some(prev) => ((prev.gap_y - 70.0).max(low), (prev.gap_y + 70.0).min(high)),"
+replace = "            Some(_) => (low, high),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings gaps_always_fit_and_follow_each_other_within_reach"
+expect = "gaps_always_fit_and_follow_each_other_within_reach"
+requires = "container"
+why = "Sin límite entre un hueco y el siguiente, a toda velocidad uno puede quedar arriba del todo y el siguiente abajo del todo: no hay aleteo que llegue y el juego se vuelve injusto."
