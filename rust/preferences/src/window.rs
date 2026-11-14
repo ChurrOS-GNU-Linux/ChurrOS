@@ -115,6 +115,10 @@ impl PreferencesWindow {
         sidebar_revealer.set_transition_type(gtk::RevealerTransitionType::SlideRight);
         sidebar_revealer.set_reveal_child(true);
         sidebar_revealer.set_child(Some(&sidebar.borrow().root));
+        // Ancho fijo: las etiquetas de la barra llevan hexpand y GTK lo sube
+        // hasta aquí, así que la barra se quedaba con parte del sobrante y su
+        // ancho cambiaba según lo que midiesen los textos de cada página.
+        sidebar_revealer.set_hexpand(false);
         root.append(&sidebar_revealer);
 
         // Cablear el buscador de la sidebar (el Search no puede conectar su

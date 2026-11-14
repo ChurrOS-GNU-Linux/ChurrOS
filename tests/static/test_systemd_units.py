@@ -535,6 +535,23 @@ class ServicesTest(unittest.TestCase):
         findings.update(syntax)
         testlib.assert_findings(self, "unit-enable", findings)
 
+    def test_live_enables_bluetooth(self):
+        """Con bluez en la lista, la Live arranca bluetoothd.
+
+        Si no, Ajustes > Conectividad dice «No se encontró un adaptador
+        Bluetooth» aunque el portátil lo tenga, y no se puede emparejar nada
+        hasta instalar (Calamares sí lo activa). Sin adaptador no arranca:
+        bluetooth.service lleva ConditionPathIsDirectory=/sys/class/bluetooth.
+        """
+        enables, _ = self.services_sh()
+        with_bluez = sorted({item.name for item in testlib.EDITIONS if "bluez" in testlib.packages(item)})
+        findings = {}
+        if with_bluez and "bluetooth.service" not in enables:
+            findings["live-bluetooth:services.sh"] = (
+                f"{', '.join(with_bluez)} instalan bluez, pero root/scripts/services.sh no hace "
+                "`enable_unit bluetooth.service`: en la Live Ajustes no ve el adaptador")
+        testlib.assert_findings(self, "live-bluetooth", findings)
+
     def test_masked_units_are_known(self):
         """`systemctl mask` crea el enlace aunque la unidad no exista: un nombre
         mal escrito deja la unidad real sin enmascarar. No hace falta que esté en

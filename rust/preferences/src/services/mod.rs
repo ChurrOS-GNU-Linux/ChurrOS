@@ -3,6 +3,7 @@ pub mod accent;
 pub mod applications;
 pub mod audio;
 pub mod backup_service;
+pub mod bluez;
 pub mod connectivity;
 pub mod cursor;
 pub mod datetime;

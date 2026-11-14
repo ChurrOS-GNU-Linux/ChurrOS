@@ -38,6 +38,9 @@ systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 enable_unit NetworkManager.service
 enable_unit greetd.service
 enable_unit ufw.service
+# Bluetooth en el Live (Ajustes > Conectividad empareja dispositivos). Sin
+# adaptador no arranca: la unidad lleva ConditionPathIsDirectory=/sys/class/bluetooth.
+enable_unit bluetooth.service
 # Cierra la app que agota la memoria antes de que el equipo se congele
 # (user@.service.d/10-churros-oomd.conf, -.slice.d/10-churros-oomd.conf).
 enable_unit systemd-oomd.service
