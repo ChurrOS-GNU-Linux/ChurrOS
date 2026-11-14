@@ -461,7 +461,7 @@ Escribe en `~/.cache/churros-theme/` ficheros de color con la paleta fija de Chu
 
 **Path:** `/usr/local/bin/churros-update-auto`
 
-Actualiza el sistema **sin preguntar**. Ejecuta, a través de `churros-pkexec`:
+Como usuario (el timer de escritorio) **solo comprueba y avisa**: `checkupdates`, `flatpak remote-ls --updates` y la versión del manifiesto, y una notificación «Hay actualizaciones» que manda a Ajustes > Actualizaciones (#142). Como root (el timer de sistema de la edición server) actualiza **sin preguntar**. Ejecuta, a través de `churros-pkexec`:
 
 1. `pacman -Syu --noconfirm`
 2. `flatpak update -y`
