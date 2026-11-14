@@ -713,3 +713,37 @@ window.reset-confirm.light {
     font-size: 14px;
     color: var(--text-secondary);
 }
+
+/* Huevo de pascua: cinco toques en «Versión» y aparece Churr (widgets/churr.rs). */
+/* Opaca: el cristal de las demás ventanas dejaba ver Ajustes detrás del texto. */
+window.churr-egg {
+    background-color: #17120f;
+    background-image: radial-gradient(circle at 50% 32%, rgba(249, 115, 22, 0.22), transparent 68%);
+}
+
+window.churr-egg.light {
+    background-color: #fdf6ef;
+    background-image: radial-gradient(circle at 50% 32%, rgba(249, 115, 22, 0.16), transparent 68%);
+}
+
+.churr-egg-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+}
+
+.churr-egg-subtitle {
+    opacity: 0.8;
+}
+
+.churr-egg-button {
+    padding: 8px 22px;
+    border-radius: 999px;
+    background-color: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+}
+
+.churr-egg-button:hover {
+    background-color: var(--accent-strong);
+}

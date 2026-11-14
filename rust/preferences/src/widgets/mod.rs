@@ -1,3 +1,4 @@
+pub mod churr;
 pub mod color_picker;
 pub mod combo_row;
 pub mod group;
