@@ -37,7 +37,6 @@ less
 libfido2
 libusb-compat
 linux-cachyos
-linux-cachyos-headers
 linux-atm
 linux-firmware
 linux-firmware-marvell

@@ -567,6 +567,35 @@ class PackageListsTest(unittest.TestCase):
         testlib.assert_findings(self, f"base-depends:{HOST_ARCH}", findings)
 
 
+class CachyosRepoTest(unittest.TestCase):
+    """[cachyos] solo aporta lo que Arch no tiene.
+
+    Si un paquete que también está en core/extra/multilib sale de [cachyos]
+    (porque el repositorio va delante en pacman.<arch>.conf), la ISO lleva la
+    versión de CachyOS y el sistema instalado, con Arch delante, ya no la
+    actualiza: con epoch (archlinux-keyring 1:, mesa 3:) nunca. Así salieron
+    la 1.4 y la 1.5.
+    """
+
+    def test_cachyos_only_provides_what_arch_lacks(self):
+        for item in editions():
+            source = repos(item.arch)
+            if "cachyos" not in source.names:
+                continue
+            with self.subTest(lista=item.package_list):
+                arch_repos = [name for name in ("core", "extra", "multilib") if name in source.names]
+                arch_names = set(source.pacman("-Sql", *arch_repos).stdout.split())
+                self.assertTrue(arch_names, f"no se pudieron listar {arch_repos} de {item.arch}")
+                findings = {
+                    f"cachyos-leak:{list_name(item)}:{name}": (
+                        f"{item.package_list}: '{name}' sale de [cachyos] pero también está en {'/'.join(arch_repos)}: "
+                        "el sistema instalado no lo actualizaría. [cachyos] tiene que ir detrás de los repos de Arch")
+                    for name, repo in sorted(closure(item).packages.items())
+                    if repo == "cachyos" and name in arch_names
+                }
+                testlib.assert_findings(self, f"cachyos-leak:{list_name(item)}", findings)
+
+
 class KernelTest(unittest.TestCase):
     """El kernel que nombran los arranques es el que instala la lista."""
 

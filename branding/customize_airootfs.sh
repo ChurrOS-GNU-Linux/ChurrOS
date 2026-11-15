@@ -70,6 +70,23 @@ if [ -f /etc/pacman.conf ] && grep -q '^#\[multilib\]' /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
 fi
 
+# [cachyos] al final de /etc/pacman.conf (Live y, por unpackfs, el sistema
+# instalado), igual que en archiso/pacman.x86_64.conf: sin él linux-cachyos
+# no se actualizaba nunca. Al final, solo da lo que Arch no tiene; delante de
+# [core] cambiaría pacman, mesa, python... por los de CachyOS en el siguiente
+# pacman -Syu. La clave la carga pacman-key --populate (pacman-init en el Live,
+# shellprocess@pacman-init al instalar), desde cachyos-keyring.
+if pacman -Q linux-cachyos >/dev/null 2>&1; then
+    [ -f /etc/pacman.d/cachyos-mirrorlist ] \
+        || { echo "ERROR: linux-cachyos sin cachyos-mirrorlist: el kernel no se podría actualizar" >&2; exit 1; }
+    [ -f /usr/share/pacman/keyrings/cachyos.gpg ] \
+        || { echo "ERROR: linux-cachyos sin cachyos-keyring: pacman no podría verificar [cachyos]" >&2; exit 1; }
+    if ! grep -q '^\[cachyos\]' /etc/pacman.conf; then
+        printf '\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n' >> /etc/pacman.conf
+    fi
+    echo "✓ [cachyos] configured (after the Arch repositories)."
+fi
+
 echo "Configuring desktop..."
 bash /root/scripts/desktop.sh
 
