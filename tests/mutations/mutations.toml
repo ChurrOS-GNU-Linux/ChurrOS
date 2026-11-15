@@ -3717,3 +3717,21 @@ replace = "linux-cachyos\nlinux-cachyos-headers\n"
 caught_by = "tests.static.test_editions"
 expect = "[edition-kernel:niri/x86_64:linux-cachyos-headers]"
 why = "Los headers piden el pahole de CachyOS (pahole>=1:1.32-2 cuando Arch tenía 1:1.32-1): con [cachyos] detrás de Arch la lista no resuelve y, en un sistema instalado, cada desfase bloquea pacman -Syu."
+
+[[mutation]]
+name = "coderabbit-fix-ci: only issues: write to comment on a pull request"
+file = ".github/workflows/coderabbit-fix-ci.yml"
+find = "  pull-requests: write\n"
+replace = "  pull-requests: read\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow-pr-comment]"
+why = "GitHub answers 403 'Resource not accessible by integration': the @coderabbitai fix-ci comment never reaches the PR."
+
+[[mutation]]
+name = "visual-qa-report: the PR comment loses pull-requests: write"
+file = ".github/workflows/visual-qa-report.yml"
+find = "  pull-requests: write\n"
+replace = "  pull-requests: read\n"
+caught_by = "tests.static.test_repo_wiring"
+expect = "[workflow-pr-comment]"
+why = "pr-comment.sh would get 403 and the visual QA report would never be posted."

@@ -545,6 +545,9 @@ def workflows() -> tuple[tuple[str, dict], ...]:
     return tuple(found)
 
 
+PR_COMMENT_RE = re.compile(r"createComment|updateComment|gh pr comment|pr-comment\.sh")
+
+
 def jobs(data: dict) -> dict:
     value = data.get("jobs")
     return value if isinstance(value, dict) else {}
@@ -1115,6 +1118,27 @@ class WorkflowHygieneTest(unittest.TestCase):
                 findings[f"workflow:permissions:{name}"] = (
                     f"{name} no declara `permissions:`: el GITHUB_TOKEN recibe los permisos por defecto del repo")
         testlib.assert_findings(self, "workflow:permissions", findings)
+
+    def test_pr_commenters_can_write_pull_requests(self):
+        """Comentar en un PR (también por la API de issues) exige `pull-requests: write`.
+
+        Con solo `issues: write` GitHub responde 403 «Resource not accessible
+        by integration» y el comentario no llega (visto en coderabbit-fix-ci).
+        """
+        findings = {}
+        for name, data in workflows():
+            for job_id, job in jobs(data).items():
+                steps = [s for s in job.get("steps") or [] if isinstance(s, dict)]
+                code = "\n".join(str(s.get("run", "") or "") + "\n" + str((s.get("with") or {}).get("script", "") or "")
+                                 for s in steps)
+                if not PR_COMMENT_RE.search(code):
+                    continue
+                perms = job.get("permissions", data.get("permissions"))
+                level = perms.get("pull-requests") if isinstance(perms, dict) else perms
+                if level not in ("write", "write-all"):
+                    findings[f"workflow:pr-comment:{name}:{job_id}"] = (
+                        f"[workflow-pr-comment] {name}: el job '{job_id}' comenta en un PR sin `pull-requests: write`")
+        testlib.assert_findings(self, "workflow:pr-comment", findings)
 
     def test_timeouts(self):
         findings = {}
