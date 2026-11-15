@@ -12,6 +12,10 @@ use crate::widgets::row::Row;
 use crate::widgets::slider_row::SliderRow;
 use crate::widgets::switch_row::SwitchRow;
 
+/// Diálogo rápido de XFCE para proyectar. Sin `--minimal` abre la
+/// herramienta completa, donde duplicar está escondido.
+const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--minimal"];
+
 pub fn build(navigator: gtk::Stack) -> Page {
     let edition = churros_services::version::edition();
     let is_xfce = edition.contains("xfce");
@@ -30,11 +34,27 @@ pub fn build(navigator: gtk::Stack) -> Page {
     );
 
     if is_xfce {
+        // Proyectar: el diálogo rápido de XFCE (como Super+P en Windows) con
+        // «solo esta pantalla», «duplicar», «extender» y «solo la externa».
+        // Guarda el perfil como lo haría xfce4-display-settings.
+        let mut project = Group::new("Proyectar en otra pantalla");
+        project.add(&Row::new(
+            "Proyectar o duplicar",
+            Some("Para un monitor, una TV o un proyector por HDMI: solo esta pantalla, duplicar, extender o solo la externa"),
+            Some("display.svg"),
+            None,
+            None,
+            Some(Box::new(|_| {
+                let _ = std::process::Command::new(PROJECT_ARGV[0]).args(&PROJECT_ARGV[1..]).spawn();
+            })),
+        ));
+        page.add(project.widget());
+
         let mut group = Group::new("Herramientas externas");
         let btn = crate::widgets::row::Row::new(
             "Abrir Ajustes de Pantalla",
             Some("Lanza xfce4-display-settings"),
-            Some("video-display-symbolic"),
+            Some("display.svg"),
             None,
             None,
             Some(Box::new(|_| {
@@ -194,4 +214,15 @@ pub fn build(navigator: gtk::Stack) -> Page {
     }
 
     page
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PROJECT_ARGV;
+
+    #[test]
+    fn project_opens_the_quick_dialog() {
+        // [xfce-project-minimal] el diálogo de cuatro botones, no la herramienta completa
+        assert_eq!(PROJECT_ARGV, ["xfce4-display-settings", "--minimal"], "[xfce-project-minimal]");
+    }
 }
