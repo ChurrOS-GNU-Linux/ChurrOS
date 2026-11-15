@@ -76,6 +76,45 @@ fn user_systemd_dir() -> PathBuf {
     home().join(".config").join("systemd").join("user")
 }
 
+/// Paquetes instalados empaquetados por CachyOS que Arch también tiene
+/// (`pacman -Qi` y `pacman -Sl`). Las ISO 1.4 y 1.5 los instalaron con
+/// [cachyos] delante de [core] y ya no se actualizan; churros-update-utils
+/// los devuelve a Arch (reparación única). Lo que solo tiene CachyOS
+/// (linux-cachyos, cachyos-*) no cuenta.
+fn repair_candidates(query_info: &str, sync_list: &str) -> Vec<String> {
+    let arch: std::collections::HashSet<&str> = sync_list
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("core" | "extra" | "multilib"), Some(name)) => Some(name),
+                _ => None,
+            }
+        })
+        .collect();
+    let mut name: Option<&str> = None;
+    let mut out = Vec::new();
+    for line in query_info.lines() {
+        let Some((key, value)) = line.split_once(':') else { continue };
+        match key.trim() {
+            "Name" => name = Some(value.trim()),
+            "Packager" if value.contains("CachyOS") => {
+                if let Some(n) = name.take().filter(|n| arch.contains(n)) {
+                    out.push(n.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out
+}
+
+/// ¿linux-cachyos instalado sin [cachyos] en pacman.conf? (el kernel no se actualiza)
+fn kernel_without_repo(installed_kernel: bool, pacman_conf: &str) -> bool {
+    installed_kernel && !pacman_conf.lines().any(|line| line.trim() == "[cachyos]")
+}
+
 /// Ejecuta un comando con timeout y captura stdout (salida pequeña).
 fn run_capture(args: &[&str], timeout_secs: u64) -> Option<String> {
     let mut child = Command::new(args[0])
@@ -236,7 +275,9 @@ fn run_streaming(args: &[&str], timeout: Duration, cb: &dyn Fn(&str)) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(line) => cb(&line),
+            // lines() quita el salto: sin devolverlo, el registro de Ajustes
+            // juntaba todas las líneas en un solo párrafo.
+            Ok(line) => cb(&format!("{line}\n")),
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
                 unsafe {
@@ -405,6 +446,31 @@ impl UpdateService {
             Duration::from_secs(10 * 60),
             cb,
         )
+    }
+
+    /// Reparación pendiente de las ISO 1.4/1.5: paquetes de CachyOS que Arch
+    /// tiene (y, si el kernel no tiene repositorio, linux-cachyos). Vacía si
+    /// no hay nada que hacer o en el Live.
+    pub fn repair_pending() -> Vec<String> {
+        if std::path::Path::new("/run/archiso").exists() {
+            return Vec::new();
+        }
+        let query = churros_services::run(&["pacman", "-Qi"], 30_000).map(|r| r.1).unwrap_or_default();
+        let sync = churros_services::run(&["pacman", "-Sl"], 30_000).map(|r| r.1).unwrap_or_default();
+        let mut pending = repair_candidates(&query, &sync);
+        let kernel = churros_services::run(&["pacman", "-Q", "linux-cachyos"], 5_000).is_some_and(|r| r.0 == 0);
+        let conf = std::fs::read_to_string("/etc/pacman.conf").unwrap_or_default();
+        if kernel_without_repo(kernel, &conf) {
+            pending.push("linux-cachyos".to_string());
+        }
+        pending
+    }
+
+    /// 1.4/1.5 instaladas: se coló el llavero de pacman en memoria del Live
+    /// (se regenera en cada arranque). La reparación lo quita.
+    pub fn live_keyring_pending() -> bool {
+        !std::path::Path::new("/run/archiso").exists()
+            && std::path::Path::new("/etc/systemd/system/etc-pacman.d-gnupg.mount").exists()
     }
 
     // ------------------------------------------------ snapshots (rollback)
@@ -586,6 +652,38 @@ impl UpdateService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streamed_lines_keep_their_newline() {
+        let out = std::cell::RefCell::new(String::new());
+        let ok = run_streaming(
+            &["sh", "-c", "printf 'uno\\ndos\\n'"],
+            Duration::from_secs(10),
+            &|line| out.borrow_mut().push_str(line),
+        );
+        assert!(ok);
+        assert_eq!(out.into_inner(), "uno\ndos\n", "cada línea del registro, en su línea");
+    }
+
+    #[test]
+    fn repair_finds_cachyos_builds_that_arch_also_ships() {
+        let query = "Name            : pacman\nVersion         : 7.1.0.r9.g54d9411-6\nPackager        : CachyOS <admin@cachyos.org>\n\n\
+                     Name            : mesa\nPackager        : CachyOS <admin@cachyos.org>\n\n\
+                     Name            : linux-cachyos\nPackager        : CachyOS <admin@cachyos.org>\n\n\
+                     Name            : firefox\nPackager        : Jan Alexander Steffens (heftig) <heftig@archlinux.org>\n\n\
+                     Name            : lib32-mesa\nPackager        : CachyOS <admin@cachyos.org>\n";
+        let sync = "core pacman 7.1.0-3\nextra mesa 1:26.2.7-1\nextra firefox 160.0-1\n\
+                    multilib lib32-mesa 1:26.2.7-1\ncachyos linux-cachyos 7.3.3-1\ncachyos mesa 3:26.2.6-1\n";
+        assert_eq!(repair_candidates(query, sync), ["lib32-mesa", "mesa", "pacman"]);
+        // Sistema sano (ISO nueva o ya reparado): nada.
+        let healthy = "Name            : pacman\nPackager        : Pierre Schmitz <pierre@archlinux.org>\n";
+        assert!(repair_candidates(healthy, sync).is_empty());
+        // Sin base de datos sincronizada no se puede saber: nada (no hay falsa alarma).
+        assert!(repair_candidates(query, "").is_empty());
+        assert!(kernel_without_repo(true, "[core]\nInclude = x\n"));
+        assert!(!kernel_without_repo(true, "[core]\n\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"));
+        assert!(!kernel_without_repo(false, "[core]\n"));
+    }
 
     #[test]
     fn paccache_summaries() {

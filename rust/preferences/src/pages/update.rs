@@ -46,6 +46,14 @@ pub fn build(navigator: gtk::Stack) -> Page {
     let churros_status: Rc<RefCell<Option<Row>>> = Rc::new(RefCell::new(None));
     let log_view: Rc<RefCell<Option<gtk::TextView>>> = Rc::new(RefCell::new(None));
 
+    // ---------- Reparación pendiente (ISO 1.4/1.5) ----------
+    // Oculto salvo que haga falta. La detección lee pacman -Qi y -Sl (sin
+    // root) en un hilo: no frena la página.
+    let repair_group = Rc::new(RefCell::new(Group::new("Reparación del sistema")));
+    repair_group.borrow().widget().set_visible(false);
+    page.add(repair_group.borrow().widget());
+    show_pending_repair(&repair_group, &log_view);
+
     // ---------- Automáticas ----------
     let mut auto_group = Group::new("Avisos de actualización");
 
@@ -448,6 +456,66 @@ fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
         }
+    });
+}
+
+/// Si la ISO 1.4/1.5 dejó paquetes de CachyOS que ya no se actualizan, lo
+/// dice y ofrece repararlo: la reparación la hace churros-update-utils (root)
+/// dentro de «Actualizar ahora». Nada ocurre sin que el usuario lo pulse.
+fn show_pending_repair(group: &Rc<RefCell<Group>>, log_view: &Rc<RefCell<Option<gtk::TextView>>>) {
+    let (tx, rx) = std::sync::mpsc::channel::<(Vec<String>, bool)>();
+    std::thread::spawn(move || {
+        let _ = tx.send((UpdateService::repair_pending(), UpdateService::live_keyring_pending()));
+    });
+    let group = Rc::clone(group);
+    let log_view = Rc::clone(log_view);
+    glib::timeout_add_local(std::time::Duration::from_millis(200), move || match rx.try_recv() {
+        Ok((pending, keyring)) => {
+            if !pending.is_empty() || keyring {
+                let mut g = group.borrow_mut();
+                if keyring {
+                    g.add(&Row::new(
+                        "El llavero de pacman se borra en cada arranque",
+                        Some("Un servicio de la sesión en vivo se quedó en el sistema: hasta que termina de \
+                              regenerarlo, las actualizaciones pueden fallar por firmas. Se arregla al actualizar."),
+                        Some("system.svg"),
+                        None,
+                        None,
+                        None,
+                    ));
+                }
+                let examples: Vec<&str> = pending.iter().take(3).map(String::as_str).collect();
+                let more = if pending.len() > 3 { "…" } else { "" };
+                if !pending.is_empty() {
+                    g.add(&Row::new(
+                        &format!("{} paquetes del sistema no se actualizan", pending.len()),
+                        Some(&format!(
+                            "La ISO los instaló desde CachyOS ({}{more}). Al actualizar se cambian por los de Arch \
+                             y, con el kernel de CachyOS, se activa su repositorio. Antes se hace un snapshot; \
+                             al terminar, reinicia.",
+                            examples.join(", ")
+                        )),
+                        Some("system.svg"),
+                        None,
+                        None,
+                        None,
+                    ));
+                }
+                let log = Rc::clone(&log_view);
+                g.add(&Row::new(
+                    "Reparar y actualizar ahora",
+                    Some("Pide la contraseña de administrador; puede tardar unos minutos"),
+                    Some("system.svg"),
+                    None,
+                    None,
+                    Some(Box::new(move |button| run_update(&log, button))),
+                ));
+                g.widget().set_visible(true);
+            }
+            glib::ControlFlow::Break
+        }
+        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
     });
 }
 

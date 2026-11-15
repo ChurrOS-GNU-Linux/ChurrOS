@@ -451,6 +451,19 @@ La extracción se hace en un directorio de stage y después se instala fichero a
 
 El manifiesto se descarga antes de verificar su firma (#139). Si existe `/usr/share/churros/churros-release.pubkey`, el manifiesto debe venir firmado por minisign y la actualización se aborta si la firma no valida o si falta `minisign`. Sin clave publicada solo se avisa; que la firma sea obligatoria está pendiente (#139, #141).
 
+Antes del bundle, y solo como root fuera del Live, hace dos cosas más:
+
+- **Candado huérfano de pacman.** Un apagón a mitad de transacción deja `/var/lib/pacman/db.lck` y pacman no lo borra nunca. Se quita solo si se creó antes del arranque actual y no hay ningún `pacman` en marcha.
+- **Imágenes de arranque** (después de la reparación, en cada actualización). Un apagón mientras corren los hooks de pacman deja el kernel nuevo instalado pero sin `modules.dep` y con `/boot/initramfs-<kernel>.img` borrado, a medias o del kernel anterior; pacman no repite los hooks y ese kernel no arranca (visto en la VM). Para cada `/usr/lib/modules/*/pkgbase` se comprueba que existe `modules.dep`, que `/boot/vmlinuz-<kernel>` es el del paquete y que `lsinitcpio` lee el initramfs y es de esa versión. Si algo falla: `depmod`, el script del hook de mkinitcpio (`/usr/share/libalpm/scripts/mkinitcpio install`, desde `/`) y `make-boot-grub-readable`. Si mkinitcpio falla, aborta con «no reinicies».
+- **Reparación única de las instalaciones 1.4/1.5**, solo si hace falta (idempotente, exige 1,5 GB libres):
+  1. Las unidades del Live que Calamares no pudo enmascarar (`pacman-init.service`, `etc-pacman.d-gnupg.mount`…) montaban el llavero de pacman en un tmpfs en cada arranque. Se paran los sockets de gpg, se desmonta el tmpfs (si no se puede, aborta sin tocar nada), se prepara el llavero en disco y se borran las unidades.
+  2. `journald.conf.d/volatile-storage.conf` del Live dejaba el journal solo en memoria: se borra.
+  3. Con `linux-cachyos`, se añade `[cachyos]` al **final** de `pacman.conf`. `linux-cachyos-headers` se quita si nada lo usa; con DKMS se conserva junto al `pahole` de CachyOS.
+  4. Una sola transacción `pacman -Su` devuelve a Arch cada paquete empaquetado por CachyOS que Arch también tiene (mesa, systemd, firmware…, aunque baje de versión), con snapshot previo del hook.
+  5. Se borra el campo `%INSTALLED_DB%` que el pacman de CachyOS escribió en la base de datos local, y `sync`.
+
+  Ajustes > Actualizaciones muestra el grupo «Reparación del sistema» cuando hay algo pendiente. Probado en discos instalados con cortes de red y apagones a mitad (ver el PR de la 1.5.5).
+
 ### churros-theme
 
 **Path:** `/usr/local/bin/churros-theme`

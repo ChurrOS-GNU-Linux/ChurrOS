@@ -564,6 +564,412 @@ def world_traversable(path: Path) -> bool:
 
 @unittest.skipUnless(world_traversable(Path(tempfile.gettempdir())),
                      "el directorio temporal no es accesible para otros usuarios")
+class SnapshotRestore(unittest.TestCase):
+    """churros-snapshot restore desde la ISO, sobre un volumen btrfs falso."""
+
+    def test_restore_swaps_root_and_home_and_drops_the_pacman_lock(self):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-restore-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        top = tmp / "top"
+        snap = top / "@snapshots/20261115-052257"
+        (snap / "root/var/lib/pacman").mkdir(parents=True)
+        (snap / "root/var/lib/pacman/db.lck").write_text("")
+        (snap / "root/version").write_text("antes\n")
+        (snap / "home").mkdir()
+        (snap / "home/nota").write_text("antes\n")
+        (top / "@").mkdir()
+        (top / "@/version").write_text("roto\n")
+        (top / "@home").mkdir()
+        bin_dir = tmp / "bin"
+        # mount -o subvolid=5 DEV DIR: el punto de montaje pasa a ser el volumen falso.
+        executable(bin_dir / "mount", f'#!/bin/sh\nrmdir "$4" && ln -s "{top}" "$4"\n')
+        executable(bin_dir / "mountpoint", "#!/bin/sh\nexit 1\n")
+        executable(bin_dir / "btrfs", '#!/bin/sh\n[ "$1 $2" = "subvol snapshot" ] && cp -a "$3" "$4"\n')
+        result = subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-snapshot"), "restore", "-d", "/dev/falso3",
+                                 "20261115-052257"], capture_output=True, text=True,
+                                env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((top / "@/version").read_text(), "antes\n")
+        self.assertEqual((top / "@home/nota").read_text(), "antes\n")
+        broken = [p.name for p in top.iterdir() if p.name.startswith("@broken-")]
+        self.assertEqual(len(broken), 1, "el estado roto queda resguardado")
+        self.assertFalse((top / "@/var/lib/pacman/db.lck").exists(),
+                         "[restore-drops-lock] el snapshot del hook lleva el candado de pacman: tras restaurar, pacman no funcionaría")
+        self.assertTrue((snap / "root/var/lib/pacman/db.lck").exists(), "el snapshot original no se toca")
+
+
+class StalePacmanLock(unittest.TestCase):
+    """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
+
+    def run_clear(self, age_vs_boot: int, running: bool = False):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-lock-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        lock = tmp / "db.lck"
+        lock.write_text("")
+        boot = 1_700_000_000
+        os.utime(lock, (boot + age_vs_boot, boot + age_vs_boot))
+        script = (f'PACMAN_LOCK="$1"; am_root() {{ return 0; }}; boot_time() {{ echo {boot}; }}; '
+                  f'pacman_running() {{ {"return 0" if running else "return 1"}; }}; clear_stale_pacman_lock')
+        result = update_utils(script, lock)
+        return result, lock.exists()
+
+    def test_a_lock_from_before_this_boot_is_removed(self):
+        result, exists = self.run_clear(-3600)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(exists, "[stale-pacman-lock] tras un apagón, pacman quedaría bloqueado para siempre")
+        self.assertIn("candado", result.stdout)
+
+    def test_a_lock_from_this_boot_is_kept(self):
+        result, exists = self.run_clear(+60)
+        self.assertTrue(exists, "[stale-pacman-lock] puede ser de un pacman de verdad: no se toca")
+
+    def test_a_lock_is_kept_while_pacman_runs(self):
+        result, exists = self.run_clear(-3600, running=True)
+        self.assertTrue(exists, "[stale-pacman-lock] con un pacman en marcha nunca se quita")
+
+    def test_main_clears_the_lock_before_repairing(self):
+        source = (OVERLAY / "usr/bin/churros-update-utils").read_text()
+        main = source[source.index("main() {"):]
+        self.assertLess(main.index("clear_stale_pacman_lock"), main.index("repair_cachyos_packages"),
+                        "[stale-pacman-lock] la reparación necesita pacman libre")
+
+
+class BootImages(unittest.TestCase):
+    """Un apagón durante los hooks de pacman deja un kernel sin arranque (visto en la VM)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-boot-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.log = self.tmp / "log"
+        self.log.write_text("")
+        self.modules = self.tmp / "modules"
+        self.boot = self.tmp / "boot"
+        self.boot.mkdir()
+        for kver, base in (("7.3.4-arch1-2", "linux"), ("7.3.3-1-cachyos", "linux-cachyos")):
+            d = self.modules / kver
+            d.mkdir(parents=True)
+            (d / "pkgbase").write_text(base + "\n")
+            (d / "vmlinuz").write_text(f"kernel {kver}\n")
+            (d / "modules.dep").write_text("kernel/x.ko:\n")
+            (self.boot / f"vmlinuz-{base}").write_text(f"kernel {kver}\n")
+            (self.boot / f"initramfs-{base}.img").write_text(f"usr/lib/modules/{kver}/kernel/x.ko\n")
+        self.hook = executable(self.tmp / "mkinitcpio-hook", f'#!/bin/sh\necho "hook $1 $(pwd): $(cat | tr "\\n" " ")" >> "{self.log}"\n')
+        self.readable = executable(self.tmp / "readable", f'#!/bin/sh\necho readable >> "{self.log}"\n')
+
+    def check(self, hook_ok=True):
+        if not hook_ok:
+            executable(self.hook, f'#!/bin/sh\necho "hook falla" >> "{self.log}"; exit 1\n')
+        script = (f'MODULES_DIR="{self.modules}"; BOOT_DIR="{self.boot}"; MKINITCPIO_HOOK="{self.hook}"; '
+                  f'GRUB_READABLE="{self.readable}"; LIVE_MARKER="{self.tmp}/no-live"; am_root() {{ return 0; }}; '
+                  f'lsinitcpio() {{ shift; cat "$1"; }}; depmod() {{ echo "depmod $*" >> "{self.log}"; }}; '
+                  f'sync() {{ :; }}; check_boot_images')
+        return update_utils(script)
+
+    def commands(self):
+        return self.log.read_text().splitlines()
+
+    def test_a_healthy_boot_is_left_alone(self):
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.commands(), [], "[boot-images] con todo en su sitio no se rehace nada")
+
+    def test_a_missing_initramfs_is_rebuilt(self):
+        (self.boot / "initramfs-linux.img").unlink()
+        (self.modules / "7.3.4-arch1-2/modules.dep").unlink()
+        (self.boot / "vmlinuz-linux-cachyos.grub-rewr").write_text("x")
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rel = str(self.modules / "7.3.4-arch1-2/vmlinuz").lstrip("/")
+        self.assertEqual(self.commands(), ["depmod -- 7.3.4-arch1-2", f"hook install /: {rel} ", "readable"],
+                         "[boot-images] solo el kernel roto: depmod, el hook de mkinitcpio desde / y GRUB")
+        self.assertFalse((self.boot / "vmlinuz-linux-cachyos.grub-rewr").exists(), "sin temporales de make-boot-grub-readable")
+
+    def test_an_initramfs_of_another_kernel_is_rebuilt(self):
+        (self.boot / "initramfs-linux.img").write_text("usr/lib/modules/7.3.3-arch1-1/kernel/x.ko\n")
+        self.check()
+        self.assertTrue(any(c.startswith("hook install") for c in self.commands()),
+                        "[boot-images] un initramfs del kernel anterior no arranca el nuevo")
+
+    def test_a_stale_vmlinuz_is_rebuilt(self):
+        (self.boot / "vmlinuz-linux").write_text("kernel viejo\n")
+        self.check()
+        self.assertTrue(any(c.startswith("hook install") for c in self.commands()),
+                        "[boot-images] /boot/vmlinuz no es el del paquete")
+
+    def test_missing_module_indexes_are_rebuilt(self):
+        (self.modules / "7.3.4-arch1-2/modules.dep").unlink()
+        self.check()
+        self.assertIn("depmod -- 7.3.4-arch1-2", self.commands(),
+                      "[boot-images] sin modules.dep ni mkinitcpio ni udev encuentran los módulos")
+
+    def test_a_failed_rebuild_is_an_error(self):
+        (self.boot / "initramfs-linux.img").unlink()
+        result = self.check(hook_ok=False)
+        self.assertNotEqual(result.returncode, 0, "[boot-images] un initramfs a medias no puede darse por bueno")
+        self.assertIn("no reinicies", result.stderr)
+
+    def test_main_checks_the_boot_before_the_bundle(self):
+        source = (OVERLAY / "usr/bin/churros-update-utils").read_text()
+        main = source[source.index("main() {"):]
+        self.assertIn("\n    check_boot_images\n", main, "[boot-images] main tiene que comprobar el arranque")
+        self.assertLess(main.index("repair_cachyos_packages"), main.index("check_boot_images"))
+        self.assertLess(main.index("check_boot_images"), main.index("fetch_manifest"),
+                        "[boot-images] la comprobación del arranque va antes del bundle")
+
+
+class RepairCachyosPackages(unittest.TestCase):
+    """Reparación única de las ISO 1.4/1.5 (pacman, mesa... de CachyOS).
+
+    Un pacman falso hace de sistema Niri 1.5 instalado: lo que lista -Qi
+    (con su Packager), lo que hay en cada repositorio (-Sl) y quién usa los
+    headers. Registra cada orden que cambia el sistema.
+    """
+
+    # nombre -> Packager: lo que instaló la ISO Niri 1.5.
+    INSTALLED = {
+        "pacman": "CachyOS <admin@cachyos.org>",
+        "mesa": "CachyOS <admin@cachyos.org>",
+        "archlinux-keyring": "CachyOS <admin@cachyos.org>",
+        "pahole": "CachyOS <admin@cachyos.org>",
+        "linux-cachyos": "CachyOS <admin@cachyos.org>",
+        "linux-cachyos-headers": "CachyOS <admin@cachyos.org>",
+        "cachyos-keyring": "CachyOS <admin@cachyos.org>",
+        "cachyos-ananicy-rules": "CachyOS <admin@cachyos.org>",
+        "firefox": "Jan Alexander Steffens (heftig) <heftig@archlinux.org>",
+        "yay": "Unknown Packager",
+    }
+    REPOS = {
+        "core": ["pacman", "archlinux-keyring", "glibc"],
+        "extra": ["mesa", "pahole", "firefox"],
+        "multilib": ["lib32-mesa"],
+        "cachyos": ["linux-cachyos", "linux-cachyos-headers", "cachyos-keyring", "cachyos-ananicy-rules", "mesa", "yay"],
+    }
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-repair-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.log = self.tmp / "log"
+        self.log.write_text("")
+        self.conf = self.tmp / "pacman.conf"
+        self.conf.write_text("[options]\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n\n"
+                             "[extra]\nInclude = /etc/pacman.d/mirrorlist\n")
+        self.mirrorlist = self.tmp / "cachyos-mirrorlist"
+        self.mirrorlist.write_text("Server = https://mirror.cachyos.org/repo/$arch/$repo\n")
+        self.keyring = self.tmp / "cachyos.gpg"
+        self.keyring.write_text("clave\n")
+        self.headers_required_by = "None"
+        self.installed = dict(self.INSTALLED)
+
+    def write_fakes(self):
+        installed = self.tmp / "installed"
+        installed.write_text("".join(f"{name}\t{packager}\n" for name, packager in self.installed.items()))
+        repos = self.tmp / "repos"
+        repos.write_text("".join(f"{repo} {name} 1.0-1\n" for repo, names in self.REPOS.items() for name in names))
+        executable(self.tmp / "pacman", f'''#!/bin/bash
+log() {{ echo "pacman $*" >> "{self.log}"; }}
+case "$1" in
+  -Qi)
+    if [ -n "${{2:-}}" ]; then
+      grep -q "^$2	" "{installed}" || exit 1
+      printf 'Name            : %s\\nRequired By     : %s\\n' "$2" "{self.headers_required_by}"
+    else
+      # Como el de Arch: -Qi lee cada desc y avisa del campo que no conoce.
+      if grep -rqs '%INSTALLED_DB%' "{self.tmp / 'local'}"; then echo "warning: zstd: unknown key '%INSTALLED_DB%' in local database" >&2; fi
+      while IFS="	" read -r n p; do printf 'Name            : %s\\nVersion         : 1.0-1\\nPackager        : %s\\n\\n' "$n" "$p"; done < "{installed}"
+      # Como un sistema real (~900 paquetes): mucha salida después, para que
+      # un `pacman | grep -q` con pipefail reciba SIGPIPE.
+      yes 'Description     : relleno' | head -n 200000
+      yes 'warning: relleno' | head -n 20000 >&2
+    fi ;;
+  -Q) grep -q "^$2	" "{installed}" ;;
+  -Qq) cut -f1 "{installed}"; yes 'relleno-paquete' | head -n 200000 ;;
+  -Sl) cat "{repos}" ;;
+  *) log "$@" ;;
+esac
+''')
+        executable(self.tmp / "pacman-key", f'#!/bin/sh\necho "pacman-key $*" >> "{self.log}"\n')
+
+    def make_local_db(self):
+        """Base de datos local: dos paquetes con el campo del pacman de CachyOS."""
+        local = self.tmp / "local"
+        for name, extra in (("zstd-1.5.7-3", "%INSTALLED_DB%\ncore\n\n"), ("mesa-1:26.2.7-1", "%INSTALLED_DB%\nextra\n\n"),
+                            ("firefox-160.0-1", "")):
+            (local / name).mkdir(parents=True)
+            (local / name / "desc").write_text(
+                f"%NAME%\n{name.split('-')[0]}\n\n{extra}%VERSION%\n1.0-1\n\n%PACKAGER%\nArch\n\n")
+            (local / name / "desc").chmod(0o644)
+        return local
+
+    def live_units(self):
+        """Unidades del Live que Calamares no pudo enmascarar (1.4/1.5 instaladas)."""
+        systemd = self.tmp / "systemd"
+        (systemd / "multi-user.target.wants").mkdir(parents=True, exist_ok=True)
+        for unit in ("pacman-init.service", "etc-pacman.d-gnupg.mount", "choose-mirror.service", "livecd-talk.service"):
+            (systemd / unit).write_text("[Unit]\n")
+        for unit in ("pacman-init.service", "choose-mirror.service", "livecd-talk.service"):
+            (systemd / "multi-user.target.wants" / unit).symlink_to(f"../{unit}")
+        (systemd / "ModemManager.service").write_text("[Unit]\n")
+        return systemd
+
+    def repair(self, free_mb=20000, live=False, mounted=True, umount_ok=True):
+        self.write_fakes()
+        marker = self.tmp / ("archiso" if live else "no-live")
+        if live:
+            marker.mkdir()
+        script = (
+            'PACMAN="$1"; PACMAN_KEY="$2"; PACMAN_CONF="$3"; CACHYOS_MIRRORLIST="$4"; '
+            'CACHYOS_KEYRING="$5"; LIVE_MARKER="$6"; LOCAL_DB="$7"; SYSTEMD_DIR="$8"; GNUPG_DIR=/gnupg; '
+            f'VOLATILE_JOURNAL="{self.tmp / "volatile-storage.conf"}"; journalctl() {{ log "journalctl $*"; }}; '
+            'LOGF="$9"; am_root() { return 0; }; log() { echo "$*" >> "$LOGF"; }; '
+            'systemctl() { log "systemctl $*"; }; gpgconf() { log "gpgconf $*"; }; '
+            f'mountpoint() {{ log "mountpoint $*"; {"return 0" if mounted else "return 1"}; }}; '
+            f'umount() {{ log "umount $*"; {"return 0" if umount_ok else "return 1"}; }}; '
+            f'free_mb() {{ echo {free_mb}; }}; repair_cachyos_packages'
+        )
+        return update_utils(script, self.tmp / "pacman", self.tmp / "pacman-key", self.conf,
+                            self.mirrorlist, self.keyring, marker, self.tmp / "local", self.tmp / "systemd", self.log)
+
+    def commands(self):
+        return self.log.read_text().splitlines()
+
+    def test_niri_15_is_repaired_in_one_transaction(self):
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        # [cachyos] al final y su clave, antes de sincronizar.
+        self.assertEqual(commands[0], "pacman-key --populate cachyos", commands)
+        conf = self.conf.read_text()
+        self.assertTrue(conf.rstrip().endswith(f"[cachyos]\nInclude = {self.mirrorlist}"),
+                        "[repair-cachyos-repo] [cachyos] tiene que quedar al final de pacman.conf")
+        self.assertEqual(commands[1], "pacman -Sy --noconfirm")
+        # Headers sin DKMS: fuera, antes de la transacción grande.
+        self.assertEqual(commands[2], "pacman -Rs --noconfirm linux-cachyos-headers",
+                         "[repair-drops-headers] los headers sin uso bloquearían pacman -Syu")
+        # Una sola -Su con cada paquete de CachyOS que Arch tiene, desde Arch.
+        su = [c for c in commands if c.startswith("pacman -Su")]
+        self.assertEqual(len(su), 1, commands)
+        targets = set(su[0].split()[3:])
+        self.assertEqual(targets, {"core/pacman", "core/archlinux-keyring", "extra/mesa", "extra/pahole"},
+                         "[repair-targets] solo lo de CachyOS que Arch también tiene, por su repositorio de Arch")
+        self.assertIn("Reinicia", result.stdout)
+
+    def test_the_cachyos_pacman_db_key_is_forgotten(self):
+        local = self.make_local_db()
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for desc in local.glob("*/desc"):
+            text = desc.read_text()
+            self.assertNotIn("%INSTALLED_DB%", text,
+                             "[repair-forgets-db-key] el pacman de Arch avisaría en cada orden por este campo")
+            self.assertIn("%NAME%", text)
+            self.assertIn("%VERSION%\n1.0-1\n\n%PACKAGER%", text, "el resto de la entrada no se toca")
+            self.assertEqual(mode(desc), 0o644)
+        self.assertEqual(sorted(p.name for p in local.iterdir()), ["firefox-160.0-1", "mesa-1:26.2.7-1", "zstd-1.5.7-3"],
+                         "sin temporales")
+
+    def test_the_live_keyring_tmpfs_goes_away_before_syncing(self):
+        systemd = self.live_units()
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        order = [c for c in commands if c.split()[0] in ("umount", "pacman-key", "pacman") and "-Su" not in c]
+        self.assertEqual(order[:4], ["umount /gnupg", "pacman-key --init", "pacman-key --populate", "pacman-key --populate cachyos"],
+                         f"[repair-live-keyring] el llavero del disco, antes de nada: {commands}")
+        self.assertLess(commands.index("pacman-key --populate"), commands.index("pacman -Sy --noconfirm"))
+        self.assertLess(commands.index("systemctl stop *@gnupg.socket *@gnupg.service"), commands.index("umount /gnupg"),
+                        "[repair-live-keyring] los sockets de gpg de systemd dejan el tmpfs ocupado: hay que pararlos antes")
+        self.assertLess(commands.index("systemctl daemon-reload"), commands.index("systemctl start sockets.target"),
+                        "los sockets de gpg vuelven, ya sobre el llavero del disco")
+        left = sorted(str(p.relative_to(systemd)) for p in systemd.rglob("*") if p.is_file() or p.is_symlink())
+        self.assertEqual(left, ["ModemManager.service"],
+                         "[repair-live-keyring] pacman-init y compañía siguen: el tmpfs vuelve en el próximo arranque")
+        self.assertIn("systemctl daemon-reload", commands)
+
+    def test_the_volatile_journal_goes_away(self):
+        volatile = self.tmp / "volatile-storage.conf"
+        volatile.write_text("[Journal]\nStorage=volatile\n")
+        self.installed = {"firefox": self.INSTALLED["firefox"]}
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(volatile.exists(), "[repair-volatile-journal] el registro se seguiría perdiendo en cada reinicio")
+        commands = self.commands()
+        self.assertLess(commands.index("systemctl restart systemd-journald.service"), commands.index("journalctl --flush"))
+
+    def test_the_live_keyring_is_left_alone_if_it_cannot_be_unmounted(self):
+        systemd = self.live_units()
+        result = self.repair(umount_ok=False)
+        self.assertNotEqual(result.returncode, 0, "[repair-live-keyring] siguió sin poder desmontar el llavero")
+        self.assertIn("no se ha cambiado nada", result.stderr)
+        self.assertTrue((systemd / "pacman-init.service").exists(), "[repair-live-keyring] se quitó a medias")
+        self.assertFalse([c for c in self.commands() if c.startswith(("pacman-key", "pacman -"))],
+                         "[repair-live-keyring] siguió sin poder desmontar el llavero")
+
+    def test_headers_in_use_are_kept_with_cachyos_pahole(self):
+        self.headers_required_by = "nvidia-open-dkms"
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertFalse([c for c in commands if c.startswith("pacman -R")],
+                         "[repair-keeps-dkms-headers] con un DKMS los headers se quedan")
+        su = next(c for c in commands if c.startswith("pacman -Su"))
+        self.assertNotIn("extra/pahole", su.split(),
+                         "[repair-keeps-dkms-headers] el pahole de Arch rompe la dependencia de los headers de CachyOS")
+        self.assertIn("AVISO", result.stdout)
+
+    def test_an_installed_dkms_keeps_the_headers(self):
+        """Required By vacío, pero hay un *-dkms instalado entre ~200 000 líneas."""
+        self.installed["v4l2loopback-dkms"] = "Arch"
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse([c for c in self.commands() if c.startswith("pacman -R")],
+                         "[repair-keeps-dkms-headers] había un DKMS instalado y se quitaron los headers")
+
+    def test_xfce_without_cachyos_kernel_does_not_get_the_repo(self):
+        for name in ("linux-cachyos", "linux-cachyos-headers", "cachyos-keyring", "cachyos-ananicy-rules", "pahole"):
+            del self.installed[name]
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("[cachyos]", self.conf.read_text(), "XFCE 1.4/1.5 lleva el linux de Arch")
+        self.assertFalse([c for c in self.commands() if "pacman-key" in c])
+        su = next(c for c in self.commands() if c.startswith("pacman -Su"))
+        self.assertEqual(set(su.split()[3:]), {"core/pacman", "core/archlinux-keyring", "extra/mesa"})
+
+    def test_nothing_to_do_does_not_touch_the_system(self):
+        self.installed = {"pacman": "Pierre Schmitz <pierre@archlinux.org>",
+                          "linux-cachyos": "CachyOS <admin@cachyos.org>",
+                          "cachyos-keyring": "CachyOS <admin@cachyos.org>"}
+        self.conf.write_text(self.conf.read_text() + "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n")
+        result = self.repair()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.commands(), [], "[repair-idempotent] un sistema sano no se toca")
+
+    def test_second_run_does_not_add_the_repo_twice(self):
+        self.repair()
+        self.repair()
+        self.assertEqual(self.conf.read_text().count("[cachyos]"), 1)
+
+    def test_main_repairs_before_installing_the_bundle(self):
+        """Las utilidades nuevas se compilan contra el Arch de hoy: primero el sistema sano."""
+        source = UPDATE_UTILS.read_text()
+        main = source[source.index("\nmain() {"):].splitlines()
+        calls = [i for i, line in enumerate(main) if line.strip() == "repair_cachyos_packages"]
+        installs = [i for i, line in enumerate(main) if line.strip().startswith("install_stage ")]
+        self.assertTrue(calls, "[repair-before-bundle] main no llama a repair_cachyos_packages")
+        self.assertTrue(installs, "main sin install_stage")
+        self.assertLess(calls[0], installs[0],
+                        "[repair-before-bundle] la reparación tiene que ir antes de instalar el bundle")
+
+    def test_live_and_low_space_are_refused_before_touching_anything(self):
+        result = self.repair(live=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(self.commands(), [], "en el Live no hay nada que reparar")
+        result = self.repair(free_mb=200)
+        self.assertNotEqual(result.returncode, 0, "[repair-free-space] siguió adelante sin espacio libre")
+        self.assertIn("libera espacio", result.stderr)
+        self.assertEqual(self.commands(), [], "[repair-free-space] sin espacio no se toca nada")
+        self.assertNotIn("[cachyos]", self.conf.read_text())
+
+
 class WriteRootConfig(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="churros-wrc-test-"))
