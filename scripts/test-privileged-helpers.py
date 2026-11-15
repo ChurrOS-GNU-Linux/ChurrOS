@@ -437,6 +437,42 @@ cp "{hidden}" "{real}"
         self.assertNotEqual(update_utils('parse_manifest "$1" niri', manifest).returncode, 0)
 
 
+class UpdateTimerOnlyNotifies(unittest.TestCase):
+    """El timer de escritorio (usuario) comprueba y avisa; nunca instala (#142)."""
+
+    def run_auto(self, system: str, flatpak: str, version: str):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-auto-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        log = tmp / "log"
+        log.write_text("")
+        executable(tmp / "bin/checkupdates", f"#!/bin/sh\nprintf '{system}'\n")
+        executable(tmp / "bin/flatpak", f"#!/bin/sh\nprintf '{flatpak}'\n")
+        executable(tmp / "bin/curl", f"#!/bin/sh\necho '{{\"version\": \"{version}\"}}'\n")
+        executable(tmp / "bin/notify-send", f'#!/bin/sh\necho "NOTIFY $*" >> "{log}"\n')
+        executable(tmp / "bin/churros-pkexec", f'#!/bin/sh\necho "PKEXEC $*" >> "{log}"\n')
+        executable(tmp / "bin/id", "#!/bin/sh\necho 1000\n")
+        result = subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-update-auto")],
+                                capture_output=True, text=True,
+                                env={**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}",
+                                     "CHURROS_VERSION_FILE": str(OVERLAY / "etc/churros-version")})
+        return result, log.read_text()
+
+    def test_pending_updates_are_announced_not_installed(self):
+        result, log = self.run_auto("linux 1 -> 2\nmesa 1 -> 2\n", "org.app.One\n", "9.9")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("PKEXEC", log, "[timer-only-notifies] el timer de usuario no puede instalar nada")
+        self.assertIn("Hay actualizaciones", log, "[timer-only-notifies] tenía que avisar de lo pendiente")
+        self.assertNotIn("Fallo en la actualización", log, "[timer-only-notifies] aviso de fallo falso")
+        self.assertIn("2 del sistema", log)
+        self.assertIn("Ajustes > Actualizaciones", log)
+
+    def test_nothing_pending_means_no_notification(self):
+        installed = (OVERLAY / "etc/churros-version").read_text().strip()
+        result, log = self.run_auto("", "", installed)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log, "", "sin novedades no se molesta a nadie")
+
+
 class PackageManagerPrivileges(unittest.TestCase):
     """Un gestor de paquetes nunca debe quedar disponible sin autenticación."""
 

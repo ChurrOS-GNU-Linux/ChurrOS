@@ -1425,6 +1425,15 @@ expect = "FAIL: test_parse_manifest"
 why = "Una firma válida no hace ejecutable un ELF x86_64 en aarch64 o i686; el cliente debe vincular manifiesto y arquitectura."
 
 [[mutation]]
+name = "test-privileged-helpers: el timer de escritorio vuelve a intentar instalar"
+file = "archiso/airootfs/usr/local/bin/churros-update-auto"
+find = "if [ \"$(id -u)\" -ne 0 ]; then"
+replace = "if false; then"
+caught_by = "python3 scripts/test-privileged-helpers.py UpdateTimerOnlyNotifies"
+expect = "[timer-only-notifies]"
+why = "Instalar sin el usuario delante: sin agente de polkit fallaba cada día con un aviso de error falso, y con permisos haría pacman -Syu --noconfirm a ciegas."
+
+[[mutation]]
 name = "test_shell_scripts: el servicio root vuelve a escribir su log en /tmp"
 file = "archiso/airootfs/usr/local/bin/churros-update-auto"
 find = "LOG=/var/log/churros-update.log"

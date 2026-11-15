@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# churros-update-auto — actualización automática (timer de systemd).
-# Actualiza pacman y flatpak vía churros-pkexec y notifica el resultado.
+# churros-update-auto — actualizaciones periódicas (timer de systemd).
+# Como usuario (escritorio): comprueba y avisa. Como root (servidor): actualiza
+# pacman, flatpak y las utilidades vía churros-pkexec y notifica el resultado.
 #
 # Los programas van por ruta absoluta: la regla polkit los autoriza por ruta
 # exacta y argv exacto. Instalar paquetes pide contraseña de administrador
@@ -9,6 +10,40 @@
 # estos pasos fallan; ver #142 (comprobar y notificar en vez de instalar).
 #
 
+# Escritorio: el timer de usuario (skel) solo COMPRUEBA y avisa; instalar es
+# siempre un gesto del usuario en Ajustes > Actualizaciones (con contraseña).
+# Antes intentaba instalar sin agente de polkit: fallaba cada día y avisaba de
+# un "Fallo en la actualización" que no lo era (#142).
+if [ "$(id -u)" -ne 0 ]; then
+    pending=0
+    parts=()
+    if command -v checkupdates >/dev/null 2>&1; then
+        # checkupdates: base de datos temporal, sin root. Sale con 2 si no hay nada.
+        n="$(checkupdates 2>/dev/null | wc -l)"
+        if [ "${n:-0}" -gt 0 ]; then pending=$((pending + n)); parts+=("$n del sistema"); fi
+    fi
+    if command -v flatpak >/dev/null 2>&1; then
+        n="$(flatpak remote-ls --updates --columns=application 2>/dev/null | grep -c . || true)"
+        if [ "${n:-0}" -gt 0 ]; then pending=$((pending + n)); parts+=("$n de Flatpak"); fi
+    fi
+    arch="$(uname -m)"
+    available="$(curl -fsS --proto '=https' --max-time 20 "https://download.churroslinux.org/churros/${arch}/updates.json" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
+    installed="$(cat "${CHURROS_VERSION_FILE:-/etc/churros-version}" 2>/dev/null || true)"
+    if [ -n "$available" ] && [ "$available" != "$installed" ]; then
+        pending=$((pending + 1)); parts+=("utilidades de ChurrOS $available")
+    fi
+    if [ "$pending" -gt 0 ]; then
+        summary="$(IFS=,; echo "${parts[*]}")"
+        summary="${summary//,/, }"
+        notify-send -a ChurrOS -i system-software-update "Hay actualizaciones" \
+            "$summary. Instálalas desde Ajustes > Actualizaciones." 2>/dev/null || true
+    fi
+    exit 0
+fi
+
+# Servidor (timer de sistema, como root): actualización desatendida, a
+# propósito (docs/server.md).
 # El timer corre churros-update.service como root: el log no puede estar en
 # /tmp (enlace simbólico de otro usuario); journald ya guarda la salida, y
 # aquí se conserva una copia en /var/log.
