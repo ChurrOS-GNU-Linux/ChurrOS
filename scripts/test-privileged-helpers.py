@@ -528,6 +528,40 @@ def world_traversable(path: Path) -> bool:
 
 @unittest.skipUnless(world_traversable(Path(tempfile.gettempdir())),
                      "el directorio temporal no es accesible para otros usuarios")
+class SnapshotRestore(unittest.TestCase):
+    """churros-snapshot restore desde la ISO, sobre un volumen btrfs falso."""
+
+    def test_restore_swaps_root_and_home_and_drops_the_pacman_lock(self):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-restore-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        top = tmp / "top"
+        snap = top / "@snapshots/20261115-052257"
+        (snap / "root/var/lib/pacman").mkdir(parents=True)
+        (snap / "root/var/lib/pacman/db.lck").write_text("")
+        (snap / "root/version").write_text("antes\n")
+        (snap / "home").mkdir()
+        (snap / "home/nota").write_text("antes\n")
+        (top / "@").mkdir()
+        (top / "@/version").write_text("roto\n")
+        (top / "@home").mkdir()
+        bin_dir = tmp / "bin"
+        # mount -o subvolid=5 DEV DIR: el punto de montaje pasa a ser el volumen falso.
+        executable(bin_dir / "mount", f'#!/bin/sh\nrmdir "$4" && ln -s "{top}" "$4"\n')
+        executable(bin_dir / "mountpoint", "#!/bin/sh\nexit 1\n")
+        executable(bin_dir / "btrfs", '#!/bin/sh\n[ "$1 $2" = "subvol snapshot" ] && cp -a "$3" "$4"\n')
+        result = subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-snapshot"), "restore", "-d", "/dev/falso3",
+                                 "20261115-052257"], capture_output=True, text=True,
+                                env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((top / "@/version").read_text(), "antes\n")
+        self.assertEqual((top / "@home/nota").read_text(), "antes\n")
+        broken = [p.name for p in top.iterdir() if p.name.startswith("@broken-")]
+        self.assertEqual(len(broken), 1, "el estado roto queda resguardado")
+        self.assertFalse((top / "@/var/lib/pacman/db.lck").exists(),
+                         "[restore-drops-lock] el snapshot del hook lleva el candado de pacman: tras restaurar, pacman no funcionaría")
+        self.assertTrue((snap / "root/var/lib/pacman/db.lck").exists(), "el snapshot original no se toca")
+
+
 class StalePacmanLock(unittest.TestCase):
     """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
 

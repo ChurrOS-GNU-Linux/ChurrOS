@@ -261,6 +261,10 @@ restore() {
     log "resguardando estado actual como @$backup_stamp"
     mv "$TOP_MOUNT/@" "$TOP_MOUNT/@$backup_stamp"
     btrfs subvol snapshot "$src/root" "$TOP_MOUNT/@" >/dev/null
+    # El snapshot se toma en el hook PreTransaction, con pacman ya dentro: lleva
+    # su db.lck. Restaurado tal cual, pacman decía «unable to lock database»
+    # en cada orden (visto al restaurar desde la ISO en una VM).
+    rm -f -- "$TOP_MOUNT/@/var/lib/pacman/db.lck"
 
     if [ -d "$src/home" ] && [ -d "$TOP_MOUNT/@home" ]; then
         mv "$TOP_MOUNT/@home" "$TOP_MOUNT/@home.$backup_stamp"

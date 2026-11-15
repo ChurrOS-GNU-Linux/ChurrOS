@@ -1506,6 +1506,15 @@ expect = "[boot-images]"
 why = "mkinitcpio deja una imagen sin módulos y avisa con un error: decir «listo» lleva a reiniciar en un sistema que no arranca."
 
 [[mutation]]
+name = "test-privileged-helpers: restaurar un snapshot deja el candado de pacman"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = "    rm -f -- \"$TOP_MOUNT/@/var/lib/pacman/db.lck\"\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py SnapshotRestore"
+expect = "[restore-drops-lock]"
+why = "Los snapshots se toman en el hook PreTransaction con pacman dentro: restaurados tal cual, pacman queda bloqueado (visto en la VM)."
+
+[[mutation]]
 name = "test-privileged-helpers: un candado de pacman de antes del arranque se queda"
 file = "archiso/airootfs/usr/bin/churros-update-utils"
 find = '    [ -n "$boot" ] && [ "$created" -lt "$boot" ] || return 0'
