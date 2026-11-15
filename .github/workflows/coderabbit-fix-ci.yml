@@ -1,0 +1,96 @@
+name: CodeRabbit Fix CI
+
+# Solicita a CodeRabbit que investigue un CI fallido en un PR.
+# CodeRabbit Fix CI debe estar disponible y habilitado en la cuenta/repo.
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - Rust
+      - Polkit
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: coderabbit-fix-ci-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  request-fix:
+    name: Request CodeRabbit CI fix
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Request one CodeRabbit fix per pull request
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const marker = '<!-- churros-coderabbit-fix-ci-triggered -->';
+            const prs = run.pull_requests ?? [];
+
+            if (prs.length === 0) {
+              core.info('The failed workflow is not associated with an accessible pull request.');
+              return;
+            }
+
+            for (const item of prs) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: item.number,
+              });
+
+              if (pr.state !== 'open' || pr.head.sha !== run.head_sha) {
+                core.info(`Skipping PR #${item.number}: it is closed or no longer points to this failed commit.`);
+                continue;
+              }
+
+              // Prevent an automatic retry loop if CodeRabbit's own fix PR also fails CI.
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  per_page: 100,
+                }
+              );
+
+              if (comments.some(comment => comment.body?.includes(marker))) {
+                core.info(`Skipping PR #${pr.number}: an automatic CodeRabbit fix was already requested.`);
+                continue;
+              }
+
+              const body = [
+                '@coderabbitai fix-ci',
+                '',
+                `El workflow **${run.name}** falló en el commit \`${run.head_sha.slice(0, 7)}\`.`,
+                `Run: ${run.html_url}`,
+                '',
+                'Investiga los logs del workflow fallido y corrige la causa real.',
+                'Respeta AGENTS.md y las pruebas existentes de ChurrOS.',
+                'No elimines, omitas ni debilites pruebas o pasos de CI para conseguir un resultado verde.',
+                'Entrega la corrección en un stacked PR para que pueda revisarse por separado.',
+                '',
+                marker,
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+
+              core.info(`Requested CodeRabbit Fix CI on PR #${pr.number}.`);
+            }

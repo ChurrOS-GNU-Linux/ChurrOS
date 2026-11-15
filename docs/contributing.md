@@ -58,6 +58,8 @@ Si un cambio en una app Rust afecta a cómo se comporta en el sistema Live, pru�
 
 En cada pull request corren `./churros test` y `./churros test --mutations` (`ci.yml`, modo estricto), `./churros rust`, las pruebas GTK en Broadway y `./churros test --container` en x86_64 y arm64 (`rust.yml`), además de la prueba de las reglas polkit con `pkexec` y polkitd reales (`polkit.yml`). `iso.yml` y `iso-arm64.yml` no se ejecutan por cada PR: corren a diario en `main` y manualmente. El primero construye, audita y arranca las ediciones x86_64 en QEMU; el segundo construye y audita la ISO aarch64 sin probar su arranque. Ninguno prueba la instalación completa de Calamares; ese trabajo sigue en [#297](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/297). Un fallo real que no se arregla en el mismo cambio se anota en `tests/known_issues.toml` (la lista solo se acorta). Cada arreglo lleva la prueba que lo habría detectado y una mutación en `tests/mutations/mutations.toml`. No se borra, se salta ni se suaviza una prueba para que el CI pase.
 
+Si `CI`, `Rust` o `Polkit` fallan en un pull request de una rama de este repositorio, `coderabbit-fix-ci.yml` deja un único comentario `@coderabbitai fix-ci`. CodeRabbit propone el arreglo en un PR aparte (stacked PR), que se revisa como cualquier otro: un cambio de código privilegiado sigue necesitando la aprobación de otra persona. En PR desde forks no se activa, porque GitHub no los asocia al evento `workflow_run`.
+
 ---
 
 ## Qué documentación actualizar
