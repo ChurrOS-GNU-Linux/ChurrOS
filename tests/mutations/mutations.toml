@@ -1461,6 +1461,51 @@ expect = "[live-volatile-journal]"
 why = "El Live trae Storage=volatile; sin borrarlo, el sistema instalado pierde el registro en cada reinicio."
 
 [[mutation]]
+name = "test-privileged-helpers: el actualizador ya no comprueba el arranque"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    check_boot_images\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py BootImages"
+expect = "[boot-images]"
+why = "Un apagón durante los hooks de pacman dejó la VM sin initramfs-linux.img ni modules.dep: ese kernel no arrancaba y nadie lo rehacía."
+
+[[mutation]]
+name = "test-privileged-helpers: un initramfs de otro kernel pasa por bueno"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        *\"usr/lib/modules/$2/\"*) return 0 ;;"
+replace = "        *) return 0 ;;"
+caught_by = "python3 scripts/test-privileged-helpers.py BootImages"
+expect = "[boot-images]"
+why = "Un initramfs del kernel anterior (o a medias) no arranca el nuevo."
+
+[[mutation]]
+name = "test-privileged-helpers: sin modules.dep no se ejecuta depmod"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        depmod -- \"$kver\" || die \"no se pudieron indexar los módulos de $kver; no reinicies y pide ayuda\"\n"
+replace = ""
+caught_by = "python3 scripts/test-privileged-helpers.py BootImages"
+expect = "[boot-images]"
+why = "Sin los índices de depmod, mkinitcpio no encuentra ningún módulo (visto en la VM) y udev tampoco."
+
+[[mutation]]
+name = "test-privileged-helpers: el hook de mkinitcpio se ejecuta fuera de /"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "    (cd / && printf"
+replace = "    (printf"
+caught_by = "python3 scripts/test-privileged-helpers.py BootImages"
+expect = "[boot-images]"
+why = "El script del hook lee usr/lib/modules/*/pkgbase con rutas relativas a /: desde otro directorio no hace nada."
+
+[[mutation]]
+name = "test-privileged-helpers: un initramfs que no se pudo rehacer se da por bueno"
+file = "archiso/airootfs/usr/bin/churros-update-utils"
+find = "        || die \"no se pudo rehacer el initramfs; no reinicies y pide ayuda (se puede restaurar un snapshot desde la ISO)\""
+replace = "        || true"
+caught_by = "python3 scripts/test-privileged-helpers.py BootImages"
+expect = "[boot-images]"
+why = "mkinitcpio deja una imagen sin módulos y avisa con un error: decir «listo» lleva a reiniciar en un sistema que no arranca."
+
+[[mutation]]
 name = "test-privileged-helpers: un candado de pacman de antes del arranque se queda"
 file = "archiso/airootfs/usr/bin/churros-update-utils"
 find = '    [ -n "$boot" ] && [ "$created" -lt "$boot" ] || return 0'

@@ -51,6 +51,10 @@ CACHYOS_KEYRING=/usr/share/pacman/keyrings/cachyos.gpg
 LIVE_MARKER=/run/archiso
 LOCAL_DB=/var/lib/pacman/local
 PACMAN_LOCK=/var/lib/pacman/db.lck
+MODULES_DIR=/usr/lib/modules
+BOOT_DIR=/boot
+MKINITCPIO_HOOK=/usr/share/libalpm/scripts/mkinitcpio
+GRUB_READABLE=/usr/share/churros/scripts/make-boot-grub-readable
 GNUPG_DIR=/etc/pacman.d/gnupg
 SYSTEMD_DIR=/etc/systemd/system
 VOLATILE_JOURNAL=/etc/systemd/journald.conf.d/volatile-storage.conf
@@ -617,6 +621,58 @@ clear_stale_pacman_lock() {
     rm -f -- "$PACMAN_LOCK"
 }
 
+# ------------------------------------------------ imágenes de arranque
+#
+# Un apagón mientras corren los hooks de pacman deja el kernel nuevo en
+# /usr/lib/modules y la transacción dada por buena, pero sin los índices de
+# depmod (modules.dep) y con /boot/initramfs-<kernel>.img borrado, a medias o
+# del kernel anterior (visto en la VM: sin initramfs-linux.img ni
+# modules.dep). pacman no vuelve a ejecutar los hooks y ese kernel ya no
+# arranca. Se comprueba cada kernel instalado y se rehace como los hooks:
+# depmod, el script del hook de mkinitcpio y make-boot-grub-readable.
+
+# initramfs_ok IMG KVER — ¿se lee entero y es de esta versión del kernel?
+initramfs_ok() {
+    local listing
+    [ -s "$1" ] || return 1
+    listing="$(lsinitcpio -- "$1" 2>/dev/null)" || return 1
+    case "$listing" in
+        *"usr/lib/modules/$2/"*) return 0 ;;
+    esac
+    return 1
+}
+
+check_boot_images() {
+    local pkgbase_file kver base vmlinuz broken=()
+    am_root || return 0
+    [ -e "$LIVE_MARKER" ] && return 0
+    rm -f -- "$BOOT_DIR"/*.grub-rewr
+    for pkgbase_file in "$MODULES_DIR"/*/pkgbase; do
+        [ -f "$pkgbase_file" ] || continue
+        kver="$(basename -- "$(dirname -- "$pkgbase_file")")"
+        base="$(head -n1 -- "$pkgbase_file")"
+        vmlinuz="$MODULES_DIR/$kver/vmlinuz"
+        [ -f "$vmlinuz" ] || continue
+        if [ -s "$MODULES_DIR/$kver/modules.dep" ] \
+            && cmp -s -- "$vmlinuz" "$BOOT_DIR/vmlinuz-$base" \
+            && initramfs_ok "$BOOT_DIR/initramfs-$base.img" "$kver"; then
+            continue
+        fi
+        broken+=("${vmlinuz#/}")
+        echo "El arranque de $base está incompleto (una actualización se cortó): rehaciéndolo..."
+        depmod -- "$kver" || die "no se pudieron indexar los módulos de $kver; no reinicies y pide ayuda"
+    done
+    [ "${#broken[@]}" -gt 0 ] || return 0
+    # Como el hook de pacman: rutas relativas a / y desde /.
+    (cd / && printf '%s\n' "${broken[@]}" | "$MKINITCPIO_HOOK" install) \
+        || die "no se pudo rehacer el initramfs; no reinicies y pide ayuda (se puede restaurar un snapshot desde la ISO)"
+    if [ -x "$GRUB_READABLE" ]; then
+        "$GRUB_READABLE" || die "no se pudieron preparar las imágenes de /boot para GRUB"
+    fi
+    sync
+    echo "Arranque rehecho."
+}
+
 # -------------------------------------------------------------------- main
 
 main() {
@@ -631,6 +687,7 @@ main() {
     # (compiladas contra el Arch de hoy) podrían no arrancar.
     clear_stale_pacman_lock
     repair_cachyos_packages
+    check_boot_images
 
     edition="$(detect_edition)"
     echo "Comprobando utilidades de ChurrOS ($BASE) [edición: $edition]..."

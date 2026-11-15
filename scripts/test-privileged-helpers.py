@@ -564,6 +564,89 @@ class StalePacmanLock(unittest.TestCase):
                         "[stale-pacman-lock] la reparación necesita pacman libre")
 
 
+class BootImages(unittest.TestCase):
+    """Un apagón durante los hooks de pacman deja un kernel sin arranque (visto en la VM)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-boot-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.log = self.tmp / "log"
+        self.log.write_text("")
+        self.modules = self.tmp / "modules"
+        self.boot = self.tmp / "boot"
+        self.boot.mkdir()
+        for kver, base in (("7.3.4-arch1-2", "linux"), ("7.3.3-1-cachyos", "linux-cachyos")):
+            d = self.modules / kver
+            d.mkdir(parents=True)
+            (d / "pkgbase").write_text(base + "\n")
+            (d / "vmlinuz").write_text(f"kernel {kver}\n")
+            (d / "modules.dep").write_text("kernel/x.ko:\n")
+            (self.boot / f"vmlinuz-{base}").write_text(f"kernel {kver}\n")
+            (self.boot / f"initramfs-{base}.img").write_text(f"usr/lib/modules/{kver}/kernel/x.ko\n")
+        self.hook = executable(self.tmp / "mkinitcpio-hook", f'#!/bin/sh\necho "hook $1 $(pwd): $(cat | tr "\\n" " ")" >> "{self.log}"\n')
+        self.readable = executable(self.tmp / "readable", f'#!/bin/sh\necho readable >> "{self.log}"\n')
+
+    def check(self, hook_ok=True):
+        if not hook_ok:
+            executable(self.hook, f'#!/bin/sh\necho "hook falla" >> "{self.log}"; exit 1\n')
+        script = (f'MODULES_DIR="{self.modules}"; BOOT_DIR="{self.boot}"; MKINITCPIO_HOOK="{self.hook}"; '
+                  f'GRUB_READABLE="{self.readable}"; LIVE_MARKER="{self.tmp}/no-live"; am_root() {{ return 0; }}; '
+                  f'lsinitcpio() {{ shift; cat "$1"; }}; depmod() {{ echo "depmod $*" >> "{self.log}"; }}; '
+                  f'sync() {{ :; }}; check_boot_images')
+        return update_utils(script)
+
+    def commands(self):
+        return self.log.read_text().splitlines()
+
+    def test_a_healthy_boot_is_left_alone(self):
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.commands(), [], "[boot-images] con todo en su sitio no se rehace nada")
+
+    def test_a_missing_initramfs_is_rebuilt(self):
+        (self.boot / "initramfs-linux.img").unlink()
+        (self.modules / "7.3.4-arch1-2/modules.dep").unlink()
+        (self.boot / "vmlinuz-linux-cachyos.grub-rewr").write_text("x")
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rel = str(self.modules / "7.3.4-arch1-2/vmlinuz").lstrip("/")
+        self.assertEqual(self.commands(), ["depmod -- 7.3.4-arch1-2", f"hook install /: {rel} ", "readable"],
+                         "[boot-images] solo el kernel roto: depmod, el hook de mkinitcpio desde / y GRUB")
+        self.assertFalse((self.boot / "vmlinuz-linux-cachyos.grub-rewr").exists(), "sin temporales de make-boot-grub-readable")
+
+    def test_an_initramfs_of_another_kernel_is_rebuilt(self):
+        (self.boot / "initramfs-linux.img").write_text("usr/lib/modules/7.3.3-arch1-1/kernel/x.ko\n")
+        self.check()
+        self.assertTrue(any(c.startswith("hook install") for c in self.commands()),
+                        "[boot-images] un initramfs del kernel anterior no arranca el nuevo")
+
+    def test_a_stale_vmlinuz_is_rebuilt(self):
+        (self.boot / "vmlinuz-linux").write_text("kernel viejo\n")
+        self.check()
+        self.assertTrue(any(c.startswith("hook install") for c in self.commands()),
+                        "[boot-images] /boot/vmlinuz no es el del paquete")
+
+    def test_missing_module_indexes_are_rebuilt(self):
+        (self.modules / "7.3.4-arch1-2/modules.dep").unlink()
+        self.check()
+        self.assertIn("depmod -- 7.3.4-arch1-2", self.commands(),
+                      "[boot-images] sin modules.dep ni mkinitcpio ni udev encuentran los módulos")
+
+    def test_a_failed_rebuild_is_an_error(self):
+        (self.boot / "initramfs-linux.img").unlink()
+        result = self.check(hook_ok=False)
+        self.assertNotEqual(result.returncode, 0, "[boot-images] un initramfs a medias no puede darse por bueno")
+        self.assertIn("no reinicies", result.stderr)
+
+    def test_main_checks_the_boot_before_the_bundle(self):
+        source = (OVERLAY / "usr/bin/churros-update-utils").read_text()
+        main = source[source.index("main() {"):]
+        self.assertIn("\n    check_boot_images\n", main, "[boot-images] main tiene que comprobar el arranque")
+        self.assertLess(main.index("repair_cachyos_packages"), main.index("check_boot_images"))
+        self.assertLess(main.index("check_boot_images"), main.index("fetch_manifest"),
+                        "[boot-images] la comprobación del arranque va antes del bundle")
+
+
 class RepairCachyosPackages(unittest.TestCase):
     """Reparación única de las ISO 1.4/1.5 (pacman, mesa... de CachyOS).
 
