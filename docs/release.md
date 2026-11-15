@@ -134,10 +134,7 @@ El bundle lleva los binarios Rust con `deploy = true`, los scripts `churros-*` d
 }
 ```
 
-Los sistemas instalados lo ven al buscar actualizaciones en Ajustes; el cliente elige el fichero de su edición y, si no la encuentra, el de `niri`. Limitaciones conocidas:
-
-
-- La instalación automática desde el timer de usuario falla porque pkexec pide contraseña ([#142](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/142)).
+Los sistemas instalados lo ven al buscar actualizaciones en Ajustes; el cliente elige el fichero de su edición y, si no la encuentra, el de `niri`. El timer diario de escritorio solo avisa de que hay versión nueva; la instalación la hace el usuario desde Ajustes, con su contraseña ([#142](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/142)).
 
 Después de subirlo, comprueba la actualización desde un sistema instalado con la versión anterior.
 
