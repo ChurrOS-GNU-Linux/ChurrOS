@@ -484,7 +484,7 @@ Escribe la salida en `/var/log/churros-update.log` y al terminar envía una noti
 
 Lo lanzan dos timers con el mismo horario (cada día a las 04:00, con hasta 30 minutos de retraso aleatorio y `Persistent=true`):
 
-- **Timer de usuario** (`/etc/skel/.config/systemd/user/churros-update.timer`), habilitado por defecto en el skel, así que lo tienen el usuario live y los usuarios del sistema instalado. Corre con los permisos del usuario: la regla polkit pide la contraseña de administrador para los tres pasos (`auth_admin_keep`), y sin un agente de polkit que la pida fallan (#142).
+- **Timer de usuario** (`/etc/skel/.config/systemd/user/churros-update.timer`), habilitado por defecto en el skel, así que lo tienen el usuario live y los usuarios del sistema instalado. Corre con los permisos del usuario y no instala nada: solo comprueba y avisa. Instalar se hace desde Ajustes > Actualizaciones, que pide la contraseña de administrador (#142).
 - **Timer de sistema** (`/etc/systemd/system/churros-update.timer`), solo en la edición server. Corre como root, así que actualiza sin intervención ([server.md](server.md)).
 
 ### churros-snapshot
