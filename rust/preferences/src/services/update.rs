@@ -275,7 +275,9 @@ fn run_streaming(args: &[&str], timeout: Duration, cb: &dyn Fn(&str)) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(line) => cb(&line),
+            // lines() quita el salto: sin devolverlo, el registro de Ajustes
+            // juntaba todas las líneas en un solo párrafo.
+            Ok(line) => cb(&format!("{line}\n")),
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
                 unsafe {
@@ -650,6 +652,18 @@ impl UpdateService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streamed_lines_keep_their_newline() {
+        let out = std::cell::RefCell::new(String::new());
+        let ok = run_streaming(
+            &["sh", "-c", "printf 'uno\\ndos\\n'"],
+            Duration::from_secs(10),
+            &|line| out.borrow_mut().push_str(line),
+        );
+        assert!(ok);
+        assert_eq!(out.into_inner(), "uno\ndos\n", "cada línea del registro, en su línea");
+    }
 
     #[test]
     fn repair_finds_cachyos_builds_that_arch_also_ships() {
