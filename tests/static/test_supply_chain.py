@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 import unittest
 
+from tests import testlib
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -60,6 +62,27 @@ class TestSupplyChainAndReproducibility(unittest.TestCase):
         self.assertIn('if [ "$actual_key" != "${key^^}" ]; then', aur)
         self.assertTrue((ROOT / "scripts/keys/pgp/155DC67DC25496572CDD608FF635E931C2834999.asc").is_file(),
                         "python-pywal signing key must be available offline and pinned by its full fingerprint")
+
+    def test_remote_pacman_servers_use_https(self) -> None:
+        """La metadata de pacman no viaja en claro (auditoría A3).
+
+        SigLevel protege los paquetes, no la base de datos: por http se puede
+        degradar a versiones antiguas firmadas o dirigir a otro paquete
+        firmado. http://mirror.archlinuxarm.org estaba en core/extra/alarm,
+        con tres mirrors https en el mismo fichero que sí sirven el repo.
+        """
+        findings = {}
+        for conf in sorted(ROOT.glob("archiso/pacman.*.conf")):
+            for number, line in enumerate(conf.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("#") or not stripped.startswith("Server ="):
+                    continue
+                url = stripped.split("=", 1)[1].strip()
+                if url.startswith("http://"):
+                    findings[f"supply-chain:https-only:{conf.name}:{number}"] = (
+                        f"{conf.name}:{number} sirve paquetes por http sin cifrar ({url}): "
+                        "usa un mirror https, la firma no protege la metadata")
+        testlib.assert_findings(self, "supply-chain:https-only", findings)
 
 
 if __name__ == "__main__":

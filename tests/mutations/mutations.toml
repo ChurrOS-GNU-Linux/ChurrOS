@@ -3828,3 +3828,18 @@ replace = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf"
 caught_by = "tests.static.test_calamares_config"
 expect = "[live-dropin:etc/systemd/system-generators/systemd-gpt-auto-generator]"
 why = "systemd-gpt-auto-generator -> /dev/null heredado: el instalado no monta solo /home, /srv, swap GPT ni la ESP."
+
+# --- auditoría A3: la metadata de pacman no viaja en claro ---
+
+[[mutation]]
+name = "pacman aarch64: vuelve un mirror remoto por http en claro"
+file = "archiso/pacman.aarch64.conf"
+find = """[alarm]
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
+Server = https://ca.us.mirror.archlinuxarm.org/$arch/$repo"""
+replace = """[alarm]
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
+Server = http://mirror.archlinuxarm.org/$arch/$repo"""
+caught_by = "tests.static.test_supply_chain"
+expect = "[supply-chain:https-only:pacman.aarch64.conf:"
+why = "La base de datos de paquetes viaja sin cifrar: permite degradar a versiones antiguas firmadas o dirigir a otro paquete firmado."
