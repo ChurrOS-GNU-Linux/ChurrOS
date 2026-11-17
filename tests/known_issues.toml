@@ -51,24 +51,6 @@ note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_sta
 
 # --- tests/static/test_editions.py (zram-generator) ---
 
-# --- test_repo_wiring (auditoría R1) ---
-
-[[issue]]
-id = "secrets-in-pr:visual-qa-classify.yml"
-note = "visual-qa-classify.yml se dispara con pull_request y pasa TYPESAFE_API_KEY y ANTHROPIC_API_KEY al entorno de un paso que ejecuta scripts/qa/visual/classify.py resuelto desde el checkout de la PR. Cualquiera con push a una rama del repo puede añadir dos líneas al script y exfiltrar las claves; el job termina en verde por continue-on-error y no es check requerido. Arreglo: ejecutar el clasificador desde main (scripts/qa/visual/trusted-scripts.sh, ya previsto en el test) o mover la clasificación a un workflow_run. Requiere editar el workflow, bloqueado por la política de escritura del agente. Ver docs/auditoria.md R1."
-
-[[issue]]
-id = "secrets-in-pr:visual-qa-iso.yml"
-note = "Igual que visual-qa-classify.yml: el paso Gate recibe las dos claves de API y ejecuta classify.py del árbol de la PR. Ver docs/auditoria.md R1."
-
-[[issue]]
-id = "secrets-in-pr:visual-qa-capture.yml"
-note = "El paso Gate recibe las dos claves de API con classify.py del árbol de la PR, y el paso de captura expone ANTHROPIC_API_KEY a screens.py (que no la usa: se puede quitar sin más). Ver docs/auditoria.md R1."
-
-[[issue]]
-id = "secrets-in-pr:visual-qa-report.yml"
-note = "El paso Gate recibe las dos claves de API y ejecuta classify.py del árbol de la PR. Ver docs/auditoria.md R1."
-
 # --- test_shell_scripts (auditoría V1): avisos de shellcheck a nivel warning ---
 #
 # Con -S warning aparecen estos. Cada uno se revisó: o es un falso positivo
@@ -82,15 +64,15 @@ note = "SC2155 en `export SOURCE_DATE_EPOCH=\"$(...)\"` (líneas 3-10). Declarar
 
 [[issue]]
 id = "shellcheck:scripts/build-kernel-vyper.sh:SC2155"
-note = "SC2155 en los `export DISTCC_HOSTS` / `export NUMJOBS` / `export _kernel_cc` (líneas 133-154). Son `export VAR` seguido de `VAR=\"$(...)\"` en dos pasos en la mayoria; los que shellcheck marca asignan y exportan en la misma linea una salida de funcion propia que no puede fallar. Ver docs/auditoria.md V1."
+note = "SC2155 en los `export DISTCC_HOSTS` / `export NUMJOBS` / `export _kernel_cc`. Son `export VAR` seguido de `VAR=\"$(...)\"` en dos pasos en la mayoria; los que shellcheck marca asignan y exportan en la misma linea una salida de funcion propia que no puede fallar. Ver docs/auditoria.md V1."
 
 [[issue]]
 id = "shellcheck:scripts/cli/check.sh:SC2034"
-note = "SC2034 en CHURROS_BINFMT_DIR (linea 1776). No es una variable muerta: scripts/lib/host.sh:52 la lee con ${CHURROS_BINFMT_DIR:-...} para que la prueba de binfmt use un directorio falso. Al estar en la misma shell no necesita export, y shellcheck no ve el uso porque esta en un fichero sourced. Ver docs/auditoria.md V1."
+note = "SC2034 en CHURROS_BINFMT_DIR. No es una variable muerta: scripts/lib/host.sh:52 la lee con ${CHURROS_BINFMT_DIR:-...} para que la prueba de binfmt use un directorio falso. Al estar en la misma shell no necesita export, y shellcheck no ve el uso porque esta en un fichero sourced. Ver docs/auditoria.md V1."
 
 [[issue]]
 id = "shellcheck:scripts/cli/build.sh:SC2034"
-note = "SC2034 en BAZAAR_PKG (linea 455). Se asigna a vacio en la rama i686 para que el bloque de integracion del instalador no lo monte, y se vuelve a calcular arriba. Es intencional: documenta que en i686 no hay paquete de Bazaar. Ver docs/auditoria.md V1."
+note = "SC2034 en BAZAAR_PKG. Se asigna a vacio en la rama i686 para que el bloque de integracion del instalador no lo monte, y se vuelve a calcular arriba. Es intencional: documenta que en i686 no hay paquete de Bazaar. Ver docs/auditoria.md V1."
 
 [[issue]]
 id = "shellcheck:scripts/cli/run.sh:SC2054"
@@ -98,7 +80,7 @@ note = "SC2054 en las lineas 284, 316 y 321. Falso positivo: las comas son parte
 
 [[issue]]
 id = "shellcheck:scripts/container-entrypoint.sh:SC2046"
-note = "SC2046 en la linea 34. La expansion `$(pacman -Qq | grep -- '-keyring$')` es deliberada: pacman_sync_with_retry recibe la lista de paquetes keyring como argumentos separados, y los nombres de paquete no llevan espacios. El disable=SC2046 de la linea 32 esta una linea antes del `source` y no alcanza al comando; moverlo encima del comando o cambiar la construccion son ambas validas pero no urgentes. Ver docs/auditoria.md V1."
+note = "SC2046 en la linea 34. La expansion `$(pacman -Qq | grep -- '-keyring$')` es deliberada: pacman_sync_with_retry recibe la lista de paquetes keyring como argumentos separados, y los nombres de paquete no llevan espacios. El disable=SC2046 de la linea 32 esta una linea antes del `source` y no alcanza al comando. Ver docs/auditoria.md V1."
 
 [[issue]]
 id = "shellcheck:scripts/lib/cluster.sh:SC2087"

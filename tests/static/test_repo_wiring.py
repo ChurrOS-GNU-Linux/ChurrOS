@@ -1226,12 +1226,27 @@ class WorkflowHygieneTest(unittest.TestCase):
             if "secrets." not in body:
                 continue
             # Un workflow de pull_request que usa secretos tiene que ejecutar el
-            # código con credenciales desde una copia de main, no desde la PR.
-            if "trusted-scripts.sh" not in body and "workflow_run" not in body:
+            # paso con credenciales desde una copia de main. No basta con que
+            # el fichero mencione trusted-scripts.sh en algún sitio: el paso que
+            # recibe las claves es el que tiene que usarlo (auditoría R1).
+            steps = []
+            try:
+                import yaml as _yaml
+                data_pr = _yaml.safe_load(body) or {}
+                for job in (data_pr.get("jobs") or {}).values():
+                    steps.extend(s for s in (job.get("steps") or []) if isinstance(s, dict))
+            except Exception:
+                steps = []
+            secret_steps = [s for s in steps if "secrets." in str(s.get("env") or "")]
+            trusted_ok = all(
+                "trusted/" in str(s.get("run", "")) or "trusted-scripts" in str(s.get("run", ""))
+                for s in secret_steps
+            ) if secret_steps else ("trusted-scripts.sh" in body or "workflow_run" in body)
+            if not trusted_ok:
                 findings[f"secrets-in-pr:{name}"] = (
-                    f"{name} se dispara con pull_request y usa secrets.*: si el script "
-                    "que los recibe sale del checkout de la PR, cualquiera con push al "
-                    "repo puede exfiltrarlos. Ejecuta ese paso desde main "
+                    f"{name} se dispara con pull_request y usa secrets.*: el paso que "
+                    "recibe las claves ejecuta código del checkout de la PR. Cualquiera "
+                    "con push al repo puede exfiltrarlas. Ejecuta ese paso desde main "
                     "(scripts/qa/visual/trusted-scripts.sh) o desde un workflow_run")
         testlib.assert_findings(self, "secrets-in-pr", findings)
 

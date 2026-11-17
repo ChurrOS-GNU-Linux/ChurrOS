@@ -67,3 +67,40 @@ class ClassifierFailureIsVisible(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SilentFailureIsReported(unittest.TestCase):
+    """El gate tiene que avisar cuando no llegó a decidir (A7).
+
+    `continue-on-error` mantiene el merge abierto (correcto: no es check
+    requerido). Lo que no puede es dejar el mismo rastro que un diff no
+    visual: cero capturas, cero comentario, todo verde.
+    """
+
+    MARKER = "Report that the classifier could not decide"
+
+    def test_each_gate_publishes_the_unknown_state(self) -> None:
+        findings = {}
+        for path in GATES:
+            body = path.read_text(encoding="utf-8")
+            if "continue-on-error: true" not in body:
+                continue
+            if self.MARKER not in body:
+                findings[f"visual-qa:silent-failure:{path.name}"] = (
+                    f"{path.name} lleva continue-on-error y no avisa cuando el "
+                    "clasificador no decidió: un fallo del pipeline es "
+                    "indistinguible de 'no visual'")
+        testlib.assert_findings(self, "visual-qa:silent-failure", findings)
+
+    def test_the_notice_reaches_the_step_summary(self) -> None:
+        for path in GATES:
+            body = path.read_text(encoding="utf-8")
+            if self.MARKER not in body:
+                continue
+            chunk = body.split(self.MARKER, 1)[1].split("- name:", 1)[0]
+            self.assertIn(
+                "GITHUB_STEP_SUMMARY",
+                chunk,
+                f"[visual-qa:silent-failure:{path.name}] el aviso no llega al "
+                "resumen del job: nadie lo vería",
+            )

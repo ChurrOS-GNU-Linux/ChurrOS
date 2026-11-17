@@ -2470,10 +2470,18 @@ requires = "container"
 why = "Compila y pasa cargo test, clippy, la auditoría de la ISO y el arranque en QEMU (que solo mira la bienvenida); en la ISO (panic = \"abort\") Ajustes no se abre nunca."
 
 [[mutation]]
-name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante reload)"
+name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante repaint)"
 file = "rust/popups/src/network.rs"
-find_re = '^        \*self\.last\.borrow_mut\(\) = wifi::get\(\);$'
-replace = "        let mut last = self.last.borrow_mut();\n        *last = wifi::get();"
+find = '''            move |info| {
+                *w.last.borrow_mut() = info;
+                w.repaint();
+            },'''
+replace = '''            move |info| {
+                let mut last = w.last.borrow_mut();
+                *last = info;
+                w.repaint();
+            },'''
+
 caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
 expect = "FALLO churros-popup network"
 requires = "container"
@@ -3971,3 +3979,69 @@ replace = """                current = entry.as_object_mut().unwrap();"""
 caught_by = "tests.static.test_fastfetch_config_safety"
 expect = "[v2:no-unchecked-json]"
 why = "Con panic=\"abort\", un None en ese unwrap mata churros-settings sin diálogo."
+
+# --- auditoría R1: las claves de API no llegan al código de la PR ---
+
+[[mutation]]
+name = "visual-qa: el clasificador vuelve a ejecutarse desde el árbol de la PR"
+file = ".github/workflows/visual-qa-classify.yml"
+find = 'python3 "$RUNNER_TEMP/trusted/scripts/qa/visual/classify.py"'
+replace = 'python3 scripts/qa/visual/classify.py'
+caught_by = "tests.static.test_repo_wiring"
+expect = "[secrets-in-pr:visual-qa-classify.yml]"
+why = "Con el script saliendo del checkout de la PR, cualquiera con push a una rama del repo puede exfiltrar TYPESAFE_API_KEY y ANTHROPIC_API_KEY; el job termina en verde por continue-on-error."
+
+[[mutation]]
+name = "visual-qa: el gate de la ISO vuelve a ejecutar código de la PR con las claves"
+file = ".github/workflows/visual-qa-iso.yml"
+find = 'python3 "$RUNNER_TEMP/trusted/scripts/qa/visual/classify.py"'
+replace = 'python3 scripts/qa/visual/classify.py'
+caught_by = "tests.static.test_repo_wiring"
+expect = "[secrets-in-pr:visual-qa-iso.yml]"
+why = "Mismo vector que en classify.yml: el paso con secretos ejecuta un script que la PR puede cambiar."
+
+# --- auditoría A4 en los popups: nmcli fuera del hilo de GTK ---
+
+[[mutation]]
+name = "popup de red: la recarga vuelve a llamar a nmcli en el hilo de UI"
+file = "rust/popups/src/network.rs"
+find = """        crate::popup::run_bg(
+            || {
+                let info = wifi::get();
+                wifi::scan();
+                info
+            },"""
+replace = """        let info = wifi::get();
+        wifi::scan();
+        crate::popup::run_bg(
+            || (),"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[popup:no-blocking-reload]"
+why = "wifi::get() encadena cuatro nmcli de 5 s: con la radio apagada son ~20 s de ventana congelada."
+
+# --- auditoría V5: nmcli no puede fallar en silencio ---
+
+[[mutation]]
+name = "wifi: forget vuelve a descartar el resultado de nmcli"
+file = "rust/services/src/wifi.rs"
+find = """pub fn forget(ssid: &str) -> bool {
+    ok_status(run(&["nmcli", "connection", "delete", ssid], 5000))
+}"""
+replace = """pub fn forget(ssid: &str) -> bool {
+    let _ = run(&["nmcli", "connection", "delete", ssid], 5000);
+    true
+}"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[popup:forget-reports-failure]"
+why = "Si nmcli falla, la red reaparece como guardada sin explicación: el usuario no distingue 'no se pudo borrar' de 'no pasó nada'."
+
+# --- auditoría A7: el pipeline avisa cuando no pudo decidir ---
+
+[[mutation]]
+name = "visual-qa: el gate deja de avisar cuando el clasificador no decidió"
+file = ".github/workflows/visual-qa-report.yml"
+find = "      - name: Report that the classifier could not decide"
+replace = "      - name: (aviso eliminado)"
+caught_by = "tests.static.test_visual_pipeline_visibility"
+expect = "[visual-qa:silent-failure:visual-qa-report.yml]"
+why = "Sin el aviso, un classify.py roto y un diff no visual son indistinguibles: los dos dejan el job en verde y sin comentario."
