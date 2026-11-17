@@ -55,6 +55,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 
 | Documento | Contenido |
 |-----------|-----------|
+| [Auditoría](auditoria.md) | Auditoría de `main` con los issues abiertos en tres niveles (rojo, amarillo, verde) y su verificación. |
 | [Vision](vision.md) | Qué es ChurrOS y a quién va dirigido. |
 | [Principios](principios.md) | Principios ordenados, regla para programas nuevos y proceso de decisión. |
 | [Roadmap](roadmap.md) | Estado actual y objetivos pendientes. |
