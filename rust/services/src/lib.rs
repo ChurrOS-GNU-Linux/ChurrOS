@@ -5,6 +5,7 @@
 
 pub mod appearance;
 pub mod audio;
+pub mod background;
 pub mod battery;
 pub mod bluetooth;
 pub mod brightness;

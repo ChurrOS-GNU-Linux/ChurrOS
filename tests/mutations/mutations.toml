@@ -3934,3 +3934,26 @@ replace = "ExecStart=/usr/local/bin/churros-update-auto"
 caught_by = "tests.static.test_systemd_units"
 expect = "[systemd:timeout:churros-update.service]"
 why = "Un pacman bloqueado deja la unidad en activating para siempre y el timer no vuelve a disparar."
+
+# --- auditoría A4: guardar un ajuste de root no congela la ventana ---
+
+[[mutation]]
+name = "greeter: el saludo vuelve a llamar a pkexec en el callback"
+file = "rust/preferences/src/pages/greeter.rs"
+find = """            apply_in_background(Rc::clone(&feedback), "Saludo guardado", move || {
+                UsersService::set_regreet_greeting(&text)
+            });"""
+replace = """            let ok = UsersService::set_regreet_greeting(&text);
+            say(&feedback, ok, "Saludo guardado");"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[greeter:background]"
+why = "Con .status() en el callback, GTK se congela mientras polkit pide la contraseña y el compositor puede marcar la ventana como no responde."
+
+[[mutation]]
+name = "background: el sondeo vuelve a bloquear con recv"
+file = "rust/services/src/background.rs"
+find = "self.receiver.try_recv()"
+replace = "self.receiver.recv().map_err(|_| TryRecvError::Disconnected)"
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[background:non-blocking]"
+why = "recv() bloquea el hilo de GTK hasta que el trabajo termina: es el mismo defecto con otra forma."
