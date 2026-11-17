@@ -1187,6 +1187,54 @@ class WorkflowHygieneTest(unittest.TestCase):
         self.assertIn('missing_tool "actionlint not installed"', text,
                       "en modo estricto, actionlint ausente tiene que ser un fallo")
 
+    def test_dependencies_are_audited(self):
+        """Cargo.lock fija versiones, pero alguien tiene que mirar sus CVE.
+
+        Auditoría A6: dependabot.yml solo cubría github-actions y no había
+        cargo-audit ni cargo-deny en ninguna parte. Una dependencia vulnerable
+        llega a la ISO compilada y se queda hasta que alguien la suba a mano.
+        """
+        findings = {}
+        rust = read(".github/workflows/rust.yml")
+        if "cargo audit" not in rust and "cargo-deny" not in rust:
+            findings["audit:no-cargo-audit"] = (
+                "rust.yml no audita las dependencias de Cargo: añade un paso con "
+                "cargo audit (o cargo-deny) sobre rust/Cargo.lock")
+        deps = testlib.read_text(ROOT / ".github/dependabot.yml")
+        if "package-ecosystem: cargo" not in deps:
+            findings["audit:no-dependabot-cargo"] = (
+                "dependabot.yml no actualiza Cargo: rust/Cargo.lock se queda quieto "
+                "y nadie mueve las versiones fijadas")
+        testlib.assert_findings(self, "audit", findings)
+
+    def test_secrets_never_reach_pull_request_code(self):
+        """Un `secrets.*` en un job que ejecuta código de la PR es una fuga.
+
+        Auditoría A7/R1: los cuatro workflows de QA visual pasaban claves de
+        API a classify.py resuelto desde el checkout de la PR, con
+        continue-on-error. Aquí se fija la regla general.
+        """
+        findings = {}
+        for name, data in workflows():
+            triggers = data.get("on", data.get(True)) or {}
+            if isinstance(triggers, str):
+                triggers = {triggers: None}
+            if "pull_request" not in triggers:
+                continue
+            text = ROOT / ".github/workflows" / name
+            body = testlib.read_text(text)
+            if "secrets." not in body:
+                continue
+            # Un workflow de pull_request que usa secretos tiene que ejecutar el
+            # código con credenciales desde una copia de main, no desde la PR.
+            if "trusted-scripts.sh" not in body and "workflow_run" not in body:
+                findings[f"secrets-in-pr:{name}"] = (
+                    f"{name} se dispara con pull_request y usa secrets.*: si el script "
+                    "que los recibe sale del checkout de la PR, cualquiera con push al "
+                    "repo puede exfiltrarlos. Ejecuta ese paso desde main "
+                    "(scripts/qa/visual/trusted-scripts.sh) o desde un workflow_run")
+        testlib.assert_findings(self, "secrets-in-pr", findings)
+
 
 def action_ref_problem(uses: str) -> str | None:
     if uses.startswith("./"):

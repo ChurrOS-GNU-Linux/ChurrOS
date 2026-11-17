@@ -50,3 +50,21 @@ id = "ref:niri/aarch64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
 
 # --- tests/static/test_editions.py (zram-generator) ---
+
+# --- test_repo_wiring (auditoría R1) ---
+
+[[issue]]
+id = "secrets-in-pr:visual-qa-classify.yml"
+note = "visual-qa-classify.yml se dispara con pull_request y pasa TYPESAFE_API_KEY y ANTHROPIC_API_KEY al entorno de un paso que ejecuta scripts/qa/visual/classify.py resuelto desde el checkout de la PR. Cualquiera con push a una rama del repo puede añadir dos líneas al script y exfiltrar las claves; el job termina en verde por continue-on-error y no es check requerido. Arreglo: ejecutar el clasificador desde main (scripts/qa/visual/trusted-scripts.sh, ya previsto en el test) o mover la clasificación a un workflow_run. Requiere editar el workflow, bloqueado por la política de escritura del agente. Ver docs/auditoria.md R1."
+
+[[issue]]
+id = "secrets-in-pr:visual-qa-iso.yml"
+note = "Igual que visual-qa-classify.yml: el paso Gate recibe las dos claves de API y ejecuta classify.py del árbol de la PR. Ver docs/auditoria.md R1."
+
+[[issue]]
+id = "secrets-in-pr:visual-qa-capture.yml"
+note = "El paso Gate recibe las dos claves de API con classify.py del árbol de la PR, y el paso de captura expone ANTHROPIC_API_KEY a screens.py (que no la usa: se puede quitar sin más). Ver docs/auditoria.md R1."
+
+[[issue]]
+id = "secrets-in-pr:visual-qa-report.yml"
+note = "El paso Gate recibe las dos claves de API y ejecuta classify.py del árbol de la PR. Ver docs/auditoria.md R1."
