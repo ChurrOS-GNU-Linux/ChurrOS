@@ -55,8 +55,16 @@ _detect_session_env() {
 
     # 3. Fallback: buscar el socket wayland más reciente por fecha de modificación en XDG_RUNTIME_DIR
     if [ -d "$XDG_RUNTIME_DIR" ]; then
-        local newest_sock
-        newest_sock=$(ls -t "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -n 1 || true)
+        local newest_sock="" sock
+        # Un glob en vez de ls | grep: soporta nombres con espacios y no depende
+        # de que ls ordene por fecha de forma parseable (ShellCheck SC2010).
+        for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+            [ -S "$sock" ] || continue
+            case "$sock" in *.lock) continue ;; esac
+            if [ -z "$newest_sock" ] || [ "$sock" -nt "$newest_sock" ]; then
+                newest_sock="$sock"
+            fi
+        done
         if [ -n "$newest_sock" ] && [ -S "$newest_sock" ]; then
             export WAYLAND_DISPLAY="${newest_sock##*/}"
             echo "$LOG_PREFIX detecto WAYLAND_DISPLAY=$WAYLAND_DISPLAY (socket mas reciente en $XDG_RUNTIME_DIR)" >&2

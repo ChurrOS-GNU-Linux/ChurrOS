@@ -84,6 +84,28 @@ class TestSupplyChainAndReproducibility(unittest.TestCase):
                         "usa un mirror https, la firma no protege la metadata")
         testlib.assert_findings(self, "supply-chain:https-only", findings)
 
+    def test_gitignore_covers_credentials(self) -> None:
+        """Material criptográfico accidental no debe entrar al repo (V7).
+
+        Hoy no hay secretos versionados, pero sin patrones cualquier `.env`,
+        `*.pem` o `id_rsa` que aparezca en el árbol se sube sin aviso.
+        """
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        # Líneas efectivas: un patrón comentado no ignora nada.
+        patterns = {
+            line.strip()
+            for line in ignore.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        findings = {}
+        for pattern in (".env", "*.pem", "*.key", "id_rsa*"):
+            if pattern not in patterns:
+                findings[f"gitignore:{pattern}"] = f".gitignore no cubre {pattern}"
+        testlib.assert_findings(self, "gitignore", findings)
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 if __name__ == "__main__":
     unittest.main()

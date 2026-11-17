@@ -138,7 +138,7 @@ list_plain() {
 }
 
 list_json() {
-    local first=1 meta stamp reason date esc
+    local first=1 meta stamp reason date
     for meta in "$TOP_MOUNT/$SNAPSHOTS_DIR"/*/"$STAMP_FILE"; do
         [ -f "$meta" ] || continue
         stamp="$(basename "$(dirname "$meta")")"

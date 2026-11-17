@@ -3905,3 +3905,32 @@ replace = "pub fn repair_pending() -> Vec<String> {"
 caught_by = "tests.static.test_services_error_handling"
 expect = "[update:repair-option]"
 why = "Sin Option, 'no se pudo comprobar' y 'no hay nada que reparar' son indistinguibles."
+
+# --- auditoría V1, V7 y V8: umbral de shellcheck, .gitignore y timeouts ---
+
+[[mutation]]
+name = "shellcheck: vuelve a -S error y deja pasar los avisos"
+file = "tests/static/test_shell_scripts.py"
+find = '"-S", "warning", "-f", "json1"'
+replace = '"-S", "error", "-f", "json1"'
+caught_by = "tests.static.test_shell_scripts"
+expect = "Ya no fallan"
+why = "Con -S error, un rm -rf \"$DIR\"/* sin ${:?} o una variable muerta pasan desapercibidos."
+
+[[mutation]]
+name = "gitignore: se pierden los patrones de credenciales"
+file = ".gitignore"
+find = "id_rsa*"
+replace = "# id_rsa*"
+caught_by = "tests.static.test_supply_chain"
+expect = "[gitignore:id_rsa*]"
+why = "Sin patrones, una clave privada que aparezca en el árbol se sube sin aviso."
+
+[[mutation]]
+name = "systemd: el update desatendido vuelve a no tener timeout"
+file = "archiso/airootfs/etc/systemd/system/churros-update.service"
+find = "TimeoutStartSec=2h\nExecStart=/usr/local/bin/churros-update-auto"
+replace = "ExecStart=/usr/local/bin/churros-update-auto"
+caught_by = "tests.static.test_systemd_units"
+expect = "[systemd:timeout:churros-update.service]"
+why = "Un pacman bloqueado deja la unidad en activating para siempre y el timer no vuelve a disparar."
