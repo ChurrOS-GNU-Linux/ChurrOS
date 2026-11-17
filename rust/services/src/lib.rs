@@ -90,11 +90,18 @@ pub fn home_dir() -> String {
     let uid = unsafe { libc::getuid() };
     let pwd = unsafe { libc::getpwuid(uid) };
     if !pwd.is_null() {
-        let dir = unsafe { CStr::from_ptr((*pwd).pw_dir) };
-        if let Ok(s) = dir.to_str() {
-            let s = s.trim();
-            if !s.is_empty() {
-                return s.to_string();
+        // `pw_dir` es un *mut c_char que puede ser NULL (una entrada de passwd
+        // con home vacío), y CStr::from_ptr(NULL) es comportamiento indefinido,
+        // no un panic recuperable (auditoría V3). Se comprueba el campo, no
+        // solo la struct.
+        let raw = unsafe { (*pwd).pw_dir };
+        if !raw.is_null() {
+            let dir = unsafe { CStr::from_ptr(raw) };
+            if let Ok(s) = dir.to_str() {
+                let s = s.trim();
+                if !s.is_empty() {
+                    return s.to_string();
+                }
             }
         }
     }

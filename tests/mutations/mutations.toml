@@ -3872,3 +3872,36 @@ replace = "    drop(lock);"
 caught_by = "tests.static.test_popup_single_instance"
 expect = "[popup:lock-held]"
 why = "Sin el lock vivo, otra instancia entra con la ventana anterior aún abierta."
+
+# --- auditoría V3 y V6: sin UB en getpwuid y sin ocultar fallos de pacman ---
+
+[[mutation]]
+name = "services: home_dir vuelve a pasar pw_dir a CStr sin comprobar NULL"
+file = "rust/services/src/lib.rs"
+find = """        let raw = unsafe { (*pwd).pw_dir };
+        if !raw.is_null() {
+            let dir = unsafe { CStr::from_ptr(raw) };"""
+replace = """        let raw = unsafe { (*pwd).pw_dir };
+        if true {
+            let dir = unsafe { CStr::from_ptr(raw) };"""
+caught_by = "tests.static.test_services_error_handling"
+expect = "[services:pw-dir-null]"
+why = "Una entrada de passwd con home vacío deja pw_dir en NULL y CStr::from_ptr(NULL) es comportamiento indefinido."
+
+[[mutation]]
+name = "update: repair_pending vuelve a ignorar el código de salida de pacman"
+file = "rust/preferences/src/services/update.rs"
+find = "        if query_code != 0 || sync_code != 0 {\n            return None;\n        }"
+replace = "        let _ = (query_code, sync_code);"
+caught_by = "tests.static.test_services_error_handling"
+expect = "[update:repair-exit-code]"
+why = "Con la base de datos bloqueada la lista sale vacía y la UI presenta el sistema como sano."
+
+[[mutation]]
+name = "update: repair_pending devuelve Vec y colapsa el fallo a lista vacía"
+file = "rust/preferences/src/services/update.rs"
+find = "pub fn repair_pending() -> Option<Vec<String>> {"
+replace = "pub fn repair_pending() -> Vec<String> {"
+caught_by = "tests.static.test_services_error_handling"
+expect = "[update:repair-option]"
+why = "Sin Option, 'no se pudo comprobar' y 'no hay nada que reparar' son indistinguibles."
