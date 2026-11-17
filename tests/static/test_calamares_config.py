@@ -1663,3 +1663,45 @@ class LiveUnitsTest(unittest.TestCase):
                     f"multi-user.target.wants/{unit} sigue en el sistema instalado: borra también el enlace")
         testlib.assert_findings(self, "live-unit", findings)
 
+
+    def test_live_only_dropins_and_generators_are_removed(self):
+        """Drop-ins y generadores del Live que no deben llegar al instalado.
+
+        LiveUnitsTest cubre unidades de /etc/systemd/system. Un drop-in
+        (/etc/systemd/logind.conf.d/do-not-suspend.conf) o un symlink de
+        system-generators no es una unidad: ni services-systemd.conf lo
+        enmascara ni aquel test lo mira. Sin borrarlos, unpackfs los copia y
+        el sistema instalado hereda decisiones del Live (auditoría A1-A2):
+
+          - do-not-suspend.conf: HandleLidSwitch=ignore, el portátil no
+            suspende nunca al cerrar la tapa.
+          - systemd-gpt-auto-generator -> /dev/null: el generador que monta
+            /home, /srv, swap GPT y la ESP queda enmudecido.
+        """
+        yaml = testlib.require_module(self, "yaml")
+        modules = CALAMARES / "modules"
+        cleanup = " ".join(
+            entry.get("command", "") if isinstance(entry, dict) else str(entry)
+            for entry in yaml.safe_load(testlib.read_text(modules / "shellprocess-cleanup.conf"))["script"]
+        ).split()
+
+        # Estado del Live por diseño. Cualquier fichero nuevo aquí tiene que
+        # entrar en la limpieza o el test lo señala.
+        live_only = [
+            "etc/systemd/logind.conf.d/do-not-suspend.conf",
+            "etc/systemd/system-generators/systemd-gpt-auto-generator",
+            "etc/systemd/journald.conf.d/volatile-storage.conf",
+            "etc/systemd/coredump.conf.d/churros-live.conf",
+        ]
+        # resolved.conf.d/archiso.conf (MulticastDNS) y los drop-ins de oomd
+        # valen también en el instalado: no están en la lista.
+
+        findings = {}
+        for rel in live_only:
+            if not (testlib.AIROOTFS / rel).exists():
+                continue  # ya no existe: nada que limpiar
+            if f"/{rel}" not in cleanup:
+                findings[f"live-dropin:{rel}"] = (
+                    f"{rel} viene del Live y shellprocess-cleanup.conf no lo borra: "
+                    "el sistema instalado lo hereda. Añádelo al rm -f de la limpieza")
+        testlib.assert_findings(self, "live-dropin", findings)

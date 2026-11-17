@@ -3808,3 +3808,23 @@ replace = "if current.get(*key).is_none() {"
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services object_at_replaces_a_key_that_is_not_an_object"
 expect = "object_at_replaces_a_key_that_is_not_an_object"
 why = "Con una clave existente que no es objeto, as_object_mut devuelve None y el expect aborta: es el segundo disparador de R3."
+
+# --- auditoría A1-A2: el instalado no hereda el estado de systemd del Live ---
+
+[[mutation]]
+name = "calamares: el instalado hereda do-not-suspend.conf del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf /etc/systemd/system-generators/systemd-gpt-auto-generator"
+replace = "rm -f /etc/systemd/system-generators/systemd-gpt-auto-generator"
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-dropin:etc/systemd/logind.conf.d/do-not-suspend.conf]"
+why = "HandleLidSwitch=ignore del Live llega al instalado: el portátil no suspende nunca al cerrar la tapa."
+
+[[mutation]]
+name = "calamares: el instalado hereda el generador GPT enmascarado"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf /etc/systemd/system-generators/systemd-gpt-auto-generator"
+replace = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf"
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-dropin:etc/systemd/system-generators/systemd-gpt-auto-generator]"
+why = "systemd-gpt-auto-generator -> /dev/null heredado: el instalado no monta solo /home, /srv, swap GPT ni la ESP."
