@@ -9,6 +9,7 @@ pub mod battery;
 pub mod bluetooth;
 pub mod brightness;
 pub mod dev;
+pub mod dotfiles;
 pub mod ethernet;
 pub mod jsonc;
 pub mod noctalia;

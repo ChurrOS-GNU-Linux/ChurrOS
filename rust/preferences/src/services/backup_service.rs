@@ -61,38 +61,26 @@ fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
     Some(base.join(rel_path))
 }
 
-/// Copia recursiva de directorio (como shutil.copytree).
-fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let target = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir_all(&entry.path(), &target)?;
-        } else {
-            fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
-}
-
 /// Noctalia vigila ~/.config/noctalia: si se borra la carpeta deja de ver
 /// cambios hasta reiniciarse. Se restauran los archivos en su sitio, se quitan
 /// los *.toml que no trae la configuración por defecto y se conserva
 /// live.toml, que solo existe en el Live (archiso/airootfs/root/scripts/desktop.sh).
-fn restore_noctalia_config(src: &Path, dst: &Path) {
-    let _ = fs::create_dir_all(dst);
+///
+/// Devuelve el primer error: antes se descartaban y una restauración a medias
+/// se presentaba como correcta.
+fn restore_noctalia_config(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
     if let Ok(entries) = fs::read_dir(dst) {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let path = entry.path();
             let is_toml = path.extension().is_some_and(|ext| ext == "toml");
             if is_toml && name != "live.toml" && !src.join(&name).exists() {
-                let _ = fs::remove_file(&path);
+                fs::remove_file(&path)?;
             }
         }
     }
-    let _ = copy_dir_all(src, dst);
+    churros_services::dotfiles::copy_dir_all(src, dst)
 }
 
 impl BackupService {
@@ -269,6 +257,12 @@ impl BackupService {
     }
 
     /// Restablece settings.json y los dotfiles desde /usr/share/churros/defaults.
+    ///
+    /// Devuelve error si la restauración de los dotfiles falla: la UI no
+    /// puede decir "restablecido" cuando el contenido del usuario sigue a
+    /// medias. Cada dotfile se restaura con replace_dir, que copia a un
+    /// temporal y solo entonces sustituye, así que un fallo deja el
+    /// directorio del usuario como estaba.
     pub fn reset_to_defaults() -> Result<bool, String> {
         let defaults_dir = PathBuf::from(DEFAULTS_DIR);
         if !defaults_dir.is_dir() {
@@ -276,7 +270,7 @@ impl BackupService {
         }
 
         Self::restore_settings();
-        Self::restore_dotfiles();
+        Self::restore_dotfiles()?;
         // El config restaurado ya dice oscuro, así que ThemeService::set
         // no haría nada y GTK / `[theme].mode` se quedarían en claro.
         // apply() recorre el mismo camino que el interruptor de Apariencia.
@@ -302,7 +296,9 @@ impl BackupService {
         crate::services::settings::save(&defaults);
     }
 
-    fn restore_dotfiles() {
+    /// Restaura los dotfiles de /usr/share/churros/defaults. Propaga el
+    /// primer fallo: quien llama tiene que poder decir la verdad en la UI.
+    fn restore_dotfiles() -> Result<(), String> {
         // Lo que se cambia desde la UI de Noctalia (~/.local/state/noctalia/
         // settings.toml) se aplica encima del config.toml restaurado. Se vacía
         // en vez de borrarlo: Noctalia solo lo relee cuando se escribe y, si
@@ -313,13 +309,14 @@ impl BackupService {
             .join("noctalia")
             .join("settings.toml");
         if noctalia_state.exists() {
-            let _ = fs::write(&noctalia_state, "");
+            fs::write(&noctalia_state, "").map_err(|e| {
+                format!("no se pudo limpiar {}: {e}", noctalia_state.display())
+            })?;
         }
 
         let defaults_dir = PathBuf::from(DEFAULTS_DIR);
-        let Ok(entries) = fs::read_dir(&defaults_dir) else {
-            return;
-        };
+        let entries = fs::read_dir(&defaults_dir)
+            .map_err(|e| format!("no se pudo leer {DEFAULTS_DIR}: {e}"))?;
         for entry in entries.flatten() {
             let src = entry.path();
             if !src.is_dir() {
@@ -327,14 +324,14 @@ impl BackupService {
             }
             let dst = home().join(".config").join(entry.file_name());
             if entry.file_name() == "noctalia" {
-                restore_noctalia_config(&src, &dst);
+                restore_noctalia_config(&src, &dst)
+                    .map_err(|e| format!("no se pudo restaurar {}: {e}", dst.display()))?;
                 continue;
             }
-            if dst.exists() {
-                let _ = fs::remove_dir_all(&dst);
-            }
-            let _ = copy_dir_all(&src, &dst);
+            churros_services::dotfiles::replace_dir(&src, &dst)
+                .map_err(|e| format!("no se pudo restaurar {}: {e}", dst.display()))?;
         }
+        Ok(())
     }
 
     /// Recarga waybar/mako/fuzzel (equivalente a _reload_services).
@@ -385,7 +382,7 @@ mod tests {
         fs::write(dst.join("live.toml"), "[lockscreen]\n").unwrap();
         fs::write(dst.join("extra.toml"), "[dock]\n").unwrap();
 
-        restore_noctalia_config(&src, &dst);
+        restore_noctalia_config(&src, &dst).unwrap();
 
         assert_eq!(
             fs::read_to_string(dst.join("config.toml")).unwrap(),

@@ -3744,3 +3744,32 @@ replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+# --- auditoría R2: restablecer ajustes no puede perder la configuración ---
+
+[[mutation]]
+name = "backup: restablecer borra la config del usuario antes de copiar"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "churros_services::dotfiles::replace_dir(&src, &dst)"
+replace = "fs::remove_dir_all(&dst).ok(); churros_services::dotfiles::copy_dir_all(&src, &dst)"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:no-delete-first]"
+why = "Con remove_dir_all antes de copiar, un fallo de la copia deja al usuario sin su configuración de niri/foot/waybar."
+
+[[mutation]]
+name = "backup: restablecer ignora el error de la restauración"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "Self::restore_dotfiles()?;"
+replace = "Self::restore_dotfiles().ok();"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:reset-propagates]"
+why = "Un fallo de la restauración se presenta como éxito en la UI: la persona cree que sus ajustes volvieron a los defaults."
+
+[[mutation]]
+name = "backup: restore_noctalia_config descarta los errores de copia"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "churros_services::dotfiles::copy_dir_all(src, dst)\n}"
+replace = "let _ = churros_services::dotfiles::copy_dir_all(src, dst);\n    Ok(())\n}"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:noctalia-ignored-error]"
+why = "Una restauración parcial de ~/.config/noctalia se reporta como correcta."
