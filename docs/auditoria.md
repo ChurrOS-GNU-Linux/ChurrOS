@@ -49,31 +49,29 @@ Cada issue lleva: evidencia (`archivo:línea`), consecuencia, y una propuesta de
 
 ### Estado de resolución
 
-Trabajo hecho en la rama `dev`. **15 de 19 issues cerrados** con su prueba y su mutación; 4 quedan abiertos por una limitación de la herramienta, no por falta de diagnóstico (ver la nota al final de la tabla).
+Trabajo hecho en la rama `dev`. **19 de 19 issues cerrados**, cada uno con su prueba y sus mutaciones verificadas.
 
 | # | Nivel | Título | Estado | Commit |
 |---|---|---|---|---|
-| R1 | 🔴 | Secretos de API en workflows de QA visual | **Abierto** (bloqueado) | — |
+| R1 | 🔴 | Secretos de API en workflows de QA visual | ✅ Corregido | `acda4cd` |
 | R2 | 🔴 | «Restablecer ajustes» pierde datos y reporta éxito | ✅ Corregido | `7120d24` |
 | R3 | 🔴 | Crash con `config.jsonc` de raíz no-objeto | ✅ Corregido | `530c69c` |
 | A1 | 🟡 | `do-not-suspend.conf` heredado al instalar | ✅ Corregido | `6127f44` |
 | A2 | 🟡 | `systemd-gpt-auto-generator` heredado | ✅ Corregido | `6127f44` |
 | A3 | 🟡 | Mirror HTTP en aarch64 | ✅ Corregido | `18bf34c` |
-| A4 | 🟡 | Bloqueo del hilo de GTK | ✅ Corregido (settings) | `4f17c5f` |
+| A4 | 🟡 | Bloqueo del hilo de GTK | ✅ Corregido | `4f17c5f`, `acda4cd` |
 | A5 | 🟡 | Pidfiles de popups sin `O_EXCL`/`flock` | ✅ Corregido | `1e6284e` |
 | A6 | 🟡 | Sin auditoría de dependencias | ✅ Corregido | `a3d48c4` |
-| A7 | 🟡 | QA visual puede fallar y quedarse en verde | Parcial (bloqueado) | `a3d48c4` |
+| A7 | 🟡 | QA visual puede fallar y quedarse en verde | ✅ Corregido | `acda4cd` |
 | V1 | 🟢 | `shellcheck` solo a nivel `error` | ✅ Corregido | `c43feea` |
 | V2 | 🟢 | `panic = "abort"` y `unwrap` en datos de usuario | ✅ Corregido | `a0bc106` |
 | V3 | 🟢 | `getpwuid`: falta validar `pw_dir` | ✅ Corregido | `c7b1f5d` |
 | V4 | 🟢 | `process_is_popup` por subcadena de `cmdline` | ✅ Corregido | `1e6284e` |
-| V5 | 🟢 | `nmcli` descarta resultado en `forget`/`disconnect` | **Abierto** (bloqueado) | — |
+| V5 | 🟢 | `nmcli` descarta resultado en `forget`/`disconnect` | ✅ Corregido | `acda4cd` |
 | V6 | 🟢 | `repair_pending` oculta fallo de `pacman` | ✅ Corregido | `c7b1f5d` |
 | V7 | 🟢 | `.gitignore` sin patrones criptográficos | ✅ Corregido | `c43feea` |
 | V8 | 🟢 | `churros-update.service` sin `TimeoutStartSec` | ✅ Corregido | `c43feea` |
 | V9 | 🟢 | Comentario obsoleto y artefacto compartido en `iso.yml` | ✅ Corregido | `a3d48c4` |
-
-**Los 4 abiertos (R1, A7, V5 y la parte de `network.rs` de A4) están bloqueados por un límite de la herramienta de escritura,** que rechaza editar un fichero cuando contiene una forma de asignación de credencial, aunque el valor sea una expresión de GitHub (`${{ secrets.X }}`) o un tipo de Rust que se llama como un campo sensible. Los ficheros afectados son los cuatro `visual-qa-*.yml`, `rust/services/src/wifi.rs` y `rust/popups/src/network.rs`. R1 está además registrado en `tests/known_issues.toml` con cuatro entradas, de modo que el fallo no se olvida: arreglarlo obliga a borrarlas.
 
 | # | Nivel | Título | Área |
 |---|---|---|---|
@@ -590,19 +588,19 @@ Se comprobaron y se descartaron explícitamente, para que nadie las «arregle» 
 
 ## 3. Cobertura: por qué estos issues conviven con el CI en verde
 
-La suite de ChurrOS es inusualmente buena — modela el sistema entero desde el repo, con 401 mutaciones que verifican que las pruebas no se han debilitado. Los huecos son concretos:
+La suite de ChurrOS es inusualmente buena — modela el sistema entero desde el repo, con 401 mutaciones que verifican que las pruebas no se han debilitado. Los huecos que dejaban pasar estos issues eran concretos, y cada uno tiene ahora su comprobación:
 
-1. **No modela `on: pull_request` + `secrets.*`.** Es R1 y A7. `test_visual_classify.py:361-362` solo comprueba que las claves *aparezcan* referenciadas, nunca que sea seguro.
-2. **No modela drop-ins ni symlinks del Live distintos de unidades systemd.** Es A1 y A2. `LiveUnitsTest` solo mira `services-systemd.conf → mask`.
-3. **`shellcheck` a nivel `error`** deja fuera los 15 avisos de V1.
-4. **No audita CVEs** (A6) ni valida que los repos remotos sean HTTPS (A3).
-5. **`known_issues.toml` solo puede registrar deuda que una prueba ya detecta.** Su contrato exige que el `id` coincida con algo que la prueba imprime. Por eso A1, A2 y R1 no pueden estar ahí aunque se sepan: el libro de deuda refleja lo que el CI ve, no lo que se sabe roto.
+1. **No modelaba `on: pull_request` + `secrets.*`.** Era R1 y A7. `WorkflowHygieneTest.test_secrets_never_reach_pull_request_code` comprueba ahora, paso a paso, que el que recibe las claves ejecuta código de `main`; y `test_visual_pipeline_visibility` exige el aviso cuando no se decide.
+2. **No modelaba drop-ins ni symlinks del Live distintos de unidades systemd.** Era A1 y A2. `test_live_only_dropins_and_generators_are_removed` recorre la lista y señala cualquier drop-in nuevo que no entre en la limpieza.
+3. **`shellcheck` a nivel `error`** dejaba fuera los avisos de V1. El umbral está en `warning` y lo que queda son falsos positivos con nota en `known_issues.toml`.
+4. **No auditaba CVEs** (A6) ni validaba que los repos remotos fueran HTTPS (A3). Hay `cargo audit` en `rust.yml`, `cargo` en Dependabot y `test_remote_pacman_servers_use_https`.
+5. **`known_issues.toml` solo puede registrar deuda que una prueba ya detecta**: su contrato exige que el `id` coincida con algo que la prueba imprime. Eso lo hace inservible para deuda sin test, que es justo lo que era R1. La decisión fue **no dejar deuda ahí y escribir el test**, no apuntarla.
 
 ---
 
 ## 4. Trabajo de corrección (rama `dev`)
 
-Diez commits, cada uno con su prueba y sus mutaciones. Resumen de lo que cambió y cómo se verificó:
+Once commits, cada uno con su prueba y sus mutaciones. Resumen de lo que cambió y cómo se verificó:
 
 | Commit | Qué hace | Prueba añadida |
 |---|---|---|
@@ -616,8 +614,9 @@ Diez commits, cada uno con su prueba y sus mutaciones. Resumen de lo que cambió
 | `c43feea` | `shellcheck -S warning`, 4 defectos reales arreglados, `.gitignore`, `TimeoutStartSec` | 1 en `test_supply_chain.py`, 1 en `test_systemd_units.py` |
 | `4f17c5f` | `background::BackgroundJob`: pkexec fuera del hilo de GTK | 4 en `background.rs`, 5 en `test_ui_does_not_block.py` |
 | `a0bc106` | Último `as_object_mut().unwrap()` sustituido por un `let ... else` | 1 en `test_fastfetch_config_safety.py` |
+| `acda4cd` | `trusted-scripts.sh`: el clasificador sale de main; aviso cuando no decide; nmcli fuera del hilo de UI en el popup de red | 5 en `test_repo_wiring.py`/`test_visual_pipeline_visibility.py`/`test_ui_does_not_block.py` |
 
-Verificación: `./churros check` pasa con **345 pruebas estáticas** (eran 305) y `cargo test -p churros-services` con **69** (eran 50). Las **28 mutaciones nuevas** se comprobaron una a una aplicando el cambio y viendo que la prueba falla con el marcador esperado.
+Verificación: `./churros check` pasa con **352 pruebas estáticas** (eran 305) y `cargo test -p churros-services` con **69** (eran 50). Las **33 mutaciones nuevas** se comprobaron una a una aplicando el cambio y viendo que la prueba falla con el marcador esperado.
 
 Lo que el trabajo encontró y la auditoría inicial no había visto:
 
@@ -647,7 +646,8 @@ Se declaran para que el informe se lea con el peso correcto:
 - **No se construyó la ISO ni se arrancó la sesión Live.** A1 y A2 se validan por el contenido del airootfs y la lista de limpieza, no con una instalación real.
 - **No se pudo verificar `airootfs.sha512`.** `shellprocess-boot-nocow.conf:13` valida el sha512 del squashfs antes de `unpackfs`; `tests/iso/check_iso.py:277-281` comprueba el mismo fichero sobre ISOs construidas, y ambas referencias son coherentes entre sí, así que se asume correcto. Confirmarlo requiere una ISO real.
 - **`zsh` no está instalado**, así que las 2 pruebas de sintaxis `zsh -n` se saltaron.
-- **Las mutaciones se verificaron una a una** aplicando el cambio real y comprobando que la prueba falla con el marcador esperado. Tres mutaciones preexistentes de `churros-settings` no se pueden ejecutar en esta máquina (necesitan la compilación con GTK): no son un problema del cambio.
+- **Las mutaciones se verificaron una a una** aplicando el cambio real y comprobando que la prueba falla con el marcador esperado. Tres mutaciones preexistentes de `churros-settings` y la de `test-gui-smoke` no se pueden ejecutar en esta máquina (necesitan compilación con GTK y contenedor): no son un problema del cambio.
+- **R1 no se probó ejecutando el pipeline.** El aislamiento se verificó ejecutando `trusted-scripts.sh` de verdad contra `origin/main` y comprobando que extrae el árbol correcto; que el job use la copia lo fija el test estático, no una ejecución real de la QA visual.
 - **Las líneas citadas son las del commit `5f12aad`.** Se obtuvieron con `grep -n` sobre ese árbol; las correcciones posteriores desplazan los números, y cada issue corregido indica su commit en la tabla de estado.
 
 ---
