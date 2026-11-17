@@ -93,3 +93,40 @@ class ObjectAtContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoUncheckedJsonMutationAnywhere(unittest.TestCase):
+    """Ningún `as_object_mut().unwrap()` sobre datos del usuario (V2).
+
+    Con panic = "abort" en release, un unwrap que devuelva None no degrada:
+    mata la app sin diálogo. R3 y V2 quitaron los siete de fastfetch_config
+    y el de settings; esto impide que vuelvan a entrar en cualquier crate.
+    Se miran solo las líneas de producción (antes de #[cfg(test)]).
+    """
+
+    def test_production_code_has_no_unchecked_json_mutation(self) -> None:
+        import subprocess
+
+        files = subprocess.run(
+            ["git", "ls-files", "rust/*/src/**/*.rs", "rust/*/src/*.rs"],
+            cwd=ROOT, capture_output=True, text=True,
+        ).stdout.split()
+        found = []
+        for name in files:
+            if "/tests" in name or name.endswith("tests.rs") or "test_support" in name:
+                continue
+            text = (ROOT / name).read_text(encoding="utf-8", errors="replace")
+            cut = text.find("#[cfg(test)]")
+            pre = text[:cut] if cut != -1 else text
+            for number, line in enumerate(pre.splitlines(), 1):
+                if line.lstrip().startswith("//"):
+                    continue
+                if "as_object_mut().unwrap()" in line or "as_array_mut().unwrap()" in line:
+                    found.append(f"{name}:{number}")
+        self.assertFalse(
+            found,
+            "[v2:no-unchecked-json] `as_object_mut().unwrap()` en producción: con "
+            "panic=\"abort\" un None mata la app entera. Usa "
+            "churros_services::nested::object_at o el patrón `let Value::Object(..) "
+            "= .. else { return }`. Sitios: " + ", ".join(found),
+        )

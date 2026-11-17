@@ -3957,3 +3957,17 @@ replace = "self.receiver.recv().map_err(|_| TryRecvError::Disconnected)"
 caught_by = "tests.static.test_ui_does_not_block"
 expect = "[background:non-blocking]"
 why = "recv() bloquea el hilo de GTK hasta que el trabajo termina: es el mismo defecto con otra forma."
+
+# --- auditoría V2: ningún unwrap sobre JSON del usuario en producción ---
+
+[[mutation]]
+name = "settings: vuelve el as_object_mut().unwrap() al navegar claves"
+file = "rust/preferences/src/services/settings.rs"
+find = """                let Value::Object(map) = entry else {
+                    return;
+                };
+                current = map;"""
+replace = """                current = entry.as_object_mut().unwrap();"""
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[v2:no-unchecked-json]"
+why = "Con panic=\"abort\", un None en ese unwrap mata churros-settings sin diálogo."
