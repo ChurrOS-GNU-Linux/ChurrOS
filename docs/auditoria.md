@@ -49,27 +49,31 @@ Cada issue lleva: evidencia (`archivo:línea`), consecuencia, y una propuesta de
 
 ### Estado de resolución
 
+Trabajo hecho en la rama `dev`. **15 de 19 issues cerrados** con su prueba y su mutación; 4 quedan abiertos por una limitación de la herramienta, no por falta de diagnóstico (ver la nota al final de la tabla).
+
 | # | Nivel | Título | Estado | Commit |
 |---|---|---|---|---|
-| R1 | 🔴 | Secretos de API en workflows de QA visual | Abierto | — |
-| R2 | 🔴 | «Restablecer ajustes» pierde datos y reporta éxito | Abierto | — |
-| R3 | 🔴 | Crash con `config.jsonc` de raíz no-objeto | Abierto | — |
-| A1 | 🟡 | `do-not-suspend.conf` heredado al instalar | Abierto | — |
-| A2 | 🟡 | `systemd-gpt-auto-generator` heredado | Abierto | — |
-| A3 | 🟡 | Mirror HTTP en aarch64 | Abierto | — |
-| A4 | 🟡 | Bloqueo del hilo de GTK | Abierto | — |
-| A5 | 🟡 | Pidfiles de popups sin `O_EXCL`/`flock` | Abierto | — |
-| A6 | 🟡 | Sin auditoría de dependencias | Abierto | — |
-| A7 | 🟡 | QA visual puede fallar y quedarse en verde | Abierto | — |
-| V1 | 🟢 | `shellcheck` solo a nivel `error` | Abierto | — |
-| V2 | 🟢 | `panic = "abort"` y `unwrap` en datos de usuario | Abierto | — |
-| V3 | 🟢 | `getpwuid`: falta validar `pw_dir` | Abierto | — |
-| V4 | 🟢 | `process_is_popup` por subcadena de `cmdline` | Abierto | — |
-| V5 | 🟢 | `nmcli` descarta resultado en `forget`/`disconnect` | Abierto | — |
-| V6 | 🟢 | `repair_pending` oculta fallo de `pacman` | Abierto | — |
-| V7 | 🟢 | `.gitignore` sin patrones criptográficos | Abierto | — |
-| V8 | 🟢 | `churros-update.service` sin `TimeoutStartSec` | Abierto | — |
-| V9 | 🟢 | Comentario obsoleto y artefacto compartido en `iso.yml` | Abierto | — |
+| R1 | 🔴 | Secretos de API en workflows de QA visual | **Abierto** (bloqueado) | — |
+| R2 | 🔴 | «Restablecer ajustes» pierde datos y reporta éxito | ✅ Corregido | `7120d24` |
+| R3 | 🔴 | Crash con `config.jsonc` de raíz no-objeto | ✅ Corregido | `530c69c` |
+| A1 | 🟡 | `do-not-suspend.conf` heredado al instalar | ✅ Corregido | `6127f44` |
+| A2 | 🟡 | `systemd-gpt-auto-generator` heredado | ✅ Corregido | `6127f44` |
+| A3 | 🟡 | Mirror HTTP en aarch64 | ✅ Corregido | `18bf34c` |
+| A4 | 🟡 | Bloqueo del hilo de GTK | ✅ Corregido (settings) | `4f17c5f` |
+| A5 | 🟡 | Pidfiles de popups sin `O_EXCL`/`flock` | ✅ Corregido | `1e6284e` |
+| A6 | 🟡 | Sin auditoría de dependencias | ✅ Corregido | `a3d48c4` |
+| A7 | 🟡 | QA visual puede fallar y quedarse en verde | Parcial (bloqueado) | `a3d48c4` |
+| V1 | 🟢 | `shellcheck` solo a nivel `error` | ✅ Corregido | `c43feea` |
+| V2 | 🟢 | `panic = "abort"` y `unwrap` en datos de usuario | ✅ Corregido | `a0bc106` |
+| V3 | 🟢 | `getpwuid`: falta validar `pw_dir` | ✅ Corregido | `c7b1f5d` |
+| V4 | 🟢 | `process_is_popup` por subcadena de `cmdline` | ✅ Corregido | `1e6284e` |
+| V5 | 🟢 | `nmcli` descarta resultado en `forget`/`disconnect` | **Abierto** (bloqueado) | — |
+| V6 | 🟢 | `repair_pending` oculta fallo de `pacman` | ✅ Corregido | `c7b1f5d` |
+| V7 | 🟢 | `.gitignore` sin patrones criptográficos | ✅ Corregido | `c43feea` |
+| V8 | 🟢 | `churros-update.service` sin `TimeoutStartSec` | ✅ Corregido | `c43feea` |
+| V9 | 🟢 | Comentario obsoleto y artefacto compartido en `iso.yml` | ✅ Corregido | `a3d48c4` |
+
+**Los 4 abiertos (R1, A7, V5 y la parte de `network.rs` de A4) están bloqueados por un límite de la herramienta de escritura,** que rechaza editar un fichero cuando contiene una forma de asignación de credencial, aunque el valor sea una expresión de GitHub (`${{ secrets.X }}`) o un tipo de Rust que se llama como un campo sensible. Los ficheros afectados son los cuatro `visual-qa-*.yml`, `rust/services/src/wifi.rs` y `rust/popups/src/network.rs`. R1 está además registrado en `tests/known_issues.toml` con cuatro entradas, de modo que el fallo no se olvida: arreglarlo obliga a borrarlas.
 
 | # | Nivel | Título | Área |
 |---|---|---|---|
@@ -596,8 +600,33 @@ La suite de ChurrOS es inusualmente buena — modela el sistema entero desde el 
 
 ---
 
-## 4. Orden de corrección sugerido
+## 4. Trabajo de corrección (rama `dev`)
 
+Diez commits, cada uno con su prueba y sus mutaciones. Resumen de lo que cambió y cómo se verificó:
+
+| Commit | Qué hace | Prueba añadida |
+|---|---|---|
+| `7120d24` | `dotfiles::replace_dir`: copia a un temporal e intercambia con rename; `reset_to_defaults` propaga el error | 5 en `dotfiles.rs`, 6 en `test_backup_reset_safety.py` |
+| `530c69c` | `nested::as_object` / `object_at`: raíz no-objeto normalizada, claves no-objeto sustituidas | 6 en `nested.rs`, 6 en `test_fastfetch_config_safety.py` |
+| `6127f44` | La limpieza borra `do-not-suspend.conf` y el generador GPT enmascarado | 1 en `test_calamares_config.py` (generaliza a futuros drop-ins) |
+| `18bf34c` | Fuera el mirror HTTP de aarch64 (el certificado no cubre `mirror.*`) | 1 en `test_supply_chain.py` |
+| `1e6284e` | `single_instance::InstanceLock` (flock) decide la instancia viva; `/proc/<pid>/exe` para matar | 4 en `single_instance.rs`, 9 en `test_popup_single_instance.py` |
+| `c7b1f5d` | `pw_dir` NULL comprobado; `repair_pending` devuelve `Option` y mira el código de salida | 5 en `test_services_error_handling.py` |
+| `a3d48c4` | `cargo audit` + Dependabot cargo; artefactos de ISO con evento y SHA | 2 en `test_repo_wiring.py`, 2 en `test_visual_pipeline_visibility.py` |
+| `c43feea` | `shellcheck -S warning`, 4 defectos reales arreglados, `.gitignore`, `TimeoutStartSec` | 1 en `test_supply_chain.py`, 1 en `test_systemd_units.py` |
+| `4f17c5f` | `background::BackgroundJob`: pkexec fuera del hilo de GTK | 4 en `background.rs`, 5 en `test_ui_does_not_block.py` |
+| `a0bc106` | Último `as_object_mut().unwrap()` sustituido por un `let ... else` | 1 en `test_fastfetch_config_safety.py` |
+
+Verificación: `./churros check` pasa con **345 pruebas estáticas** (eran 305) y `cargo test -p churros-services` con **69** (eran 50). Las **28 mutaciones nuevas** se comprobaron una a una aplicando el cambio y viendo que la prueba falla con el marcador esperado.
+
+Lo que el trabajo encontró y la auditoría inicial no había visto:
+
+- `churros-apply-wallpaper` buscaba el socket wayland con `ls -t | grep | head`, que rompe con nombres que llevan espacios (al subir el umbral de shellcheck).
+- `churros-snapshot` declaraba `local esc` para una variable que en realidad era una función.
+- `iso-arm64.yml` tenía el mismo nombre de artefacto fijo que `iso.yml`.
+- Varios ficheros quedaban en modo `0600` al editarlos (sin bit ejecutable): se detectó porque `scripts/test-apply-wallpaper.sh` empezó a fallar, y se restauraron todos los modos.
+
+## 5. Orden de corrección sugerido
 1. **R1** (rotar claves + mover la clasificación fuera del contexto de PR) — es el único con exposición de credenciales en curso.
 2. **R2** (devolver `Result` y no borrar antes de copiar) — pérdida de datos del usuario.
 3. **R3** (normalizar `read_config`) — crash de una app que se distribuye.
@@ -610,16 +639,16 @@ Cada corrección debería llegar con su prueba y su mutación en `tests/mutation
 
 ---
 
-## 5. Limitaciones de esta auditoría
+## 6. Limitaciones de esta auditoría
 
 Se declaran para que el informe se lea con el peso correcto:
 
-- **No se compiló el workspace Rust.** `gtk4` no está instalado en la máquina de auditoría y `cargo build` lo exige. Todo lo relativo a Rust es análisis estático por lectura, no ejecución. R3 está confirmado por lectura del código y por la alcanzabilidad de los callbacks, pero **no se reprodujo el crash ejecutando la app**.
-- **No se construyó la ISO ni se arrancó la sesión Live.** Los hallazgos del instalador (A1, A2) se basan en el contenido del airootfs y en la ausencia de limpieza, no en una instalación real.
+- **El crate `churros-services` se compiló y se probó** (`cargo test -p churros-services`: 69 pruebas en verde, 19 de ellas añadidas al corregir R2, R3, A4, A5 y V3). **Las apps con GTK** (`preferences`, `popups`, `churros-welcome`, `churros-tour`, `control-center`) **no se pudieron compilar**: requieren GTK4/libadwaita y `rustc` 1.92 (la máquina tiene 1.85.1). En esas, cada corrección se valida con análisis sintáctico (`rustc --emit=metadata`), con la suite estática del repo y, cuando hay lógica pura, moviéndola a `services` para poder ejecutarla de verdad. Es el caso de `dotfiles` (R2), `nested` (R3), `single_instance` (A5) y `background` (A4).
+- **No se construyó la ISO ni se arrancó la sesión Live.** A1 y A2 se validan por el contenido del airootfs y la lista de limpieza, no con una instalación real.
 - **No se pudo verificar `airootfs.sha512`.** `shellprocess-boot-nocow.conf:13` valida el sha512 del squashfs antes de `unpackfs`; `tests/iso/check_iso.py:277-281` comprueba el mismo fichero sobre ISOs construidas, y ambas referencias son coherentes entre sí, así que se asume correcto. Confirmarlo requiere una ISO real.
-- **`zsh` no está instalado**, así que las 2 pruebas de sintaxis `zsh -n` se saltaron también en la baseline.
-- Los workflows de QA visual con secretos (R1) no se ejecutaron: su análisis es de configuración.
-- **Las líneas citadas son las del commit `5f12aad`.** Se obtuvieron con `grep -n` sobre ese árbol; cualquier cambio posterior en `main` las desplaza. En A4, la lista de líneas de `network.rs` sale de los puntos de llamada localizados con `grep -n`, no de ejecutar la app.
+- **`zsh` no está instalado**, así que las 2 pruebas de sintaxis `zsh -n` se saltaron.
+- **Las mutaciones se verificaron una a una** aplicando el cambio real y comprobando que la prueba falla con el marcador esperado. Tres mutaciones preexistentes de `churros-settings` no se pueden ejecutar en esta máquina (necesitan la compilación con GTK): no son un problema del cambio.
+- **Las líneas citadas son las del commit `5f12aad`.** Se obtuvieron con `grep -n` sobre ese árbol; las correcciones posteriores desplazan los números, y cada issue corregido indica su commit en la tabla de estado.
 
 ---
 
