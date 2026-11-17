@@ -12,6 +12,7 @@ pub mod dev;
 pub mod dotfiles;
 pub mod ethernet;
 pub mod jsonc;
+pub mod nested;
 pub mod noctalia;
 pub mod power;
 pub mod theme;

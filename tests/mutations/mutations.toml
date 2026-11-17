@@ -3773,3 +3773,38 @@ replace = "let _ = churros_services::dotfiles::copy_dir_all(src, dst);\n    Ok((
 caught_by = "tests.static.test_backup_reset_safety"
 expect = "[backup:noctalia-ignored-error]"
 why = "Una restauración parcial de ~/.config/noctalia se reporta como correcta."
+
+# --- auditoría R3: un config de fastfetch corrupto no puede tumbar la app ---
+
+[[mutation]]
+name = "fastfetch: read_config deja pasar una raíz que no es objeto"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = "churros_services::nested::as_object(parsed)"
+replace = "parsed"
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[fastfetch:root-normalized]"
+why = "Con `[]` o `\"x\"` como raíz, el primer setter hace as_object_mut().unwrap() y, con panic=abort, mata churros-settings."
+
+[[mutation]]
+name = "fastfetch: los setters vuelven a usar as_object_mut().unwrap()"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = """
+    pub fn set_logo_colors(colors: &[String; 4]) {
+        let mut cfg = read_config();
+        let obj = object_at(&mut cfg, &["logo"]);"""
+replace = """
+    pub fn set_logo_colors(colors: &[String; 4]) {
+        let mut cfg = read_config();
+        let obj = cfg.as_object_mut().unwrap();"""
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[fastfetch:no-unwrap]"
+why = "`\"logo\": \"texto\"` en el config del usuario hace panic en el callback de la UI."
+
+[[mutation]]
+name = "nested: object_at deja de sustituir una clave que no es objeto"
+file = "rust/services/src/nested.rs"
+find = "if !current.get(*key).is_some_and(Value::is_object) {"
+replace = "if current.get(*key).is_none() {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services object_at_replaces_a_key_that_is_not_an_object"
+expect = "object_at_replaces_a_key_that_is_not_an_object"
+why = "Con una clave existente que no es objeto, as_object_mut devuelve None y el expect aborta: es el segundo disparador de R3."
