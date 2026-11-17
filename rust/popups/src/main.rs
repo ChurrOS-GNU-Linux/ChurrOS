@@ -29,6 +29,10 @@ fn name_file() -> Option<PathBuf> {
     churros_services::runtime_dir().ok().map(|dir| dir.join("popup.name"))
 }
 
+fn lock_file() -> Option<PathBuf> {
+    churros_services::runtime_dir().ok().map(|dir| dir.join("popup.lock"))
+}
+
 fn read_file(path: &PathBuf) -> Option<String> {
     fs::read_to_string(path)
         .ok()
@@ -45,14 +49,27 @@ fn process_alive(pid: i32) -> bool {
 /// Verifica que el pid del pidfile es realmente un churros-popup antes de
 /// matarlo: un pid reutilizado por otro proceso no debe ser objetivo de
 /// SIGTERM/SIGKILL.
+///
+/// Compara el ejecutable real (/proc/<pid>/exe) con el nuestro, no una
+/// subcadena de la línea de comandos: antes, cualquier proceso cuya cmdline
+/// mencionara "churros-popup" (un `sh -c`, un grep, un editor) pasaba el
+/// filtro y recibía SIGKILL si su pid quedaba en un pidfile obsoleto
+/// (auditoría V4).
 fn process_is_popup(pid: i32) -> bool {
     if !process_alive(pid) {
         return false;
     }
-    match fs::read_to_string(format!("/proc/{pid}/cmdline")) {
-        Ok(cmdline) => cmdline.contains("churros-popup"),
-        Err(_) => false,
+    const DEPLOYED: &str = "/usr/bin/churros-popup";
+    let Ok(theirs) = fs::read_link(format!("/proc/{pid}/exe")) else {
+        return false;
+    };
+    if theirs == std::path::Path::new(DEPLOYED) {
+        return true;
     }
+    // En desarrollo (cargo run, scripts de prueba) el ejecutable es otro: se
+    // acepta si es exactamente el nuestro. La ruta resultante lleva el sufijo
+    // " (deleted)" cuando el binario se reemplazó, y entonces no coincide.
+    std::env::current_exe().is_ok_and(|mine| mine == theirs)
 }
 
 fn running_pid() -> Option<i32> {
@@ -133,7 +150,7 @@ fn kill_popup() {
     }
 }
 
-fn launch(name: &str) -> i32 {
+fn launch(name: &str, lock: churros_services::single_instance::InstanceLock) -> i32 {
     let app = gtk::Application::builder()
         .application_id(format!("org.churros.popup.{name}"))
         .build();
@@ -144,6 +161,9 @@ fn launch(name: &str) -> i32 {
         window.present();
     });
 
+    // El lock ya está tomado: este proceso es la instancia viva. Escribir el
+    // pid ahora no compite con nadie (antes se comprobaba y luego se escribía,
+    // y entre las dos cosas cabía otra instancia).
     let Ok((_, mut pid)) = churros_services::open_runtime_file("popup.pid", false) else {
         eprintln!("churros-popup: no se pudo crear el estado privado de la sesión");
         return 1;
@@ -156,6 +176,9 @@ fn launch(name: &str) -> i32 {
         eprintln!("churros-popup: no se pudo guardar el estado de la sesión");
         return 1;
     }
+    // El fichero del lock tiene que seguir vivo mientras la ventana exista:
+    // soltarlo antes dejaría entrar a otra instancia con esta aún abierta.
+    let _lock = lock;
 
     // run() pasaría std::env::args() a GApplication ("audio" = fichero a abrir).
     // Sin argumentos extra: solo la activación normal.
@@ -183,24 +206,60 @@ fn main() {
         exit(64);
     }
 
-    // Mismo popup corriendo -> apagar (toggle off)
-    if running_name().as_deref() == Some(name.as_str()) {
-        kill_popup();
-        return;
-    }
+    // Un solo popup a la vez, decidido por un flock y no leyendo un pidfile:
+    // entre leer y escribir cabía otra instancia (auditoría A5). El lock lo
+    // libera el kernel si el proceso muere, así que un crash no deja el
+    // estado bloqueado.
+    let Some(lock_path) = lock_file() else {
+        eprintln!("churros-popup: no se pudo resolver el estado privado de la sesión");
+        exit(1);
+    };
+    let held = match churros_services::single_instance::InstanceLock::acquire(&lock_path) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            // Ya hay un popup vivo. Mismo popup -> toggle off; otro popup ->
+            // se apaga para dejar sitio al pedido. Los dos casos matan y salen.
+            let same = running_name().as_deref() == Some(name.as_str());
+            kill_popup();
+            if same {
+                clear_state();
+                return;
+            }
+            // Otro popup: el lock se libera cuando el proceso muere, y acaba
+            // de recibir SIGTERM. Reintentar con un límite.
+            for _ in 0..40 {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+                match churros_services::single_instance::InstanceLock::acquire(&lock_path) {
+                    Ok(Some(lock)) => {
+                        let code = launch(&name, lock);
+                        clear_state();
+                        exit(code);
+                    }
+                    Ok(None) => continue,
+                    Err(_) => break,
+                }
+            }
+            eprintln!("churros-popup: el popup anterior no terminó");
+            clear_state();
+            return;
+        }
+        Err(error) => {
+            eprintln!("churros-popup: no se pudo tomar el estado de la sesión: {error}");
+            exit(1);
+        }
+    };
 
-    // Otro popup (o estado viejo) -> matar antes de lanzar
-    kill_popup();
+    let code = launch(&name, held);
+    clear_state();
+    exit(code);
+}
 
-    let code = launch(&name);
-
-    // Limpieza al cerrar la ventana
+/// Borra el pid y el nombre del popup. El lock se suelta solo al salir.
+fn clear_state() {
     if let Some(path) = pid_file() {
         let _ = fs::remove_file(path);
     }
     if let Some(path) = name_file() {
         let _ = fs::remove_file(path);
     }
-
-    exit(code);
 }

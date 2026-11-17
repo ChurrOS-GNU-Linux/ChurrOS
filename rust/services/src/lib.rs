@@ -15,6 +15,7 @@ pub mod jsonc;
 pub mod nested;
 pub mod noctalia;
 pub mod power;
+pub mod single_instance;
 pub mod theme;
 pub mod version;
 pub mod waybar_style;

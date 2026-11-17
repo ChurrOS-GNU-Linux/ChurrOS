@@ -3843,3 +3843,32 @@ Server = http://mirror.archlinuxarm.org/$arch/$repo"""
 caught_by = "tests.static.test_supply_chain"
 expect = "[supply-chain:https-only:pacman.aarch64.conf:"
 why = "La base de datos de paquetes viaja sin cifrar: permite degradar a versiones antiguas firmadas o dirigir a otro paquete firmado."
+
+# --- auditoría A5 y V4: un solo popup y solo matar lo propio ---
+
+[[mutation]]
+name = "popup: vuelve a decidir leyendo el pidfile en vez de con el lock"
+file = "rust/popups/src/main.rs"
+find = "    let held = match churros_services::single_instance::InstanceLock::acquire(&lock_path) {"
+replace = "    if running_name().as_deref() == Some(name.as_str()) { kill_popup(); return; }\n    let held = match churros_services::single_instance::InstanceLock::acquire(&lock_path) {"
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:lock]"
+why = "Check-then-act: dos clics seguidos lanzan dos apps GTK y los pidfiles se pisan."
+
+[[mutation]]
+name = "popup: process_is_popup vuelve a fiarse de la línea de comandos"
+file = "rust/popups/src/main.rs"
+find = 'let Ok(theirs) = fs::read_link(format!("/proc/{pid}/exe")) else {'
+replace = 'let Ok(theirs) = fs::read_to_string(format!("/proc/{pid}/cmdline")).map(std::path::PathBuf::from) else {'
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:no-cmdline-match]"
+why = "Un proceso ajeno que mencione churros-popup recibe SIGKILL si su pid quedó en un pidfile obsoleto."
+
+[[mutation]]
+name = "popup: launch suelta el lock antes de abrir la ventana"
+file = "rust/popups/src/main.rs"
+find = "    let _lock = lock;"
+replace = "    drop(lock);"
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:lock-held]"
+why = "Sin el lock vivo, otra instancia entra con la ventana anterior aún abierta."
