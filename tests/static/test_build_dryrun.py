@@ -416,7 +416,10 @@ class BuildDryRunTest(unittest.TestCase):
         # Módulos: los comunes, con encima los de modules/<arch>/ (apply-calamares.sh).
         modules = {p.name: p for p in sorted((source / "modules").glob("*.conf"))}
         modules.update({p.name: p for p in (source / "modules").glob("*.yaml")})
+        # La capa <arch> pisa al común, también en los grupos de netinstall
+        # (aarch64 deja la lista vacía: no hay driver NVIDIA instalable ahí).
         modules.update({p.name: p for p in (source / "modules" / item.arch).glob("*.conf")})
+        modules.update({p.name: p for p in (source / "modules" / item.arch).glob("*.yaml")})
         for name, expected in sorted(modules.items()):
             deployed = calamares / "modules" / name
             if not deployed.is_file() or deployed.read_bytes() != expected.read_bytes():

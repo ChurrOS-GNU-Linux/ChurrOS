@@ -728,8 +728,8 @@ why = "Errata en un módulo de exec: Calamares no arranca ('not found in module 
 [[mutation]]
 name = "test_calamares_config: Quitar users del show"
 file = "installer/calamares/settings.conf"
-find = "      - users\n      - summary\n"
-replace = "      - summary\n"
+find = "      - users\n      - netinstall\n"
+replace = "      - netinstall\n"
 caught_by = "tests.static.test_calamares_config"
 expect = "calamares-sequence:not-shown:users"
 why = "Quitar users del show: UsersViewStep no crea trabajos (sin usuario, root sin contraseña)"
@@ -2098,12 +2098,12 @@ why = "An AI guesses the Debian/upstream name instead of the Arch package name. 
 [[mutation]]
 name = "test_arch_repos: netinstall names the NVIDIA driver Arch no longer ships"
 file = "installer/calamares/modules/netinstall.yaml"
-find = "- name: \"nvidia-open-dkms\""
+find = "- name: \"linux-cachyos-nvidia-open\""
 replace = "- name: \"nvidia-dkms\""
 caught_by = "tests.container.test_arch_repos"
 expect = "repo-pkg:netinstall.yaml:nvidia-dkms"
 requires = "container"
-why = "Arch dropped nvidia and nvidia-dkms when the driver moved to the open kernel modules (nvidia-open, nvidia-open-dkms); the [cachyos] repo does not have them either. Selecting the critical NVIDIA group would abort the install."
+why = "Arch dropped nvidia and nvidia-dkms when the driver moved to the open kernel modules; the [cachyos] repo does not have them either. Selecting the critical NVIDIA group would abort the install (critical: true)."
 
 [[mutation]]
 name = "test_arch_repos: Kernel swap"
@@ -3744,3 +3744,48 @@ replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+[[mutation]]
+name = "nvidia: a netinstall group stops being unselected"
+file = "installer/calamares/modules/netinstall.yaml"
+find_re = "    selected: false\n    expanded: true\n    critical: true\n    packages:\n      # Módulo del kernel"
+replace = "    expanded: true\n    critical: true\n    packages:\n      # Módulo del kernel"
+caught_by = "tests.static.test_nvidia_support"
+expect = "[nvidia-preselected]"
+why = "El nodo raíz del árbol de netinstall nace marcado (PackageTreeItem `<root>` con Qt::Checked) y los hijos heredan el estado del padre (parentCheckState): un grupo sin `selected: false` se instala a todo el mundo, incluido quien no tiene NVIDIA."
+
+[[mutation]]
+name = "nvidia: the group points at the prebuilt Arch module"
+file = "installer/calamares/modules/netinstall.yaml"
+find = "- name: \"linux-cachyos-nvidia-open\""
+replace = "- name: \"nvidia-open\""
+caught_by = "tests.static.test_nvidia_support"
+expect = "[nvidia-module]"
+why = "nvidia-open depende de `linux`, no del kernel que instala la ISO (linux-cachyos): pacman metería un kernel de más y el módulo no cargaría en el kernel que arranca."
+
+[[mutation]]
+name = "nvidia: the legacy family is nested in the modern one"
+file = "installer/calamares/modules/netinstall.yaml"
+find_re = '\n  - name: "NVIDIA heredado \(GTX 10xx y anteriores\)"\n    description: "Driver 580'
+replace = '\n    subgroups:\n      - name: "NVIDIA heredado (GTX 10xx y anteriores)"\n        description: "Driver 580'
+caught_by = "tests.static.test_nvidia_support"
+expect = "[nvidia-nested]"
+why = "Marcar un grupo marca a sus hijos: con el heredado anidado dentro del moderno, elegir «NVIDIA» instala las dos familias, que ocupan las mismas rutas (nvidia-utils y nvidia-580xx-utils), y con critical: true aborta la instalación."
+
+[[mutation]]
+name = "nvidia: the niri VRAM profile loses its rule"
+file = "archiso/airootfs/etc/nvidia/nvidia-application-profiles-rc.d/50-limit-free-buffer-pool-in-wayland-compositors.json"
+find = "\"matches\": \"niri\""
+replace = "\"matches\": \"niri-disabled\""
+caught_by = "tests.static.test_nvidia_support"
+expect = "[nvidia-vram]"
+why = "Sin la regla, niri no recibe GLVidHeapReuseRatio=0 y retiene cientos de MiB de VRAM ociosos con el driver NVIDIA (lo documentan niri y el wiki de Arch)."
+
+[[mutation]]
+name = "nvidia: verify-install stops checking the libraries"
+file = "archiso/airootfs/usr/share/churros/scripts/verify-install"
+find_re = '    check "driver NVIDIA \(\$nvidia_package\): bibliotecas \(nvidia-utils o nvidia-580xx-utils\) instaladas" \\\n        "\$\(\[ -n "\$nvidia_utils" \] && echo yes \|\| echo no\)"\n'
+replace = ""
+caught_by = "tests.static.test_nvidia_support"
+expect = "[nvidia-verify-utils]"
+why = "El módulo del kernel y las bibliotecas son paquetes distintos: con el módulo instalado y nvidia-utils ausente el driver no enlaza y el sistema arranca sin EGL. Un `for` que solo llama a check al encontrar el paquete deja pasar ese caso en silencio."

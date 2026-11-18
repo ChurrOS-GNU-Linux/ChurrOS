@@ -159,6 +159,29 @@ VIEWS_MUST_BE_SHOWN = ("partition", "locale", "keyboard", "users")
 # falla antes de correr nada; `$$` es el escape.
 CALAMARES_VARIABLES = frozenset({"ROOT", "USER", "LANG"})
 
+# Paquetes que netinstall instala en el sistema DESTINO desde repos remotos y
+# que no están (ni deben estar) en ninguna lista de la ISO. Es una lista
+# blanca: cada nombre se comprobó contra los repos de Arch y de CachyOS el
+# 17-11-2026 (ver docs/nvidia.md), y `tests/container/test_arch_repos.py` los
+# vuelve a resolver contra los repos reales. Un paquete que no esté aquí y no
+# esté en una lista de la edición sigue siendo un hallazgo.
+NETINSTALL_TARGET_ONLY = frozenset({
+    # Módulo del kernel que compila CachyOS para linux-cachyos (el kernel que
+    # instalan las tres ediciones x86_64). Depende de linux-cachyos= y
+    # nvidia-utils= exactos; no usa DKMS.
+    "linux-cachyos-nvidia-open",
+    "linux-cachyos-nvidia-580xx",
+    # Driver moderno (Turing y posteriores).
+    "nvidia-utils",
+    "nvidia-settings",
+    "nvidia-prime",
+    "lib32-nvidia-utils",
+    # Driver heredado (Maxwell, Pascal, Volta).
+    "nvidia-580xx-utils",
+    "nvidia-580xx-settings",
+    "lib32-nvidia-580xx-utils",
+})
+
 # Programas que la simulación ejecuta de verdad (con todas las rutas
 # absolutas reescritas al root temporal) y scripts del airootfs que aceptan
 # CHURROS_ROOT para trabajar fuera de /.
@@ -1605,10 +1628,28 @@ class CalamaresConfigTest(unittest.TestCase):
 
             walk(groups_list)
             listed = set().union(*(testlib.packages(item) for item in INSTALLER_EDITIONS))
+            # Paquetes que netinstall instala en el DESTINO desde repos remotos y
+            # que no van en la ISO a propósito (el driver NVIDIA: ~1 GiB y su
+            # modprobe.d bloquea nouveau, la red de seguridad del Live). La lista
+            # es blanca y explícita: un nombre inventado sigue fallando. Que
+            # existan de verdad en los repos lo comprueba tests/container
+            # (test_arch_repos), que es la capa que habla con pacman.
             for package in sorted(name for name in names if isinstance(name, str)):
+                if package in NETINSTALL_TARGET_ONLY:
+                    continue
                 if package not in testlib.local_packages() and package not in listed:
                     findings[f"{category}:netinstall:{package}"] = (
                         f"netinstall.yaml: {package} no está en el repo local ni en ninguna lista de paquetes")
+            # Un grupo que instala en el destino necesita internet y el módulo
+            # packages en la secuencia; sin él la elección no haría nada.
+            steps = [step for _a, roster in self.phases() for step in roster]
+            if names and not any(split_key(step) and split_key(step)[0] == "packages" for step in steps):
+                findings[f"{category}:netinstall:no-packages-step"] = (
+                    "netinstall.yaml ofrece paquetes y 'packages' no está en exec: la selección no instala nada")
+            if names and self.load(MODULES / "packages.conf").get("skip_if_no_internet") is not True:
+                findings[f"{category}:netinstall:no-internet-check"] = (
+                    "packages.conf no lleva skip_if_no_internet: true; sin red, pacman aborta "
+                    "la instalación en vez de dejarla como está")
         testlib.assert_findings(self, category, findings)
         if unknown_units:
             with self.subTest("unidades obligatorias sin proveedor"):
