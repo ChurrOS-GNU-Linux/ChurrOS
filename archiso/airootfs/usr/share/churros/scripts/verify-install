@@ -89,6 +89,64 @@ check "artefactos del Live borrados" \
 check "claves SSH del Live eliminadas" \
     "$(ls /etc/ssh/ssh_host_* >/dev/null 2>&1 && echo no || echo yes)"
 
+# ------------------------------------------------------- controlador NVIDIA
+#
+# El grupo NVIDIA de netinstall (installer/calamares/modules/netinstall.yaml)
+# instala el driver y su módulo del kernel. Si el usuario lo marcó y el módulo
+# no ha quedado cargable, el sistema arranca sin salida gráfica: niri 26.04
+# descarta los renderizadores EGL por software y no cae a llvmpipe (docs/vm.md).
+# Es un fallo silencioso (pacman puede terminar bien y no compilar nada), así
+# que se comprueba aquí, que es el último paso con el sistema ya montado.
+#
+# Solo mira si HAY driver instalado: quien no lo pidió no ve ninguna
+# comprobación nueva y el Live sigue igual que antes (nouveau/NVK).
+#
+# CHURROS_NVIDIA_MODULES permite apuntar a otro directorio de módulos; las
+# pruebas lo usan para no depender de /usr/lib/modules del equipo donde corren.
+nvidia_package=""
+for candidate in linux-cachyos-nvidia-open linux-cachyos-nvidia-580xx; do
+    if pacman -Q "$candidate" >/dev/null 2>&1; then
+        nvidia_package="$candidate"
+        break
+    fi
+done
+if [ -n "$nvidia_package" ]; then
+    nvidia_modules_dir="${CHURROS_NVIDIA_MODULES:-/usr/lib/modules}"
+    nvidia_kernel_dir=""
+    for dir in "$nvidia_modules_dir"/linux-cachyos*; do
+        if [ -d "$dir" ]; then
+            nvidia_kernel_dir="$dir"
+            break
+        fi
+    done
+    check "driver NVIDIA ($nvidia_package): kernel linux-cachyos presente" \
+        "$([ -n "$nvidia_kernel_dir" ] && echo yes || echo no)"
+
+    # nvidia-utils (o nvidia-580xx-utils en la familia heredada) es dependencia
+    # del módulo. Se busca cuál de los dos está: si no está ninguno, la
+    # comprobación tiene que FALLAR, no desaparecer. Un `for` que solo llama a
+    # check al encontrarlo deja pasar el caso «módulo sin bibliotecas» en
+    # silencio, que es justo el que deja el sistema sin EGL.
+    nvidia_utils=""
+    for nvidia_utils_candidate in nvidia-utils nvidia-580xx-utils; do
+        if pacman -Q "$nvidia_utils_candidate" >/dev/null 2>&1; then
+            nvidia_utils="$nvidia_utils_candidate"
+            break
+        fi
+    done
+    check "driver NVIDIA ($nvidia_package): bibliotecas (nvidia-utils o nvidia-580xx-utils) instaladas" \
+        "$([ -n "$nvidia_utils" ] && echo yes || echo no)"
+
+    # nvidia.ko vive bajo kernel/drivers/video/ con el driver 620 y anteriores y
+    # bajo extra/ con la estructura nueva de los módulos abiertos: se busca el
+    # fichero en vez de fijar la ruta, que cambia entre versiones del driver.
+    if [ -n "$nvidia_kernel_dir" ]; then
+        nvidia_module_file="$(find "$nvidia_kernel_dir" -name 'nvidia.ko*' -print -quit 2>/dev/null)"
+    fi
+    check "driver NVIDIA ($nvidia_package): módulo nvidia.ko instalado" \
+        "$([ -n "$nvidia_module_file" ] && echo yes || echo no)"
+fi
+
 # NetworkManager owns interface configuration; systemd-resolved provides DNS
 # for the /etc/resolv.conf stub. Other network managers must not be enabled.
 check "NetworkManager habilitado" \
