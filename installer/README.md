@@ -44,7 +44,7 @@ shellprocess@post-install    -> Limpieza: quita el repo [churros], Calamares y s
 umount                       -> Desmonta las particiones.
 ```
 
-`pacman-init` tiene que ir antes que `fix-boot`, y `boot-nocow` antes que `unpackfs`. No hay paso `netinstall` ni `packages`: los paquetes locales (calamares, yay, wlogout, python-pywal, bazaar) ya vienen en la ISO por pacstrap, y las aplicaciones opcionales las instala [ChurrOS Tour](../docs/churros-tour.md) en el primer inicio del sistema instalado.
+`pacman-init` tiene que ir antes que `fix-boot`, y `boot-nocow` antes que `unpackfs`. `netinstall` (vista) y `packages` (instala lo elegido) existen solo para ofrecer el controlador NVIDIA opcional; `packages` va justo después de `pacman-init` y antes de `initcpiocfg`. Ver [docs/nvidia.md](../docs/nvidia.md). Los paquetes locales (calamares, yay, wlogout, python-pywal, bazaar) ya vienen en la ISO por pacstrap, y el resto de aplicaciones opcionales las instala [ChurrOS Tour](../docs/churros-tour.md) en el primer inicio del sistema instalado.
 
 ---
 

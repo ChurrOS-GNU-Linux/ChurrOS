@@ -1,36 +1,46 @@
 # Soporte de controladores NVIDIA
 
-Auditoría del estado actual y plan de desarrollo técnico para que ChurrOS arranque e instale con
-controladores NVIDIA. Se apoya en el repositorio y en los repositorios reales (Arch, CachyOS,
-Arch Linux ARM y Arch Linux 32) consultados el 17 de noviembre de 2026.
-
-Este documento no implementa nada: describe qué hay hoy, qué falta y en qué orden conviene hacerlo.
-El cambio de código va en su propio PR y, por la [regla para programas nuevos](principios.md#regla-para-programas-nuevos),
-necesita un issue aprobado antes de empezar (ver [Decisiones que faltan](#decisiones-que-faltan)).
+Cómo instala ChurrOS el controlador oficial de NVIDIA: qué hay, por qué está hecho así y qué queda
+pendiente. Se apoya en el repositorio y en los repositorios reales (Arch, CachyOS, Arch Linux ARM y
+Arch Linux 32) consultados el 17 de noviembre de 2026.
 
 ## Resumen
 
-ChurrOS arranca hoy en hardware NVIDIA por el camino libre (`nouveau` + NVK), pero no instala el
-controlador oficial. La infraestructura para instalarlo está a medias y en un estado que **no
-funcionaría si se activara**:
+ChurrOS arranca en hardware NVIDIA por el camino libre (`nouveau` + NVK, que cubre Turing y
+posteriores gracias al firmware de `linux-firmware-nvidia`). El controlador oficial **no va en la
+ISO**: se instala desde el instalador, y esta es la pieza que se añadió.
 
-1. El grupo NVIDIA de `installer/calamares/modules/netinstall.yaml` existe, pero el módulo
-   `netinstall` **no está en la secuencia** de `installer/calamares/settings.conf`: es configuración
-   muerta que ningún usuario ve nunca.
-2. Las tres ediciones x86_64 instalan **`linux-cachyos`**, no `linux`. El grupo pide
-   `nvidia-open-dkms`, que no depende de los headers de ese kernel: DKMS se queda sin
-   `linux-cachyos-headers`, no compila el módulo y el sistema instalado arranca sin salida gráfica
-   (niri 26.04 no cae a llvmpipe).
-3. `docs/vision.md` afirma que los controladores propietarios «no vienen en la ISO ni los instala
-   Calamares», y eso es cierto; pero `scripts/cli/check.sh` mantiene una comprobación cuyo
-   comentario justifica el diseño diciendo que sí se ofrecen.
-4. El actualizador `archiso/airootfs/usr/bin/churros-update-utils` **ya sabe** convivir con un
-   DKMS (`headers_in_use()`, línea 402), lo que confirma que el problema se pensó y no se terminó.
+Lo que había antes era infraestructura a medias que **no habría funcionado si se activara**:
 
-La buena noticia: la solución no requiere código nuevo. `packagechooser` + `packages` son módulos
-de Calamares que el proyecto ya tiene configurados (`packages.conf`) y que las pruebas ya reconocen.
-Y para el kernel de ChurrOS existe un módulo **precompilado** que evita todo el problema de los
-headers.
+1. El grupo NVIDIA de `netinstall.yaml` existía, pero el módulo `netinstall` **no estaba en la
+   secuencia**: configuración muerta que ningún usuario veía nunca.
+2. Las tres ediciones x86_64 instalan **`linux-cachyos`**, no `linux`. El grupo pedía
+   `nvidia-open-dkms`, que no depende de los headers de ese kernel: DKMS se quedaba sin
+   `linux-cachyos-headers`, no compilaba el módulo y el sistema arrancaba sin salida gráfica (niri
+   26.04 no cae a llvmpipe).
+3. `churros-update-utils` ya sabía convivir con un DKMS (`headers_in_use()`, línea 402), lo que
+   confirma que el problema se pensó y no se terminó.
+
+## Qué se implementó
+
+| Pieza | Dónde |
+|---|---|
+| Pantalla «Selección de paquetes» con dos grupos NVIDIA, desmarcados | `installer/calamares/modules/netinstall.yaml` |
+| El paso `netinstall` en `show` y `packages` en `exec` | `installer/calamares/settings.conf` |
+| Instalación de lo elegido, sin red no hace nada | `installer/calamares/modules/packages.conf` |
+| Variante aarch64 sin grupos | `installer/calamares/modules/aarch64/netinstall.yaml` |
+| Copia de los grupos por arquitectura | `installer/apply-calamares.sh` |
+| Comprobación de que el driver quedó instalado | `archiso/airootfs/usr/share/churros/scripts/verify-install` |
+| Perfil de VRAM de niri | `archiso/airootfs/etc/nvidia/nvidia-application-profiles-rc.d/50-limit-free-buffer-pool-in-wayland-compositors.json` |
+| Pruebas del contrato | `tests/static/test_nvidia_support.py` |
+
+La elección se instala con `netinstall` y no con `packagechooser` porque `packagechooser` **no está
+compilado** en el Calamares del proyecto: el PKGBUILD lo quita con `-DSKIP_MODULES` y la prueba
+`test_calamares_config.py` lo tiene apuntado en `AUR_SKIPPED_MODULES`. Ver [Decisión B](#decisión-b--elegir-en-calamares-con-netinstall-no-con-packagechooser).
+
+El resultado: quien tenga NVIDIA marca un grupo, el instalador baja el módulo compilado por CachyOS
+para `linux-cachyos` y el driver arranca con `modeset` ya activado por defecto desde `nvidia-utils`
+560.35.03-5. Quien no marque nada se queda exactamente como hoy.
 
 ## Qué hay hoy, verificado
 
@@ -110,28 +120,33 @@ decisiones de la sección siguiente.
 - El problema de parpadeo de screencast que aparecía en versiones antiguas está corregido en niri;
   no hay que añadir `debug { wait-for-frame-completion-in-pipewire }`.
 
-## Los cuatro problemas a resolver
+## Los cuatro problemas que había
 
-Ordenados por lo que rompe si se ignoran.
+Ordenados por lo que rompía. Los cuatro están cubiertos por el cambio; el cuarto (ciclo de vida) está
+documentado y es lo único que puede requerir atención en el futuro.
 
-**P1 — No existe un módulo que cargue con `linux-cachyos`.** `nvidia-open-dkms` sin
-`linux-cachyos-headers` no compila nada, y el fallo es silencioso: pacman termina bien, el módulo no
-existe y el primer arranque no tiene salida gráfica. Es el bloqueante real, no el grupo del
+**P1 — No existía un módulo que cargara con `linux-cachyos`.** `nvidia-open-dkms` sin
+`linux-cachyos-headers` no compila nada, y el fallo era silencioso: pacman termina bien, el módulo no
+existe y el primer arranque no tiene salida gráfica. Era el bloqueante real, no el grupo del
 instalador.
 
-**P2 — El instalador no ofrece la elección.** `netinstall` no está en la secuencia, así que la decisión
-no existe para el usuario. `packages.conf` está configurado pero tampoco se ejecuta.
+**P2 — El instalador no ofrecía la elección.** `netinstall` no estaba en la secuencia, así que la
+decisión no existía para el usuario. `packages.conf` estaba configurado pero tampoco se ejecutaba.
 
 **P3 — Sin módulo, el primer arranque es una pantalla negra.** niri 26.04 descarta los renderizadores
 EGL por software (está documentado en `docs/vm.md`), de modo que un driver mal instalado no degrada:
-deja el sistema sin interfaz. Cualquier fallo tiene que detectarse antes de salir del instalador.
+deja el sistema sin interfaz. Por eso `critical: true` aborta la instalación y `verify-install`
+comprueba el módulo antes de reiniciar.
 
-**P4 — Ciclo de vida.** Un módulo precompilado va atado a `linux-cachyos=7.3.3-1` y a
-`nvidia-utils=620.70.06`. Si `[cachyos]` aún no ha reconstruido el módulo cuando Arch sube el driver,
-`pacman -Syu` falla por dependencia. Con DKMS el riesgo es el simétrico: cada actualización de kernel
-necesita headers, compilador y tiempo. Hay que elegir y documentar el modo de fallo de cada uno.
+**P4 — Ciclo de vida.** Un módulo precompilado va atado a `linux-cachyos` y a `nvidia-utils` en
+versiones exactas. Si `[cachyos]` aún no ha reconstruido el módulo cuando Arch sube el driver,
+`pacman -Syu` falla por dependencia: se niega la transacción, el sistema sigue arrancando. Con DKMS el
+riesgo es el simétrico (compilador y headers en cada kernel) y el modo de fallo es quedarse sin salida
+gráfica.
 
-## Diseño propuesto
+## Diseño
+
+
 
 ### Decisión A — Módulo precompilado de CachyOS, no DKMS
 
@@ -153,51 +168,60 @@ Efecto secundario bueno: con el precompilado **no se instalan headers**, así qu
 `churros-update-utils` que conserva `linux-cachyos-headers` no se activa y el caso «pahole de CachyOS
 bloquea la actualización» no aparece.
 
-### Decisión B — Elegir en Calamares con `packagechooser` + `packages`
+### Decisión B — Elegir en Calamares con `netinstall`, no con `packagechooser`
 
-Ambos módulos ya existen en Calamares 3.4 y en la tabla de tipos que usan las pruebas
-(`tests/static/test_calamares_config.py`): `packagechooser` es `view`, `packages` es `job`. No hace
-falta ningún `shellprocess` nuevo, así que **la invariante de «cinco instancias» de `AGENTS.md` sigue
-siendo cierta** y no hay que tocar ese contrato.
+El plan inicial proponía `packagechooser`. **No es posible**: `packagechooser` está en
+`AUR_SKIPPED_MODULES` de `tests/static/test_calamares_config.py`, porque el PKGBUILD de Calamares que
+usa el proyecto lo compila con `-DSKIP_MODULES` y el módulo **no existe** en la ISO
+(`ModuleManager::loadModules` falla con «not found in module search paths»). Ponerlo en la secuencia
+rompería el instalador.
 
-`packagechooser` con `method: packages` escribe en GlobalStorage lo que el módulo `packages` instala
-después, en una sola transacción de pacman. Eso importa: con DKMS los headers tienen que ir en la
-**misma** transacción que el driver o el hook de DKMS no encuentra nada con lo que compilar.
+La pantalla se hace con `netinstall`, que sí está compilado y ya leía `netinstall.yaml`. Calamares
+resuelve la selección en `finalizeGlobalStorage` y la deja en `packageOperations`, que el módulo
+`packages` instala después en una sola transacción de pacman. Eso importa: con DKMS los headers
+tendrían que ir en la **misma** transacción que el driver o el hook no encuentra nada que compilar.
 
-Tres opciones en la vista, sin autodetección:
+La secuencia queda así (solo se añaden dos pasos, ninguna instancia nueva):
 
-| Id | Etiqueta | Paquetes |
-|---|---|---|
-| `none` (por defecto) | Sin controlador NVIDIA | — |
-| `open` | NVIDIA: GTX 16xx / RTX 20xx y posteriores | `linux-cachyos-nvidia-open`, `nvidia-utils`, `nvidia-settings`, `nvidia-prime`, `lib32-nvidia-utils` |
-| `legacy` | NVIDIA: GTX 10xx y anteriores (Maxwell, Pascal, Volta) | `linux-cachyos-nvidia-580xx`, `nvidia-580xx-utils`, `nvidia-580xx-settings`, `lib32-nvidia-580xx-utils` |
+```
+show: welcome, locale, keyboard, partition, users, netinstall, summary
+exec: … shellprocess@pacman-init → packages → initcpiocfg → …
+```
 
-No se autodetecta la familia de la GPU en esta fase: haría falta un programa nuevo (detección por
-`lspci`/`pci.ids`) y la [regla para programas nuevos](principios.md#regla-para-programas-nuevos)
-exige un issue aprobado. Las etiquetas describen el hardware de forma que el usuario pueda decidir,
-que es lo que ya hace el resto del instalador.
+`packages` va **después de `shellprocess@pacman-init`** (sin el llavero no se pueden verificar las
+firmas de los repos) y **después de `unpackfs`** (instala dentro del destino). Y va antes de
+`initcpiocfg`, que reescribe las líneas de `/etc/mkinitcpio.conf`: si en el futuro se quiere tocar
+`MODULES` según haya driver, ese cambio va en `fix-boot`, que corre más tarde.
 
-`nvidia-prime` y `lib32-nvidia-utils` van con el grupo y no como opción aparte: sin `lib32-*` Steam y
-Wine no tienen 32 bits, y `nvidia-prime` solo molesta a quien no tiene gráficos híbridos (no hace
-nada en un equipo de una sola GPU). Multilib ya está activado en el sistema instalado
-(`shellprocess-cleanup.conf` descomenta `[multilib]`).
+Sigue sin haber un sexto `shellprocess`, así que la invariante de cinco instancias de `AGENTS.md`
+continúa siendo cierta.
 
-Dos detalles de implementación que la vista arrastra:
+Dos grupos **hermanos**, ambos desmarcados:
 
-- **`packagechooser` no puede declararse en `instances`.** `tests/static/test_calamares_config.py`
-  exige que el conjunto de `instances` sea exactamente el de las cinco de `shellprocess`
-  (`EXPECTED_DONT_CHROOT`), y que cada `module` de una instancia sea `shellprocess`. Declarar
-  `packagechooser` como instancia hace fallar la prueba. Sin instancia, Calamares abre
-  `<módulo>.conf`, así que el fichero tiene que llamarse **`packagechooser.conf`**, no
-  `packagechooser-nvidia.conf`.
-- Los ítems genéricos de `packagechooser` exigen `id`, `name`, `description` y **`screenshot`**; sin la
-  captura, el ítem no se pinta. Calamares la busca primero como ruta absoluta y, si no existe, dentro
-  del directorio de branding.
-- Esa segunda vía **no se puede usar aquí**: `installer/calamares/branding/churros/` está en la lista
-  de [lo que no se modifica](../AGENTS.md). Las capturas van junto al `.conf` del módulo, en ruta
-  absoluta dentro del airootfs.
-- `mode: required` con una opción explícita «sin controlador» es lo que se quiere: exactamente una de
-  las tres, y una de ellas es no instalar nada.
+| Grupo | Paquetes |
+|---|---|
+| NVIDIA (GTX 16xx / RTX 20xx y posteriores) | `linux-cachyos-nvidia-open`, `nvidia-utils`, `nvidia-settings`, `nvidia-prime`, `lib32-nvidia-utils` |
+| NVIDIA heredado (GTX 10xx y anteriores) | `linux-cachyos-nvidia-580xx`, `nvidia-580xx-utils`, `nvidia-580xx-settings`, `lib32-nvidia-580xx-utils` |
+
+Tres detalles que decide el código de Calamares, no el gusto:
+
+- **`selected: false` es obligatorio en cada grupo.** El nodo raíz del árbol nace marcado
+  (`PackageTreeItem`, `<root>` con `Qt::Checked`) y los hijos heredan el estado del padre
+  (`parentCheckState`): un grupo sin `selected` se instalaría a todo el mundo.
+- **Los grupos no pueden anidarse.** Marcar un grupo marca a sus hijos, así que con el heredado dentro
+  del moderno, elegir «NVIDIA» instalaría las dos familias. `nvidia-utils` y `nvidia-580xx-utils`
+  ocupan las mismas rutas y, con `critical: true`, eso aborta la instalación.
+- **aarch64 no lleva grupos.** `installer/calamares/modules/aarch64/netinstall.yaml` deja la lista
+  vacía y `apply-calamares.sh` lo copia encima del común.
+
+No se autodetecta la familia de la GPU: haría falta un programa nuevo (detección por `lspci` y
+`pci.ids`) y la [regla para programas nuevos](principios.md#regla-para-programas-nuevos) exige un
+issue aprobado. Las etiquetas describen el hardware para que el usuario decida, que es lo que ya hace
+el resto del instalador.
+
+`nvidia-prime` y `lib32-nvidia-utils` van dentro del grupo y no como opción aparte: sin `lib32-*`
+Steam y Wine no tienen 32 bits, y `nvidia-prime` no hace nada en un equipo de una sola GPU. Multilib
+ya está activado en el sistema instalado (`shellprocess-cleanup.conf` descomenta `[multilib]`).
 
 ### Decisión C — Fuera de la ISO (por ahora)
 
@@ -240,78 +264,61 @@ Ventaja: no hay que añadir un sexto `shellprocess` ni saber en el instalador si
 Inconveniente a verificar: hay que comprobar que `nvidia-utils` no es dueño de esas rutas, para que
 pacman no dé conflicto de ficheros al instalar el driver después. Va como prueba de contenedor.
 
-## Plan de desarrollo técnico
+## Trabajo realizado
 
-Cinco fases. Cada una es un PR independiente, con su prueba y su mutación, según
-[Contributing](contributing.md#pruebas-según-el-tipo-de-cambio).
+### Hecho en este cambio
 
-### Fase 0 — Limpiar lo que hoy es falso
+| Qué | Ficheros |
+|---|---|
+| Dos grupos NVIDIA hermanos, desmarcados y `critical` | `installer/calamares/modules/netinstall.yaml` |
+| `netinstall` en `show`, `packages` en `exec` tras `pacman-init` | `installer/calamares/settings.conf` |
+| `packages.conf` sin el `try_remove` heredado de archiso | `installer/calamares/modules/packages.conf` |
+| Variante aarch64 vacía y su copia por arquitectura | `modules/aarch64/netinstall.yaml`, `apply-calamares.sh` |
+| `verify-install` comprueba el módulo y `nvidia-utils` | `usr/share/churros/scripts/verify-install` |
+| Perfil `GLVidHeapReuseRatio = 0` para niri | `etc/nvidia/nvidia-application-profiles-rc.d/*.json` |
+| Lista blanca de paquetes solo-destino y comprobación estática | `tests/static/test_calamares_config.py` |
+| Seis pruebas del contrato y cuatro mutaciones | `tests/static/test_nvidia_support.py`, `tests/mutations/mutations.toml` |
 
-Sin cambio de comportamiento; quita ruido y deja el terreno honesto.
+El `try_remove` de `packages.conf` (archinstall, clonezilla, gpm, irssi, lynx, mc, testdisk, wvdial)
+se retiró: estaba pensado para el Calamares de archiso y llevaba inerte desde d6b9dab. Activarlo tal
+cual habría quitado esas herramientas a todo el mundo, que no tiene relación con NVIDIA y no estaba
+probado. Si se quiere recuperar, va en su propio cambio con su prueba.
 
-| Tarea | Ficheros | Criterio de aceptación |
+### Pendiente, en orden
+
+1. **Probar en hardware real.** Nada de esto se ha ejecutado con una GPU NVIDIA: el arranque del Live
+   y del sistema instalado sigue siendo prueba manual, como la instalación completa de Calamares
+   ([#297](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/297)). Es el paso que convierte el
+   diseño en soporte.
+2. **Confirmar los nombres en el contenedor.** `tests/container/test_arch_repos.py` resuelve los
+   paquetes contra los repos de verdad; en el equipo donde se escribió esto no hay podman ni pacman,
+   así que esa capa no se ejecutó (ver [Verificación](#verificación)).
+3. **Suspensión en portátiles híbridos**, si se decide soportarla: `NVreg_PreserveVideoMemoryAllocations=1`
+   en `/etc/modprobe.d/`. `nvidia-utils` ya trae `nvidia-suspend.service` y `nvidia-resume.service`.
+4. **Opcional**: `--with-nvidia` en `packages.*` para una ISO con el driver dentro, pensada para
+   equipos sin red. Requiere resolver antes el `modprobe.d` que bloquea `nouveau`, o el Live deja de
+   tener red de seguridad.
+5. **Opcional**: autodetección de la familia de GPU en el instalador (programa nuevo: issue aprobado).
+
+## Verificación
+
+Ejecutado en el equipo donde se escribió esto, sobre la rama `nvidia-support`:
+
+| Capa | Comando | Resultado |
 |---|---|---|
-| 0.1 Retirar el grupo NVIDIA muerto, o dejar claro que es muerto | `installer/calamares/modules/netinstall.yaml`, `netinstall.conf` | `netinstall` no está en la secuencia: o se borra el grupo, o se borra el par de ficheros. No se deja configuración que nadie lee. |
-| 0.2 Corregir el comentario de la guarda de Xorg | `scripts/cli/check.sh` (~1549) | La guarda se queda (sigue siendo correcta si alguien instala el driver a mano), pero el motivo deja de citar `netinstall`. |
-| 0.3 Actualizar la visión | `docs/vision.md:30` | Describe el estado real y enlaza a este documento. |
-| 0.4 Prueba: ninguna conf del instalador nombra paquetes muertos | `tests/container/test_arch_repos.py` | `nvidia-dkms`, `nvidia` y `nvidia-open` fallan con un mensaje que explica que el primero ya no existe y que el segundo arrastra `linux`. |
+| Estática | `./churros check` | **311 pruebas**, todo en verde |
+| Mutaciones | `python3 tests/mutations/run_mutations.py -k nvidia` | **4/4 detectadas** |
+| Contenedor | `./churros test --container` | **no ejecutado**: no hay podman ni pacman en el equipo |
+| ISO | `./churros test --iso` | **no ejecutado**: no se construyó la ISO |
+| Arranque | `./churros test --boot` | **no ejecutado** |
 
-Mutación de 0.4: cambiar `nvidia-open-dkms` por `nvidia-open` en el YAML debe hacer fallar la prueba.
+Lo que la capa estática **no** puede comprobar, y por eso queda en manos del contenedor y de la
+prueba manual:
 
-### Fase 1 — Instalar el driver correcto para el kernel que se instala
-
-Es el núcleo del cambio.
-
-| Tarea | Ficheros | Criterio de aceptación |
-|---|---|---|
-| 1.1 Vista de selección | `installer/calamares/modules/packagechooser.conf` (nuevo), `settings.conf` (`show`) | Tres opciones; `none` preseleccionada; `method: packages`; `mode: required`. **Sin entrada en `instances`** y con ese nombre exacto de fichero (ver nota). |
-| 1.2 Instalación de los paquetes | `settings.conf` (`exec`: `packages`), `packages.conf` | `packages` va **después** de `shellprocess@pacman-init` (el llavero tiene que estar listo para verificar firmas) y **después** de `unpackfs` (instala dentro del destino). |
-| 1.3 Regla del kernel | prueba estática nueva en `tests/static/test_calamares_config.py` | Si una opción instala un módulo, el paquete de módulo tiene que ser de `linux-cachyos`, y con DKMS la lista tiene que incluir `linux-cachyos-headers`. |
-| 1.4 Resolución real de los nombres | `tests/container/test_arch_repos.py` | Cada paquete de cada opción resuelve en Arch + `[cachyos]` + multilib para x86_64. |
-| 1.5 Exclusiones | `tests/static/test_editions.py` (o prueba nueva) | La vista no se ofrece en i686 ni en aarch64. |
-
-Posición en la secuencia, que es lo que más fácil se rompe:
-
-```
-mount → shellprocess@boot-nocow → unpackfs → … → shellprocess@pacman-init → packages → initcpiocfg → shellprocess@fix-boot → initcpio → …
-```
-
-`packages` **no** puede ir antes de `unpackfs` (escribiría en el aire) ni antes de `pacman-init` (sin
-llavero no hay firmas). Y **no** hay que ponerlo después de `shellprocess@fix-boot` si en el futuro se
-decide tocar `MODULES` de forma condicional a que el driver esté instalado: `fix-boot` puede
-consultar `pacman -Q` porque corre después.
-
-Mutación de 1.3: quitar `linux-cachyos-headers` de la opción DKMS debe hacer fallar la prueba.
-
-### Fase 2 — No entregar un sistema sin salida gráfica
-
-| Tarea | Ficheros | Criterio de aceptación |
-|---|---|---|
-| 2.1 Verificar el resultado | `archiso/airootfs/usr/share/churros/scripts/verify-install` | Si se eligió un driver y no hay módulo `.ko*` en `/usr/lib/modules/*/` ni `pacman -Q` del paquete, `verify-install` falla y lo escribe en stdout (Calamares solo enseña stdout). |
-| 2.2 Prueba de `verify-install` | `tests/static/test_verify_install.py` | Root falso con y sin módulo; el caso «driver pedido, módulo ausente» falla con el mensaje esperado. |
-| 2.3 Aviso sin internet | `finished.conf` o el texto de la vista | Si la instalación se saltó `packages` por falta de red, el usuario lo sabe antes de reiniciar. |
-| 2.4 Perfil de VRAM de niri | `archiso/airootfs/etc/nvidia/nvidia-application-profiles-rc.d/…json` (nuevo) | El JSON valida; se instala en el destino; no choca con `nvidia-utils`. |
-| 2.5 Auditoría de la ISO | `tests/iso/check_iso.py` | El JSON está en el squashfs y **no** hay `nvidia*.ko*` en la ISO mientras no se active el flag de la Fase 4. |
-
-Mutación de 2.2: hacer que `verify-install` no compruebe el módulo debe hacer fallar la prueba.
-
-### Fase 3 — Documentación y diagnóstico
-
-| Tarea | Ficheros | Criterio de aceptación |
-|---|---|---|
-| 3.1 Documento de uso | este fichero + `docs/README.md` | Indexado; enlaces relativos resueltos (`./churros check`). |
-| 3.2 Guía de problemas | este fichero, sección de diagnóstico | `modeset` → `Y`; `nvidia-smi`; qué hacer si `-Syu` falla por versión; cómo volver a `nouveau`. |
-| 3.3 Instalador | `docs/installer.md` | Documenta la vista nueva y su posición en la secuencia. |
-
-### Fase 4 — Opcional, solo con issue aprobado
-
-- `--with-nvidia` en `scripts/cli/build.sh` para meter el driver en la ISO y cubrir equipos sin red.
-  Requiere resolver el `modprobe.d` que bloquea `nouveau` (el Live tiene que seguir arrancando si el
-  propietario no carga).
-- Autodetección de la familia de GPU en el instalador (programa nuevo: issue aprobado).
-- aarch64 con DKMS, si aparece demanda real.
-- Prueba de arranque con GPU NVIDIA real: hoy `tests/vm/boot_smoke.py` solo da virgl y no puede
-  cubrirlo. Se queda como prueba manual documentada, igual que la instalación completa.
+- que `linux-cachyos-nvidia-open` y los demás existan en los repos con esas versiones;
+- que `nvidia-utils` no instale un fichero en la ruta del perfil de VRAM (se comprobó que no tiene
+  nada bajo `etc/`, pero eso fue una consulta puntual, no una prueba);
+- que el driver cargue y que niri pinte con él.
 
 ## Matriz de pruebas
 
@@ -337,20 +344,14 @@ Mutación de 2.2: hacer que `verify-install` no compruebe el módulo debe hacer 
 | Instalación sin red deja el sistema igual que hoy | alta | Aviso explícito (2.3). |
 | Regresión del Live por tocar `MODULES` del initramfs | baja | No se toca por defecto; cargar los módulos pronto rompe además la hibernación. |
 
-## Decisiones que faltan
+## Decisiones de proyecto
 
-Tres cosas que este documento **no** decide porque necesitan a los mantenedores:
-
-1. **¿Licencia?** `nvidia-utils` es propietario (`LicenseRef-NVIDIA-Driver-License-Agreement`). Su
+1. **Licencia.** `nvidia-utils` es propietario (`LicenseRef-NVIDIA-Driver-License-Agreement`). Su
    cláusula 2.1.2 permite copiar y redistribuir los binarios para Linux sin modificarlos, así que el
-   [principio 1](principios.md#1-libre-y-redistribuible) se cumple en su letra. Los módulos abiertos son
-   MIT/GPL-2.0. Aun así, es una decisión de proyecto: por eso la Fase 1 instala solo en el destino y
-   la ISO no lo lleva.
-2. **¿Issue de aprobación?** Es una funcionalidad nueva de la ISO y del instalador. Según
-   [Cómo se decide](principios.md#cómo-se-decide) y la regla para programas nuevos, hace falta un issue
-   aprobado por dos mantenedores antes de la Fase 1. Las fases 0 y 3 no lo necesitan.
-3. **¿Mantenedor?** `MAINTAINERS` asigna `/installer/` y `/archiso/`; conviene que quien apruebe figure
-   como responsable de esta ruta, porque el ciclo de vida (Fase 4) es lo que se mantiene para siempre.
+   [principio 1](principios.md#1-libre-y-redistribuible) se cumple en su letra; los módulos abiertos
+   son MIT/GPL-2.0. Es la razón de que el driver se instale en el destino y no viaje en la ISO.
+2. **Mantenedor.** Lo aporta el autor del cambio; el ciclo de vida del módulo (P4) es lo que hay que
+   mantener, y sigue el de `linux-cachyos` en `[cachyos]`.
 
 ## Diagnóstico rápido
 
