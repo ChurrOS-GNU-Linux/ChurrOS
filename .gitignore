@@ -86,3 +86,16 @@ archiso/airootfs/usr/share/churros/mkinitcpio/
 
 # Agent run artifacts (never commit)
 .zwork/
+
+# Material criptografico y de credenciales: nunca al repositorio.
+# Las claves publicas de firmas van a scripts/keys/pgp/ (solo .asc publicas).
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*secret*

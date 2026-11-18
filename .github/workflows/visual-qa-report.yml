@@ -29,6 +29,12 @@ jobs:
         with:
           fetch-depth: 2
 
+      # Auditoría R1: el clasificador sale de main, no del árbol de la PR.
+      - name: Check out main for the classifier
+        run: |
+          set -euo pipefail
+          scripts/qa/visual/trusted-scripts.sh "$RUNNER_TEMP/trusted" main
+
       - name: Decide whether to report
         id: gate
         env:
@@ -41,10 +47,22 @@ jobs:
           set -euo pipefail
           git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
           git diff --unified=1 HEAD^1 HEAD > "$RUNNER_TEMP/diff.txt"
-          python3 scripts/qa/visual/classify.py \
+          python3 "$RUNNER_TEMP/trusted/scripts/qa/visual/classify.py" \
             --paths-file "$RUNNER_TEMP/changed.txt" \
             --diff-file "$RUNNER_TEMP/diff.txt" \
             --github-output "$GITHUB_OUTPUT"
+
+      - name: Report that the classifier could not decide
+        if: steps.gate.outputs.visual == '' && !cancelled()
+        run: |
+          set -euo pipefail
+          {
+            echo "### La clasificación de QA visual no llegó a decidir"
+            echo ""
+            echo "No se pudo clasificar el diff. El job sigue en verde porque no"
+            echo "es un check requerido, pero **esta PR no se clasificó**."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=QA visual::el clasificador no decidió"
 
   report:
     name: Compare and comment

@@ -248,32 +248,46 @@ pub fn connect_hidden(ssid: &str, password: Option<&str>) -> (bool, String) {
     connect_error(code, &err)
 }
 
-pub fn disconnect() {
+/// Desconecta el adaptador wifi. Devuelve si nmcli lo confirmó.
+///
+/// Antes el resultado se descartaba y la UI recargaba como si hubiera
+/// funcionado: una desconexión fallida era indistinguible de una correcta
+/// (auditoría V5).
+pub fn disconnect() -> bool {
     let (code, out) = run_stdout(&["nmcli", "-t", "-f", "DEVICE,TYPE", "device"])
         .unwrap_or((1, String::new()));
     if code != 0 {
-        return;
+        return false;
     }
     for line in out.lines() {
         if let Some((device, dev_type)) = line.split_once(':') {
             if dev_type == "wifi" {
-                let _ = run(&["nmcli", "device", "disconnect", device], 5000);
-                break;
+                return ok_status(run(&["nmcli", "device", "disconnect", device], 5000));
             }
         }
     }
+    false
 }
 
-pub fn forget(ssid: &str) {
-    let _ = run(&["nmcli", "connection", "delete", ssid], 5000);
+/// Borra el perfil guardado de `ssid`. Devuelve si nmcli lo confirmó.
+pub fn forget(ssid: &str) -> bool {
+    ok_status(run(&["nmcli", "connection", "delete", ssid], 5000))
 }
 
-pub fn enable() {
-    let _ = run(&["nmcli", "radio", "wifi", "on"], 5000);
+/// Enciende la radio wifi. Devuelve si nmcli lo confirmó.
+pub fn enable() -> bool {
+    ok_status(run(&["nmcli", "radio", "wifi", "on"], 5000))
 }
 
-pub fn disable() {
-    let _ = run(&["nmcli", "radio", "wifi", "off"], 5000);
+/// Apaga la radio wifi. Devuelve si nmcli lo confirmó.
+pub fn disable() -> bool {
+    ok_status(run(&["nmcli", "radio", "wifi", "off"], 5000))
+}
+
+/// `run` devuelve None en timeout o error de ejecución: en los dos casos la
+/// operación no se completó, así que cuenta como fallo.
+fn ok_status(result: Option<(i32, String, String)>) -> bool {
+    result.is_some_and(|(code, _, _)| code == 0)
 }
 
 pub fn toggle() {

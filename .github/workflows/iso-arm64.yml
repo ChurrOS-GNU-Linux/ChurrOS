@@ -79,7 +79,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: churros-aarch64-iso
+          name: churros-aarch64-iso-${{ github.event_name }}-${{ github.sha }}
           path: |
             out/*.iso
             out/SHA256SUMS

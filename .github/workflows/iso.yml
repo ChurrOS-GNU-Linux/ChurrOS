@@ -161,13 +161,15 @@ jobs:
         run: sha256sum -- *.iso > SHA256SUMS
 
       # Aunque la auditoría o el arranque fallen: la ISO sirve para investigarlo.
-      # Este workflow ya no corre en pull_request, así que no hace falta filtrar
-      # el evento: schedule y workflow_dispatch suben la ISO y su SHA256SUMS.
+      # Este workflow corre en pull_request (con filtro de rutas), en schedule y
+      # a mano, así que el nombre lleva el evento y el SHA: sin eso, la ISO de
+      # una PR y la nocturna caen en el mismo artefacto y quien la descarga
+      # puede creer que es la de main (auditoría V9).
       - name: Upload ISO
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: churros-${{ matrix.edition }}-x86_64-iso
+          name: churros-${{ matrix.edition }}-x86_64-iso-${{ github.event_name }}-${{ github.sha }}
           path: |
             out/*.iso
             out/SHA256SUMS
