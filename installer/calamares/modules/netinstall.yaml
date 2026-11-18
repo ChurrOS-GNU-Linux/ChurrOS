@@ -1,30 +1,60 @@
+# Grupos de la pantalla «Selección de paquetes» de Calamares.
+#
+# Cada grupo lleva `selected` explícito y son HERMANOS, no anidados. Dos
+# hechos de Calamares 3.4 lo obligan:
+#
+#   - El nodo raíz del árbol nace marcado (PackageTreeItem, `<root>` con
+#     Qt::Checked) y los hijos heredan el estado del padre (parentCheckState):
+#     un grupo sin `selected` se instalaría siempre.
+#   - Marcar un grupo marca a sus hijos. Con el grupo heredado anidado dentro
+#     del moderno, elegir «NVIDIA» instalaría las dos familias de módulos, que
+#     chocan entre sí (nvidia-utils y nvidia-580xx-utils ocupan las mismas
+#     rutas) y, con `critical: true`, abortarían la instalación.
+#
+# `critical: true` hace que un fallo al instalar el grupo aborte la
+# instalación en vez de continuar en silencio. Aquí es lo que se quiere: niri
+# 26.04 descarta los renderizadores EGL por software (`software EGL renderers
+# are skipped`, ver docs/vm.md), así que un sistema al que se le pidió el
+# driver y no lo tiene arranca sin salida gráfica. Mejor parar antes de
+# reiniciar.
+#
+# Solo x86_64: Arch Linux 32 (i686) no empaqueta nvidia-utils, y en aarch64
+# no hay módulo precompilado para linux-aarch64 (sería DKMS, con 345 MiB de
+# headers y un compilador en el destino). Ver docs/nvidia.md.
+
 groups:
-  - name: "Herramientas ChurrOS"
-    description: "Herramientas adicionales mantenidas en el repositorio local de ChurrOS"
+  - name: "NVIDIA (GTX 16xx / RTX 20xx y posteriores)"
+    description: "Controlador oficial, módulos abiertos 620.70.06. Elige este grupo O el heredado, no los dos. Requiere internet"
     selected: false
     expanded: true
-    packages:
-      - name: python-pywal
-        description: "Generador de paletas de color para los temas de ChurrOS"
-        selected: false
-  - name: "NVIDIA"
-    description: "Controladores NVIDIA (requiere internet)"
     critical: true
-    expanded: true
     packages:
-      - name: "nvidia-open-dkms"
-        description: "Driver oficial, módulos abiertos (DKMS; GTX 16xx/RTX 20xx o más nuevas)"
+      # Módulo del kernel compilado por CachyOS para linux-cachyos, que es el
+      # kernel que instalan las tres ediciones x86_64. No usa DKMS: no
+      # necesita linux-cachyos-headers ni clang en el sistema instalado.
+      # Va atado a la versión de linux-cachyos (docs/nvidia.md, ciclo de vida).
+      - name: "linux-cachyos-nvidia-open"
+        description: "Módulo del kernel para linux-cachyos"
       - name: "nvidia-utils"
-        description: "Aceleración 3D"
+        description: "Bibliotecas EGL, Vulkan y OpenGL del driver"
       - name: "nvidia-settings"
         description: "Panel de control"
       - name: "nvidia-prime"
-        description: "Gráficos híbridos"
+        description: "Gráficos híbridos (iGPU + dGPU)"
+      - name: "lib32-nvidia-utils"
+        description: "Soporte 32 bits (Steam, Wine)"
 
-  - name: "Oficina"
-    description: "Suite ofimática"
+  - name: "NVIDIA heredado (GTX 10xx y anteriores)"
+    description: "Driver 580.196.07 para Maxwell, Pascal y Volta. Elige este grupo O el moderno, no los dos. Requiere internet"
+    selected: false
+    expanded: false
     critical: true
-    expanded: true
     packages:
-      - name: "libreoffice-fresh"
-        description: "LibreOffice (Writer, Calc, Impress)"
+      - name: "linux-cachyos-nvidia-580xx"
+        description: "Módulo del kernel para linux-cachyos"
+      - name: "nvidia-580xx-utils"
+        description: "Bibliotecas EGL, Vulkan y OpenGL del driver 580"
+      - name: "nvidia-580xx-settings"
+        description: "Panel de control del driver 580"
+      - name: "lib32-nvidia-580xx-utils"
+        description: "Soporte 32 bits del driver 580"

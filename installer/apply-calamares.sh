@@ -32,6 +32,13 @@ cp "$CALAMARES_SRC/modules/"*.yaml "$CALAMARES_DST/modules/"
 CALAMARES_ARCH="${CHURROS_ARCH:-$(uname -m)}"
 if [ -d "$CALAMARES_SRC/modules/$CALAMARES_ARCH" ]; then
     cp "$CALAMARES_SRC/modules/$CALAMARES_ARCH/"*.conf "$CALAMARES_DST/modules/"
+    # Los grupos de netinstall son por arquitectura: el de aarch64 deja la
+    # lista vacía (no hay driver NVIDIA instalable ahí). El glob no falla si
+    # la arquitectura no tiene variante .yaml.
+    for groups_file in "$CALAMARES_SRC/modules/$CALAMARES_ARCH/"*.yaml; do
+        [ -f "$groups_file" ] || continue
+        cp "$groups_file" "$CALAMARES_DST/modules/"
+    done
 fi
 
 echo "  Calamares config applied."

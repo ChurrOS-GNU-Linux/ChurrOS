@@ -1,0 +1,10 @@
+# Grupos de la pantalla «Selección de paquetes» de Calamares.
+#
+# ESTA ES LA VARIANTE aarch64. apply-calamares.sh copia los <arch>/*.yaml
+# después de los comunes, así que este fichero pisa al de x86_64 en la ISO
+# aarch64. No hay grupo NVIDIA porque Arch Linux ARM no empaqueta ningún
+# módulo precompilado para linux-aarch64: solo existe nvidia-open-dkms, que
+# compila en el destino y necesita linux-aarch64-headers más clang, llvm y lld
+# (~640 MiB) en un equipo que casi siempre es una Raspberry Pi con VideoCore.
+# Ver docs/nvidia.md.
+groups: []
