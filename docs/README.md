@@ -30,6 +30,14 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [CLI](cli.md) | Referencia de `./churros` (build, run, check, test, rust, apps, doctor, cluster, clean). |
 | [VM](vm.md) | Probar la ISO en QEMU/KVM. |
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:a5f210ab87698a582d47e3b1370f276b363f7efb4581be958263cf3c41ad350a -->
+
+[Prueba de CodeRabbit](prueba-coderabbit.md): documento de prueba del flujo de corrección de CI con CodeRabbit.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
 ## Referencia técnica
 
 | Documento | Tema |
