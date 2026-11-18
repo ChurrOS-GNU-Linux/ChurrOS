@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# pre-commit — anula la identidad que inyecta el entorno del agente.
+#
+# El proceso que lanza los comandos de este proyecto exporta
+# GIT_AUTHOR_NAME=zwork, GIT_AUTHOR_EMAIL=zwork@local y sus equivalentes de
+# committer. Esas variables tienen prioridad sobre `git config`
+# (git-commit(1), «the GIT_AUTHOR_* environment variables»), así que sin esto
+# los commits salen con autor «zwork» aunque ~/.gitconfig y .git/config
+# digan otra cosa.
+#
+# Un hook no puede cambiar el entorno del proceso `git commit` que ya está
+# corriendo, así que aquí no hay forma de reescribir la identidad: lo que se
+# hace es abortar y decir cómo hacerlo bien. Se prefiere un fallo ruidoso a un
+# commit con el autor equivocado, que ya obligó a reescribir el historial y a
+# un force-push una vez.
+#
+# Para hacer el commit con la identidad configurada, quita las variables:
+#
+#   env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL \
+#       -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
+#       git commit ...
+#
+# O define CHURROS_ALLOW_ENV_IDENTITY=1 si de verdad quieres esa identidad.
+
+set -u
+
+if [ "${CHURROS_ALLOW_ENV_IDENTITY:-0}" = "1" ]; then
+    exit 0
+fi
+
+# Nombre y correo, sin fechas: `git var GIT_AUTHOR_IDENT` añade
+# " <epoch> <zona>" al final y compararlo tal cual nunca coincide.
+identity="$(git var GIT_AUTHOR_IDENT 2>/dev/null | sed -E 's/ [0-9]+ [-+][0-9]{4}$//')"
+configured="$(git config user.name 2>/dev/null) <$(git config user.email 2>/dev/null)>"
+
+injected=0
+for var in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+    if [ -n "$(printenv "$var" 2>/dev/null || true)" ]; then
+        injected=1
+    fi
+done
+
+if [ "$injected" -eq 1 ] && [ "$identity" != "$configured" ]; then
+    printf '\n' >&2
+    printf 'pre-commit: el entorno impone la identidad %s\n' "$identity" >&2
+    printf '            y la configurada es %s\n' "$configured" >&2
+    printf '\n' >&2
+    printf 'Git da prioridad a GIT_AUTHOR_* / GIT_COMMITTER_* sobre git config,\n' >&2
+    printf 'así que este commit saldría con el autor equivocado. Quita las variables:\n\n' >&2
+    printf '  env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL \\\n' >&2
+    printf '      -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \\\n' >&2
+    printf '      git commit ...\n\n' >&2
+    printf 'o exporta CHURROS_ALLOW_ENV_IDENTITY=1 para aceptar esa identidad.\n\n' >&2
+    exit 1
+fi
+
+exit 0
