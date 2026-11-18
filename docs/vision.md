@@ -27,7 +27,7 @@ La edición por defecto usa Niri, un compositor Wayland de mosaico con desplazam
 - Apps propias en Rust: `churros-welcome`, `churros-settings`, `churros-tour`, `churros-control-center` y `churros-popup`. En Niri, el centro de control de Noctalia cubre lo que hacen las dos últimas. Detalle en [Apps](apps.md).
 - greetd con ReGreet como pantalla de inicio de sesión, con autologin en el Live.
 - Actualizador y rollback con snapshots Btrfs ([Rollback](rollback.md)).
-- GPU AMD e Intel con Mesa desde la ISO. Los controladores propietarios de NVIDIA no vienen en la ISO ni los instala Calamares.
+- GPU AMD e Intel con Mesa desde la ISO. En NVIDIA el Live arranca por el camino libre (`nouveau`/NVK), pero el controlador oficial no viene en la ISO ni lo instala Calamares: el sistema instalado repite ese mismo camino. El estado y el plan para cambiarlo están en [NVIDIA](nvidia.md).
 
 ---
 

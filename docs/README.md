@@ -43,6 +43,7 @@ Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/
 | [Privileged Execution](privileged-execution.md) | Reglas polkit, `churros-pkexec` y los helpers que se ejecutan como root. |
 | [Live Services](live-services.md) | Servicios systemd, usuario y scripts del entorno Live. |
 | [Desktop Config](desktop-config.md) | Configuración del escritorio por edición (Niri, Noctalia, XFCE). |
+| [NVIDIA](nvidia.md) | Auditoría del soporte de controladores NVIDIA y plan técnico para instalarlos. |
 | [Apps](apps.md) | Índice de las apps propias en Rust (gtk4-rs + libadwaita). |
 | [Preferences](preferences.md) | App de ajustes `churros-settings`. |
 | [Popups](popups.md) | Binario `churros-popup` y sus popups. |
