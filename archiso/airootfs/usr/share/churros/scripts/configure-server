@@ -95,6 +95,33 @@ systemctl enable chronyd.service >> "$LOG" 2>&1
 systemctl enable NetworkManager.service >> "$LOG" 2>&1
 systemctl enable ufw.service >> "$LOG" 2>&1
 systemctl enable churros-update.timer >> "$LOG" 2>&1
+
+# Cortafuegos real, sin aplicar reglas en este paso. El script corre en el
+# chroot de Calamares: no hay netfilter usable, o /proc y /sys del Live
+# están montados y `ufw --force enable` cargaría las reglas en el kernel
+# del instalador. Con el cortafuegos aún desactivado, `ufw allow ssh` solo
+# escribe /etc/ufw/user.rules y user6.rules (es idempotente). ENABLED=yes
+# en ufw.conf hace que ufw.service, ya habilitado, cargue esas reglas en
+# el primer arranque. Sin la regla de SSH no se escribe ENABLED=yes: la
+# política por defecto es DROP y se perdería el acceso.
+if command -v ufw >/dev/null 2>&1 && [ -f /etc/ufw/ufw.conf ]; then
+    if ufw allow ssh >> "$LOG" 2>&1 \
+        && grep -qE -- '--dport 22 .*-j ACCEPT' /etc/ufw/user.rules \
+        && { ! grep -q '^IPV6=yes' /etc/ufw/ufw.conf \
+             || grep -qE -- '--dport 22 .*-j ACCEPT' /etc/ufw/user6.rules; }; then
+        sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf
+        if grep -q '^ENABLED=yes$' /etc/ufw/ufw.conf; then
+            log "ufw: regla SSH añadida y ENABLED=yes (se carga en el primer arranque)"
+        else
+            log "no se pudo escribir ENABLED=yes; el cortafuegos no se activará al arrancar"
+        fi
+    else
+        log "no se pudo añadir la regla de SSH; no se activa el cortafuegos"
+    fi
+else
+    log "ufw no está disponible; no se activa el cortafuegos"
+fi
+
 log "sshd, chronyd, NetworkManager, ufw y churros-update.timer habilitados"
 
 # --------------------------------------------------------- 4. restos de config
@@ -114,5 +141,5 @@ rm -f /etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer \
 rm -f /home/*/.config/systemd/user/timers.target.wants/churros-update.timer 2>/dev/null || true
 
 log "limpieza de configuración del escritorio completada"
-log "resumen: servidor sin display manager, con SSH y sincronización horaria"
+log "resumen: servidor sin display manager, con SSH, cortafuegos y sincronización horaria"
 exit 0

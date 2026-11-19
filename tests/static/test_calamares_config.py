@@ -1135,6 +1135,19 @@ class CalamaresConfigTest(unittest.TestCase):
             "verify-install no devuelve error cuando hay invariantes fallidas",
         )
 
+    def test_configure_server_enables_ufw_with_ssh_rule(self):
+        """El chroot de Calamares no debe ejecutar ufw enable; sí debe dejar SSH permitido."""
+        source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
+        allow = source.find("ufw allow ssh")
+        enabled = source.find("ENABLED=yes")
+        self.assertNotEqual(allow, -1, "configure-server no añade la regla de SSH")
+        self.assertNotEqual(enabled, -1, "configure-server no deja ENABLED=yes en ufw.conf")
+        self.assertLess(allow, enabled, "la regla de SSH tiene que escribirse antes de ENABLED=yes")
+        self.assertIsNone(
+            re.search(r"^\s*ufw(?:\s+--force)?\s+enable\b", source, re.M),
+            "configure-server no debe llamar a ufw enable en el chroot del instalador",
+        )
+
     def test_fixboot_modules_never_abort_mkinitcpio(self):
         """Un módulo de MODULES que el kernel no trae hace salir a mkinitcpio con 1.
 
