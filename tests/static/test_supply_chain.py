@@ -58,6 +58,13 @@ class TestSupplyChainAndReproducibility(unittest.TestCase):
         self.assertIn('key_file="$SCRIPT_DIR/keys/pgp/${key^^}.asc"', aur)
         self.assertIn('gpg --show-keys --with-colons "$key_file"', aur)
         self.assertIn('if [ "$actual_key" != "${key^^}" ]; then', aur)
+        build = aur[aur.index("build_aur() {"):aur.index("\nbuild_aur python-pywal")]
+        self.assertRegex(build, r'GNUPGHOME="\$\(mktemp -d [^\n]*\)"\n\s*export GNUPGHOME',
+                         "[aur-private-gnupg] cada paquete AUR necesita su llavero: compartido, otro gpg se queda con el candado")
+        self.assertLess(build.index("export GNUPGHOME"), build.index("gpg --import"),
+                        "[aur-private-gnupg] el llavero propio tiene que existir antes de importar")
+        self.assertLess(build.index("export GNUPGHOME"), build.index("makepkg -sf"),
+                        "[aur-private-gnupg] makepkg verifica con el mismo llavero")
         self.assertTrue((ROOT / "scripts/keys/pgp/155DC67DC25496572CDD608FF635E931C2834999.asc").is_file(),
                         "python-pywal signing key must be available offline and pinned by its full fingerprint")
 
