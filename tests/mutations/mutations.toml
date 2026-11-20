@@ -3744,3 +3744,13 @@ replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+[[mutation]]
+name = "churros-settings: el aviso de modo avión mira el bloqueo por software"
+file = "rust/preferences/src/services/connectivity.rs"
+find = '        read("type") == "wlan" && read("hard") == "1"'
+replace = '        read("type") == "wlan" && read("soft") == "1"'
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings rfkill_tests"
+requires = "container"
+expect = "[wifi-hard-block]"
+why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
