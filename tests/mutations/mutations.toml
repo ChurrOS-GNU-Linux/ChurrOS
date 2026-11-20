@@ -3744,3 +3744,12 @@ replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+[[mutation]]
+name = "build-aur.sh: los paquetes AUR vuelven a compartir el llavero de gpg"
+file = "scripts/build-aur.sh"
+find = "        export GNUPGHOME\n"
+replace = ""
+caught_by = "tests.static.test_supply_chain"
+expect = "[aur-private-gnupg]"
+why = "Con el llavero compartido otro gpg/keyboxd del build se queda con el candado y la importación de la clave de python-pywal falla (QA visual)."
