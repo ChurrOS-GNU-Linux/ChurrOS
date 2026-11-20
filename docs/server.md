@@ -62,7 +62,7 @@ Estado de cada servicio en el sistema instalado. Lo decide `archiso/airootfs/usr
 | `sshd` | **Habilitado.** Escucha en el puerto 22 desde el primer arranque. Las ediciones de escritorio no lo habilitan. |
 | `chronyd` | Habilitado. Mantiene la hora sincronizada; sin reloj fiable falla el TLS de `pacman`. |
 | `NetworkManager` | Habilitado. |
-| `ufw` | **Activo desde el primer arranque.** `configure-server` añade la regla de SSH (`ufw allow ssh`) y deja `ENABLED=yes` en `/etc/ufw/ufw.conf`. No llama a `ufw enable` en el chroot del instalador: no hay netfilter usable, o las reglas se aplicarían al kernel del Live. `ufw.service`, que ya se habilita, carga las reglas al arrancar. La política por defecto descarta el tráfico entrante que no sea SSH. |
+| `ufw` | **Activo desde el primer arranque.** `configure-server` escribe la regla `22/tcp` en `/etc/ufw/user.rules` (y en `user6.rules` si `IPV6=yes` en `/etc/default/ufw`) y deja `ENABLED=yes` en `/etc/ufw/ufw.conf`. No invoca `ufw` en el chroot del instalador: con `/proc` y `/sys` del Live montados, `ufw allow` o `ufw enable` tocarían el kernel del instalador. `ufw.service`, que ya se habilita, carga las reglas al arrancar. La política por defecto descarta el tráfico entrante que no sea `22/tcp`. |
 | `fail2ban` | **Instalado, pero ni habilitado ni configurado.** No protege SSH hasta que lo actives. |
 | `churros-update.timer` | **Habilitado: actualización desatendida diaria** (ver [Actualizaciones automáticas](#actualizaciones-automáticas)). |
 | `greetd` | Deshabilitado. El módulo `services-systemd` de Calamares lo habilita con `mandatory: true`; `configure-server` lo revierte y fija `multi-user.target` como destino por defecto. |
@@ -117,7 +117,7 @@ ip a            # o hostname -I
 systemctl status sshd
 ```
 
-- El cortafuegos (ufw) está activo y permite el puerto 22; el resto del tráfico entrante se descarta.
+- El cortafuegos (ufw) está activo y permite `22/tcp`; el resto del tráfico entrante se descarta.
 - `sshd` escucha en el puerto 22 de todas las interfaces, con la configuración por defecto de Arch: los usuarios normales pueden entrar con contraseña y root no (`PermitRootLogin prohibit-password`, el valor por defecto de OpenSSH). El paso post-install borra `10-archiso.conf`, que en el Live permite entrar como root con contraseña.
 - El usuario es el que creaste en el instalador. Root recibe la misma contraseña si dejas marcada la casilla de usar la misma contraseña para el administrador, que viene marcada (`doReusePassword: true`).
 - El post-install borra las claves de host SSH del Live; se generan otras nuevas en el primer arranque, así que la huella no coincide con la del Live.
@@ -141,7 +141,7 @@ El cortafuegos sí lo activa la edición (ver [Qué activa y qué no](#qué-acti
 sudo ufw status verbose
 ```
 
-Debe aparecer `Status: active` y `22/tcp` (o `OpenSSH`) en `ALLOW`. Si lo desactivas o lo reconfiguras a mano, añade la regla de SSH **antes** de volver a activarlo (`sudo ufw allow ssh` y después `sudo ufw enable`): la política por defecto descarta el tráfico entrante (`DEFAULT_INPUT_POLICY="DROP"` en `/etc/default/ufw`) y, sin esa regla, pierdes el acceso por SSH.
+Debe aparecer `Status: active` y `22/tcp` en `ALLOW`. Si lo desactivas o lo reconfiguras a mano, añade la regla **antes** de volver a activarlo (`sudo ufw allow 22/tcp` y después `sudo ufw enable`): la política por defecto descarta el tráfico entrante (`DEFAULT_INPUT_POLICY="DROP"` en `/etc/default/ufw`) y, sin esa regla, pierdes el acceso por SSH.
 
 ### Activar fail2ban para SSH
 

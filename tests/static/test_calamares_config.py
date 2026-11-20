@@ -1136,16 +1136,21 @@ class CalamaresConfigTest(unittest.TestCase):
         )
 
     def test_configure_server_enables_ufw_with_ssh_rule(self):
-        """El chroot de Calamares no debe ejecutar ufw enable; sí debe dejar SSH permitido."""
+        """El chroot no debe invocar ufw; sí debe dejar 22/tcp en user.rules y ENABLED=yes."""
         source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
-        allow = source.find("ufw allow ssh")
+        rule = source.find("--dport 22")
         enabled = source.find("ENABLED=yes")
-        self.assertNotEqual(allow, -1, "configure-server no añade la regla de SSH")
+        self.assertNotEqual(rule, -1, "configure-server no escribe la regla 22/tcp")
+        self.assertIn("22/tcp", source, "configure-server debe documentar la regla como 22/tcp")
+        self.assertRegex(source, r"/etc/default/ufw",
+                         "IPV6 se lee en /etc/default/ufw, no en ufw.conf")
+        self.assertNotRegex(source, r"grep .*IPV6=.* /etc/ufw/ufw\.conf",
+                            "IPV6 no está en /etc/ufw/ufw.conf")
         self.assertNotEqual(enabled, -1, "configure-server no deja ENABLED=yes en ufw.conf")
-        self.assertLess(allow, enabled, "la regla de SSH tiene que escribirse antes de ENABLED=yes")
+        self.assertLess(rule, enabled, "la regla 22/tcp tiene que escribirse antes de ENABLED=yes")
         self.assertIsNone(
-            re.search(r"^\s*ufw(?:\s+--force)?\s+enable\b", source, re.M),
-            "configure-server no debe llamar a ufw enable en el chroot del instalador",
+            re.search(r"^\s*ufw\b", source, re.M),
+            "configure-server no debe invocar ufw en el chroot del instalador",
         )
 
     def test_fixboot_modules_never_abort_mkinitcpio(self):
