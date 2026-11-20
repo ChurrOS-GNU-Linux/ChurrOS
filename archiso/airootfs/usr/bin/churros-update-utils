@@ -64,6 +64,8 @@ LIVE_UNITS=(pacman-init.service etc-pacman.d-gnupg.mount choose-mirror.service l
 REPAIR_MIN_FREE_MB=1500
 
 VERSION_FILE=/etc/churros-version
+# Snapshot btrfs antes de instalar el bundle (el hook de pacman no lo cubre).
+SNAPSHOT_BIN=/usr/local/bin/churros-snapshot
 EDITION_FILE=/etc/churros-edition
 
 # Rutas que el bundle puede tocar, relativas a /. Un prefijo que acaba en "/"
@@ -210,6 +212,30 @@ if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
 
 print(f"{version}|{file}|{sha}")
 ' < "$1"
+}
+
+# version_gt A B — A es estrictamente mayor que B (1.5.10 > 1.5.9 > 1.5).
+# Solo se instala una versión más nueva: un updates.json antiguo, con su
+# firma (también válida), o la copia caducada de una caché, bajaba de
+# versión porque antes bastaba con que fuera distinta.
+version_gt() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+}
+
+# snapshot_before_bundle VERSIÓN — punto de vuelta antes de tocar /usr.
+# Sin btrfs (ext4) no hay rollback y se sigue, avisando. En btrfs, si el
+# snapshot falla no se instala nada: sin él no habría a dónde volver.
+snapshot_before_bundle() {
+    am_root || return 0
+    [ -e "$LIVE_MARKER" ] && return 0
+    if [ "$(findmnt -no FSTYPE / 2>/dev/null)" != btrfs ]; then
+        echo "AVISO: / no es btrfs: se instala sin snapshot previo (no hay rollback)."
+        return 0
+    fi
+    [ -x "$SNAPSHOT_BIN" ] || die "falta $SNAPSHOT_BIN: no se instala sin snapshot previo"
+    echo "Creando snapshot antes de actualizar las utilidades..."
+    "$SNAPSHOT_BIN" create "churros-utils-pre-$1" \
+        || die "no se pudo crear el snapshot previo; no se ha instalado nada (revisa el espacio libre con 'sudo btrfs filesystem usage /')"
 }
 
 # ------------------------------------------------------- rutas del bundle
@@ -703,6 +729,10 @@ main() {
         echo "Utilidades de ChurrOS al día (v$installed)."
         return 0
     fi
+    if [ -n "$installed" ] && ! version_gt "$version" "$installed"; then
+        echo "El servidor ofrece la v$version, más antigua que la instalada (v$installed): no se instala nada."
+        return 0
+    fi
 
     echo "Actualizando utilidades de ChurrOS: v${installed:-?} -> v$version"
     echo "Descargando $file..."
@@ -724,6 +754,8 @@ main() {
 
     echo "Validando arquitectura de los ejecutables..."
     validate_stage_arch "$STAGE"
+
+    snapshot_before_bundle "$version"
 
     echo "Instalando..."
     install_stage "$STAGE" /

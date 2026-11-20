@@ -30,7 +30,9 @@ if [ "$(id -u)" -ne 0 ]; then
     available="$(curl -fsS --proto '=https' --max-time 20 "https://download.churroslinux.org/churros/${arch}/updates.json" 2>/dev/null \
         | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
     installed="$(cat "${CHURROS_VERSION_FILE:-/etc/churros-version}" 2>/dev/null || true)"
-    if [ -n "$available" ] && [ "$available" != "$installed" ]; then
+    # Solo una versión más nueva: una copia antigua del manifiesto no se anuncia.
+    newest="$(printf '%s\n%s\n' "$available" "$installed" | sort -V | tail -n 1)"
+    if [ -n "$available" ] && [ "$available" != "$installed" ] && [ "$newest" = "$available" ]; then
         pending=$((pending + 1)); parts+=("utilidades de ChurrOS $available")
     fi
     if [ "$pending" -gt 0 ]; then
