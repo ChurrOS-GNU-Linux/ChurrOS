@@ -28,9 +28,16 @@ snapshots anidados.
   snapshot. Esos ficheros siguen sin compresión (`/boot` tiene
   `+C`), así que GRUB los puede leer. No hay entradas de GRUB para arrancar un
   snapshot directamente: se restaura desde la ISO.
-- Se conservan los **5** snapshots más recientes, **incluidos los manuales**:
-  cada snapshot nuevo borra los que sobran, así que tras 5 transacciones un
-  snapshot manual desaparece.
+- Se conservan los **5** snapshots **automáticos** más recientes (`pacman-pre`
+  del hook y `churros-utils-pre-*` del actualizador): cada snapshot nuevo borra
+  los automáticos que sobran. Los **manuales** (Ajustes > «Crear snapshot
+  ahora», `churros-snapshot create <razón>`) no entran en ese límite y no se
+  borran solos (#329): se quitan con `churros-snapshot delete` o desde Ajustes.
+  Ocupan espacio hasta entonces.
+- Si un snapshot falla en btrfs (por ejemplo, sin espacio), `churros-snapshot`
+  dice que **no hay punto de vuelta** y cómo mirar el espacio, y el hook avisa
+  de que esa transacción va sin snapshot previo (#332). En ext4 el mensaje es
+  que no hay btrfs: allí no existe el rollback.
 
 ## Comandos
 
