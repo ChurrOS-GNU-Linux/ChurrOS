@@ -1135,6 +1135,29 @@ class CalamaresConfigTest(unittest.TestCase):
             "verify-install no devuelve error cuando hay invariantes fallidas",
         )
 
+
+    def test_configure_server_unmasks_getty_tty1(self):
+        """Server quita la máscara de getty@tty1; Niri y XFCE la conservan."""
+        source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
+        gate = re.search(
+            r'if \[ "\$EDITION" != "server" \]; then\s+exit 0\s+fi',
+            source,
+        )
+        self.assertIsNotNone(gate, "configure-server no se limita a la edición server")
+        unmask = re.search(r"^\s*systemctl unmask getty@tty1\.service\b", source, re.M)
+        self.assertIsNotNone(unmask, "configure-server no quita la máscara de getty@tty1")
+        self.assertLess(gate.end(), unmask.start(),
+                        "unmask de getty@tty1 no debe correr fuera de la edición server")
+        yaml = testlib.require_module(self, "yaml")
+        units = yaml.safe_load(testlib.read_text(MODULES / "services-systemd.conf")).get("units") or []
+        masked = [unit for unit in units
+                  if isinstance(unit, dict) and unit.get("name") == "getty@tty1.service"]
+        self.assertTrue(
+            masked and masked[0].get("action") == "mask",
+            "services-systemd.conf debe seguir enmascarando getty@tty1 en Niri y XFCE",
+        )
+
+
     def test_fixboot_modules_never_abort_mkinitcpio(self):
         """Un módulo de MODULES que el kernel no trae hace salir a mkinitcpio con 1.
 

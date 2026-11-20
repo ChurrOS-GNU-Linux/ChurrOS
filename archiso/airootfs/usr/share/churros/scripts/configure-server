@@ -41,7 +41,13 @@ log "edición server detectada; dejando el sistema sin escritorio"
 # Calamares, con mandatory: true. Aquí se revierten.
 systemctl disable greetd.service >> "$LOG" 2>&1
 systemctl set-default multi-user.target >> "$LOG" 2>&1
-log "display manager desactivado; target por defecto multi-user"
+# getty@tty1 lo enmascara el Live (services.sh) para que greetd sea el
+# único login, y services-systemd.conf vuelve a enmascararlo en el
+# sistema instalado de todas las ediciones. En Server no hay greeter:
+# sin quitar la máscara, tty1 queda en negro y hay que ir a tty2.
+systemctl unmask getty@tty1.service >> "$LOG" 2>&1
+systemctl enable getty@tty1.service >> "$LOG" 2>&1
+log "display manager desactivado; getty@tty1 activo; target por defecto multi-user"
 
 # ---------------------------------------------------- 2. quitar escritorio
 
