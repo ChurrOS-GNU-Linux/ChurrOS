@@ -1158,6 +1158,28 @@ class CalamaresConfigTest(unittest.TestCase):
         )
 
 
+    def test_configure_server_unmasks_plymouth_quit(self):
+        """Server quita la máscara de plymouth-quit para que suelte tty1."""
+        source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
+        gate = re.search(
+            r'if \[ "\$EDITION" != "server" \]; then\s+exit 0\s+fi',
+            source,
+        )
+        self.assertIsNotNone(gate, "configure-server no se limita a la edición server")
+        for unit in ("plymouth-quit.service", "plymouth-quit-wait.service"):
+            unmask = re.search(
+                rf"^\s*systemctl unmask (?:\S+\s+)*{re.escape(unit)}\b",
+                source,
+                re.M,
+            )
+            self.assertIsNotNone(unmask, f"configure-server no quita la máscara de {unit}")
+            self.assertLess(
+                gate.end(),
+                unmask.start(),
+                f"unmask de {unit} no debe correr fuera de la edición server",
+            )
+
+
     def test_fixboot_modules_never_abort_mkinitcpio(self):
         """Un módulo de MODULES que el kernel no trae hace salir a mkinitcpio con 1.
 
