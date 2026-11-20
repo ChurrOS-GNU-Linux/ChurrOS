@@ -22,6 +22,29 @@ log() {
     printf 'configure-server: %s\n' "$*" >&2
 }
 
+
+# Escribe una regla 22/tcp en un user.rules de ufw, sin invocar `ufw`
+# (en el chroot de Calamares, `ufw allow` toca netfilter del Live).
+# Idempotente: si la regla ya está, no hace nada.
+ufw_insert_allow_22_tcp() {
+    local file="$1" chain="$2" addr="$3"
+    [ -f "$file" ] || return 1
+    grep -qE -- '--dport 22 .*-j ACCEPT' "$file" && return 0
+    grep -q '^### RULES ###' "$file" || return 1
+    local tmp
+    tmp="$(mktemp)" || return 1
+    awk -v chain="$chain" -v addr="$addr" '
+        { print }
+        $0 == "### RULES ###" {
+            print ""
+            print "### tuple ### allow tcp 22 " addr " any " addr " in"
+            print "-A " chain " -p tcp --dport 22 -j ACCEPT"
+        }
+    ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+}
+
 # ------------------------------------------------------------- solo server
 
 EDITION=""
@@ -109,6 +132,34 @@ systemctl enable chronyd.service >> "$LOG" 2>&1
 systemctl enable NetworkManager.service >> "$LOG" 2>&1
 systemctl enable ufw.service >> "$LOG" 2>&1
 systemctl enable churros-update.timer >> "$LOG" 2>&1
+
+# Cortafuegos real, sin invocar `ufw` en este paso. El script corre en el
+# chroot de Calamares, con /proc y /sys del Live montados: `ufw allow` y
+# `ufw enable` aplicarían reglas (o dejarían tablas filter vacías) en el
+# kernel del instalador. Escribimos 22/tcp en user.rules y, si IPV6=yes
+# en /etc/default/ufw (no en ufw.conf), también en user6.rules. ENABLED=yes
+# en ufw.conf hace que ufw.service, ya habilitado, cargue esas reglas en
+# el primer arranque. Sin la regla no se escribe ENABLED=yes: la política
+# por defecto es DROP y se perdería el acceso por SSH.
+if [ -f /etc/ufw/ufw.conf ]; then
+    if ufw_insert_allow_22_tcp /etc/ufw/user.rules ufw-user-input '0.0.0.0/0' \
+        && grep -qE -- '--dport 22 .*-j ACCEPT' /etc/ufw/user.rules \
+        && { ! grep -qE '^IPV6=["'"'"']?yes["'"'"']?$' /etc/default/ufw \
+             || { ufw_insert_allow_22_tcp /etc/ufw/user6.rules ufw6-user-input '::/0' \
+                  && grep -qE -- '--dport 22 .*-j ACCEPT' /etc/ufw/user6.rules; }; }; then
+        sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf
+        if grep -q '^ENABLED=yes$' /etc/ufw/ufw.conf; then
+            log "ufw: regla 22/tcp añadida y ENABLED=yes (se carga en el primer arranque)"
+        else
+            log "no se pudo escribir ENABLED=yes; el cortafuegos no se activará al arrancar"
+        fi
+    else
+        log "no se pudo añadir la regla 22/tcp; no se activa el cortafuegos"
+    fi
+else
+    log "falta /etc/ufw/ufw.conf; no se activa el cortafuegos"
+fi
+
 log "sshd, chronyd, NetworkManager, ufw y churros-update.timer habilitados"
 
 # --------------------------------------------------------- 4. restos de config
@@ -128,5 +179,5 @@ rm -f /etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer \
 rm -f /home/*/.config/systemd/user/timers.target.wants/churros-update.timer 2>/dev/null || true
 
 log "limpieza de configuración del escritorio completada"
-log "resumen: servidor sin display manager, con SSH y sincronización horaria"
+log "resumen: servidor sin display manager, con SSH, cortafuegos y sincronización horaria"
 exit 0

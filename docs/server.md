@@ -6,7 +6,7 @@ Edición de ChurrOS para servidores: el sistema instalado arranca sin escritorio
 ./churros build --edition server
 ```
 
-Antes de usarla en una máquina expuesta a la red, lee [Qué activa y qué no](#qué-activa-y-qué-no) y [Endurecimiento opcional](#endurecimiento-opcional): el cortafuegos y fail2ban vienen instalados pero **no** están activos, y el sistema se actualiza solo cada noche.
+Antes de usarla en una máquina expuesta a la red, lee [Qué activa y qué no](#qué-activa-y-qué-no) y [Endurecimiento opcional](#endurecimiento-opcional): el cortafuegos deja pasar SSH y deniega el resto del tráfico entrante desde el primer arranque; fail2ban viene instalado pero **no** está activo, y el sistema se actualiza solo cada noche.
 
 ---
 
@@ -62,7 +62,7 @@ Estado de cada servicio en el sistema instalado. Lo decide `archiso/airootfs/usr
 | `sshd` | **Habilitado.** Escucha en el puerto 22 desde el primer arranque. Las ediciones de escritorio no lo habilitan. |
 | `chronyd` | Habilitado. Mantiene la hora sincronizada; sin reloj fiable falla el TLS de `pacman`. |
 | `NetworkManager` | Habilitado. |
-| `ufw` | **El servicio está habilitado, pero el cortafuegos no filtra nada.** `ufw.service` solo carga reglas si `/etc/ufw/ufw.conf` dice `ENABLED=yes`, y el paquete trae `ENABLED=no`. Nadie ejecuta `ufw enable` ni añade reglas. |
+| `ufw` | **Activo desde el primer arranque.** `configure-server` escribe la regla `22/tcp` en `/etc/ufw/user.rules` (y en `user6.rules` si `IPV6=yes` en `/etc/default/ufw`) y deja `ENABLED=yes` en `/etc/ufw/ufw.conf`. No invoca `ufw` en el chroot del instalador: con `/proc` y `/sys` del Live montados, `ufw allow` o `ufw enable` tocarían el kernel del instalador. `ufw.service`, que ya se habilita, carga las reglas al arrancar. La política por defecto descarta el tráfico entrante que no sea `22/tcp`. |
 | `fail2ban` | **Instalado, pero ni habilitado ni configurado.** No protege SSH hasta que lo actives. |
 | `churros-update.timer` | **Habilitado: actualización desatendida diaria** (ver [Actualizaciones automáticas](#actualizaciones-automáticas)). |
 | `greetd` | Deshabilitado. El módulo `services-systemd` de Calamares lo habilita con `mandatory: true`; `configure-server` lo revierte y fija `multi-user.target` como destino por defecto. |
@@ -117,6 +117,7 @@ ip a            # o hostname -I
 systemctl status sshd
 ```
 
+- El cortafuegos (ufw) está activo y permite `22/tcp`; el resto del tráfico entrante se descarta.
 - `sshd` escucha en el puerto 22 de todas las interfaces, con la configuración por defecto de Arch: los usuarios normales pueden entrar con contraseña y root no (`PermitRootLogin prohibit-password`, el valor por defecto de OpenSSH). El paso post-install borra `10-archiso.conf`, que en el Live permite entrar como root con contraseña.
 - El usuario es el que creaste en el instalador. Root recibe la misma contraseña si dejas marcada la casilla de usar la misma contraseña para el administrador, que viene marcada (`doReusePassword: true`).
 - El post-install borra las claves de host SSH del Live; se generan otras nuevas en el primer arranque, así que la huella no coincide con la del Live.
@@ -132,17 +133,15 @@ ssh usuario@IP_DEL_SERVIDOR
 
 ## Endurecimiento opcional
 
-Ninguno de estos pasos lo hace la edición por ti. Son los mínimos para que el cortafuegos y fail2ban hagan algo.
+El cortafuegos sí lo activa la edición (ver [Qué activa y qué no](#qué-activa-y-qué-no)). Lo que sigue es opcional: fail2ban no se habilita solo.
 
-### Activar el cortafuegos sin perder SSH
+### Comprobar el cortafuegos
 
 ```bash
-sudo ufw allow ssh      # primero: abre el puerto 22
-sudo ufw enable         # escribe ENABLED=yes y carga las reglas
 sudo ufw status verbose
 ```
 
-La política por defecto de ufw descarta las conexiones entrantes (`DEFAULT_INPUT_POLICY="DROP"` en `/etc/default/ufw`). Si activas el cortafuegos por SSH sin la regla de `ssh`, pierdes el acceso. Como `ufw.service` ya está habilitado, las reglas se cargan en cada arranque a partir de ahí.
+Debe aparecer `Status: active` y `22/tcp` en `ALLOW`. Si lo desactivas o lo reconfiguras a mano, añade la regla **antes** de volver a activarlo (`sudo ufw allow 22/tcp` y después `sudo ufw enable`): la política por defecto descarta el tráfico entrante (`DEFAULT_INPUT_POLICY="DROP"` en `/etc/default/ufw`) y, sin esa regla, pierdes el acceso por SSH.
 
 ### Activar fail2ban para SSH
 
