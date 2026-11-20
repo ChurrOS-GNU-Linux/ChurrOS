@@ -1135,6 +1135,24 @@ class CalamaresConfigTest(unittest.TestCase):
             "verify-install no devuelve error cuando hay invariantes fallidas",
         )
 
+    def test_configure_server_enables_ufw_with_ssh_rule(self):
+        """El chroot no debe invocar ufw; sí debe dejar 22/tcp en user.rules y ENABLED=yes."""
+        source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
+        rule = source.find("--dport 22")
+        enabled = source.find("ENABLED=yes")
+        self.assertNotEqual(rule, -1, "configure-server no escribe la regla 22/tcp")
+        self.assertIn("22/tcp", source, "configure-server debe documentar la regla como 22/tcp")
+        self.assertRegex(source, r"/etc/default/ufw",
+                         "IPV6 se lee en /etc/default/ufw, no en ufw.conf")
+        self.assertNotRegex(source, r"grep .*IPV6=.* /etc/ufw/ufw\.conf",
+                            "IPV6 no está en /etc/ufw/ufw.conf")
+        self.assertNotEqual(enabled, -1, "configure-server no deja ENABLED=yes en ufw.conf")
+        self.assertLess(rule, enabled, "la regla 22/tcp tiene que escribirse antes de ENABLED=yes")
+        self.assertIsNone(
+            re.search(r"^\s*ufw\b", source, re.M),
+            "configure-server no debe invocar ufw en el chroot del instalador",
+        )
+
     def test_fixboot_modules_never_abort_mkinitcpio(self):
         """Un módulo de MODULES que el kernel no trae hace salir a mkinitcpio con 1.
 
