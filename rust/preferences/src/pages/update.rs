@@ -170,16 +170,14 @@ pub fn build(navigator: gtk::Stack) -> Page {
 
     let restore_info = Row::new(
         "Cómo restaurar",
-        Some("Si el sistema no arranca, inicia desde la ISO live y ejecuta:\n\
-              sudo churros-snapshot restore -d /dev/sdXN <stamp>\n\
-              /dev/sdXN es la partición btrfs del sistema, no el disco entero: \
-              la que lsblk -f muestra como btrfs (p. ej. /dev/sda2 o \
-              /dev/nvme0n1p2). Si cifraste el disco, ábrela antes con \
-              cryptsetup open y usa /dev/mapper/<nombre>.\n\
-              <stamp> es el nombre del snapshot en la lista de abajo (p. ej. \
-              20260824-163000). Desde la ISO, churros-snapshot list no \
-              funciona: monta la partición con mount -o subvolid=5 y cada \
-              carpeta de @snapshots es un stamp."),
+        Some("Si el sistema no arranca, inicia desde el USB de ChurrOS y ejecuta:\n\
+              sudo churros-snapshot restore\n\
+              Te guía: busca el sistema (abre el disco si está cifrado), \
+              enseña los snapshots de abajo con su fecha, explica qué pasará \
+              y no toca nada hasta que escribas RESTAURAR. El sistema actual \
+              no se borra: queda en @broken-<fecha>. Necesita un USB 1.5.7 o \
+              posterior; con uno anterior: sudo churros-snapshot restore -d \
+              /dev/sdXN <stamp> (la partición btrfs, no el disco entero)."),
         Some("system.svg"),
         None,
         None,

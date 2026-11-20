@@ -598,6 +598,80 @@ class SnapshotRestore(unittest.TestCase):
         self.assertTrue((snap / "root/var/lib/pacman/db.lck").exists(), "el snapshot original no se toca")
 
 
+class GuidedRestore(unittest.TestCase):
+    """`churros-snapshot restore` sin argumentos, desde la ISO (#327)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-guided-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.top = self.tmp / "top"
+        (self.top / "@").mkdir(parents=True)
+        (self.top / "@/version").write_text("roto\n")
+        (self.top / "@home").mkdir()
+        for stamp, reason, version in (("20261101-100000", "manual", "uno"), ("20261102-100000", "pacman-pre", "dos")):
+            d = self.top / "@snapshots" / stamp
+            (d / "root").mkdir(parents=True)
+            (d / "root/version").write_text(version + "\n")
+            (d / "home").mkdir()
+            (d / "meta.txt").write_text(f"stamp={stamp}\ndate=2026-11-0{stamp[7]} 10:00:00\nreason={reason}\nkernel=7.3.3\n")
+        self.log = self.tmp / "log"
+        self.log.write_text("")
+        self.bin = self.tmp / "bin"
+        executable(self.bin / "lsblk", '#!/bin/sh\ncase "$*" in\n'
+                   '    "-rno TYPE "*) echo part ;;\n'
+                   '    *) printf "/dev/falso1 vfat\\n/dev/falso2 crypto_LUKS\\n/dev/falso3 btrfs\\n" ;;\nesac\n')
+        executable(self.bin / "findmnt", '#!/bin/sh\ncase "$*" in *FSTYPE*) echo overlay ;; *) echo airootfs ;; esac\n')
+        executable(self.bin / "mount", f'#!/bin/sh\necho "mount $2 $3" >> "{self.log}"\nrmdir "$4" && ln -s "{self.top}" "$4"\n')
+        executable(self.bin / "umount", "#!/bin/sh\nexit 0\n")
+        executable(self.bin / "mountpoint", "#!/bin/sh\nexit 1\n")
+        executable(self.bin / "btrfs", '#!/bin/sh\n[ "$1 $2" = "subvol snapshot" ] && cp -a "$3" "$4"\n')
+        executable(self.bin / "cryptsetup", f'#!/bin/sh\necho "cryptsetup $*" >> "{self.log}"\n')
+        executable(self.bin / "id", "#!/bin/sh\necho 0\n")
+
+    def guided(self, answers: str):
+        return subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-snapshot"), "restore"],
+                              input=answers, capture_output=True, text=True,
+                              env={**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}"})
+
+    def broken(self):
+        return [p.name for p in self.top.iterdir() if p.name.startswith("@broken-")]
+
+    def test_guided_restore_asks_then_restores_and_checks(self):
+        result = self.guided("n\n2\nRESTAURAR\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.top / "@/version").read_text(), "dos\n",
+                         "[guided-restore] restaura el snapshot elegido")
+        self.assertEqual(len(self.broken()), 1, "[guided-restore] el estado roto queda en @broken-*")
+        self.assertIn("pacman-pre", result.stderr, "enseña el motivo de cada snapshot")
+        self.assertIn("@home.broken", result.stderr, "avisa de que /home también vuelve atrás")
+        self.assertIn("comprobado", result.stderr, "[guided-restore] comprueba el resultado en el disco")
+        mounts = [l for l in self.log.read_text().splitlines() if l.startswith("mount")]
+        self.assertIn("mount ro,subvolid=5", mounts[0], "[guided-restore] mira el disco en solo lectura antes de confirmar")
+
+    def test_anything_but_restaurar_touches_nothing(self):
+        result = self.guided("n\n1\ns\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.top / "@/version").read_text(), "roto\n",
+                         "[guided-restore] sin escribir RESTAURAR no se toca nada")
+        self.assertEqual(self.broken(), [])
+        self.assertIn("cancelado", result.stderr)
+        self.assertTrue(all("ro," in l for l in self.log.read_text().splitlines() if l.startswith("mount")),
+                        "[guided-restore] antes de confirmar todo se monta en solo lectura")
+
+    def test_an_encrypted_disk_is_opened_only_if_asked(self):
+        self.guided("s\n1\nno\n")
+        self.assertIn("cryptsetup open /dev/falso2 churros-falso2", self.log.read_text(),
+                      "[guided-restore] un disco cifrado se abre (sin borrar nada) para encontrar el sistema")
+        self.log.write_text("")
+        self.guided("n\n1\nno\n")
+        self.assertNotIn("cryptsetup", self.log.read_text(), "sin el sí del usuario no se abre")
+
+    def test_no_installed_system_is_explained(self):
+        shutil.rmtree(self.top / "@snapshots")
+        result = self.guided("n\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no se encontró ningún ChurrOS", result.stderr)
+
 class StalePacmanLock(unittest.TestCase):
     """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
 
