@@ -64,7 +64,21 @@ log "edición server detectada; dejando el sistema sin escritorio"
 # Calamares, con mandatory: true. Aquí se revierten.
 systemctl disable greetd.service >> "$LOG" 2>&1
 systemctl set-default multi-user.target >> "$LOG" 2>&1
-log "display manager desactivado; target por defecto multi-user"
+# getty@tty1 lo enmascara el Live (services.sh) para que greetd sea el
+# único login, y services-systemd.conf vuelve a enmascararlo en el
+# sistema instalado de todas las ediciones. En Server no hay greeter:
+# sin quitar la máscara, tty1 queda en negro y hay que ir a tty2.
+systemctl unmask getty@tty1.service >> "$LOG" 2>&1
+systemctl enable getty@tty1.service >> "$LOG" 2>&1
+# El Live también enmascara plymouth-quit y plymouth-quit-wait para que el
+# splash no desaparezca antes del greeter; greetd lo apaga con
+# ExecStartPre. Esa máscara pasa al instalado. En Server no hay greetd,
+# el kernel arranca con `splash` y plymouth se queda dueño de tty1: se
+# come las teclas y pinta encima del login. getty@.service ya espera a
+# plymouth-quit-wait, así que basta con quitar esas máscaras.
+# plymouth-start se queda enmascarado: el initramfs ya lanza plymouth.
+systemctl unmask plymouth-quit.service plymouth-quit-wait.service >> "$LOG" 2>&1
+log "display manager desactivado; getty@tty1 activo; plymouth suelta tty1; target por defecto multi-user"
 
 # ---------------------------------------------------- 2. quitar escritorio
 

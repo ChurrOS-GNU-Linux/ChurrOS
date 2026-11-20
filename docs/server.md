@@ -121,7 +121,7 @@ systemctl status sshd
 - `sshd` escucha en el puerto 22 de todas las interfaces, con la configuración por defecto de Arch: los usuarios normales pueden entrar con contraseña y root no (`PermitRootLogin prohibit-password`, el valor por defecto de OpenSSH). El paso post-install borra `10-archiso.conf`, que en el Live permite entrar como root con contraseña.
 - El usuario es el que creaste en el instalador. Root recibe la misma contraseña si dejas marcada la casilla de usar la misma contraseña para el administrador, que viene marcada (`doReusePassword: true`).
 - El post-install borra las claves de host SSH del Live; se generan otras nuevas en el primer arranque, así que la huella no coincide con la del Live.
-- En la consola local, tty1 no muestra el login: `getty@tty1` queda enmascarado, como en el Live. Cambia a otra consola con `Ctrl+Alt+F2`.
+- En la consola local, tty1 muestra el login: `configure-server` quita la máscara de `getty@tty1` y las de `plymouth-quit` y `plymouth-quit-wait`. El Live deja esas unidades de plymouth enmascaradas y el kernel arranca con `splash`; si plymouth no termina, se come las teclas y pinta encima del prompt. En el Live y en Niri/XFCE, `getty@tty1` sigue enmascarado, para que el único inicio de sesión gráfico sea greetd.
 
 Primera conexión:
 

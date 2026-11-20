@@ -113,7 +113,7 @@ El Live corre en RAM: cualquier cambio se pierde al apagar. En el sistema instal
 - **Enmascara** `getty@tty1.service` (el inicio de sesión lo hace greetd en VT7), `plymouth-start`, `plymouth-quit`, `plymouth-quit-wait`, `systemd-time-wait-sync` y `NetworkManager-wait-online`, para que el Live arranque rápido.
 - **Habilita** `NetworkManager.service`, `greetd.service` y `ufw.service`, si la unidad existe.
 
-El post-install de Calamares deshace en el sistema instalado las máscaras de espera de red y de hora (ver [Red y DNS](#red-y-dns)). `getty@tty1` sigue enmascarado también en el sistema instalado.
+El post-install de Calamares deshace en el sistema instalado las máscaras de espera de red y de hora (ver [Red y DNS](#red-y-dns)). `getty@tty1` sigue enmascarado en las ediciones de escritorio (el login es greetd). En Server, `configure-server` quita esa máscara para que tty1 muestre el login.
 
 ---
 
