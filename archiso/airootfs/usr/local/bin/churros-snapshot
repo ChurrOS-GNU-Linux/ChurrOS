@@ -14,6 +14,7 @@
 #   churros-snapshot delete <stamp>
 #   churros-snapshot cleanup [KEEP]
 #   churros-snapshot restore [-d DISPOSITIVO] <stamp>
+#   churros-snapshot restore            (desde la ISO: guiado, pregunta todo)
 #
 # restore: intercambia @/@home por los del snapshot. El sistema en marcha no
 # puede renombrar el subvolumen raíz montado: hay que arrancar desde la ISO
@@ -26,7 +27,7 @@ STAMP_FILE="meta.txt"
 KEEP_DEFAULT=5
 
 usage() {
-    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -275,6 +276,152 @@ restore() {
     log "reinicia el sistema para completar la restauración"
 }
 
+# ---------------------------------------------------------- restore guiado
+#
+# `churros-snapshot restore` sin snapshot, desde la ISO live (#327): busca
+# el sistema instalado, abre LUKS si hace falta, enseña los snapshots en
+# solo lectura, explica qué va a pasar y pide confirmación. Restaura con
+# restore() de arriba, igual que `restore -d DEV STAMP`, y comprueba el
+# resultado. No toca nada hasta que el usuario escribe RESTAURAR.
+
+ask() {
+    local answer
+    printf '%s ' "$1" >&2
+    read -r answer || answer=""
+    printf '%s\n' "$answer"
+}
+
+# choose TÍTULO OPCIÓN... — imprime el número elegido (1..n).
+choose() {
+    local title="$1" i=1 n pick
+    shift
+    n=$#
+    printf '\n%s\n' "$title" >&2
+    for opt in "$@"; do
+        printf '  %d) %s\n' "$i" "$opt" >&2
+        i=$((i + 1))
+    done
+    [ "$n" -eq 1 ] && { printf '1\n'; return; }
+    pick="$(ask "Elige un número (1-$n):")"
+    case "$pick" in
+        ''|*[!0-9]*) die "opción no válida: '$pick'" ;;
+    esac
+    if [ "$pick" -lt 1 ] || [ "$pick" -gt "$n" ]; then
+        die "opción no válida: '$pick'"
+    fi
+    printf '%s\n' "$pick"
+}
+
+RO_MOUNT=""
+ro_umount() {
+    [ -n "$RO_MOUNT" ] || return 0
+    umount "$RO_MOUNT" 2>/dev/null || true
+    rmdir "$RO_MOUNT" 2>/dev/null || rm -f "$RO_MOUNT"
+    RO_MOUNT=""
+}
+
+ro_mount() {
+    ro_umount
+    RO_MOUNT="$(mktemp -d /run/churros-snap-ro.XXXXXX 2>/dev/null || mktemp -d)"
+    if ! mount -o ro,subvolid=5 "$1" "$RO_MOUNT" 2>/dev/null; then
+        rmdir "$RO_MOUNT" 2>/dev/null || true
+        RO_MOUNT=""
+        return 1
+    fi
+}
+
+# Abrir LUKS no borra nada: solo pide la contraseña y crea /dev/mapper/…
+unlock_luks() {
+    local part name parts=()
+    # La lista primero: dentro de `while read … < <(lsblk)` la pregunta leía
+    # su respuesta de lsblk, no del usuario.
+    mapfile -t parts < <(lsblk -rpno NAME,FSTYPE 2>/dev/null | awk '$2 == "crypto_LUKS" { print $1 }')
+    for part in "${parts[@]}"; do
+        [ -n "$part" ] || continue
+        # Ya abierto: tiene un hijo de tipo crypt.
+        lsblk -rno TYPE "$part" 2>/dev/null | grep -qx crypt && continue
+        name="churros-$(basename "$part")"
+        case "$(ask "El disco $part está cifrado (LUKS). ¿Abrirlo para buscar el sistema? [s/N]")" in
+            s|S|si|sí|Sí|SI) cryptsetup open "$part" "$name" || log "no se pudo abrir $part (¿contraseña?); se sigue sin él" ;;
+        esac
+    done
+}
+
+# Particiones btrfs con @ y @snapshots, sin la raíz en marcha.
+installed_systems() {
+    local dev running
+    running="$(device_of / 2>/dev/null || echo none)"
+    while read -r dev; do
+        if [ -z "$dev" ] || [ "$dev" = "$running" ]; then
+            continue
+        fi
+        ro_mount "$dev" || continue
+        if [ -d "$RO_MOUNT/@" ] && [ -d "$RO_MOUNT/$SNAPSHOTS_DIR" ]; then
+            printf '%s\n' "$dev"
+        fi
+        ro_umount
+    done < <(lsblk -rpno NAME,FSTYPE 2>/dev/null | awk '$2 == "btrfs" { print $1 }')
+}
+
+meta_value() {
+    sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
+}
+
+guided_restore() {
+    [ "$(id -u)" -eq 0 ] || die "hace falta root: sudo churros-snapshot restore"
+    trap 'ro_umount; top_cleanup' EXIT
+
+    printf 'Restaurar ChurrOS desde un snapshot. Hasta que confirmes, solo se lee el disco.\n' >&2
+    unlock_luks
+
+    local systems=() dev stamps=() labels=() meta pick stamp date reason
+    mapfile -t systems < <(installed_systems)
+    if [ "${#systems[@]}" -eq 0 ]; then
+        is_btrfs / && die "esto se hace desde la ISO live: el sistema en marcha no se puede restaurar. Arranca el USB de ChurrOS y repite"
+        die "no se encontró ningún ChurrOS instalado en btrfs con snapshots (si el disco está cifrado, ábrelo cuando lo pregunte)"
+    fi
+    pick="$(choose "Sistema instalado:" "${systems[@]}")"
+    dev="${systems[$((pick - 1))]}"
+
+    ro_mount "$dev" || die "no se pudo montar $dev en solo lectura"
+    for meta in "$RO_MOUNT/$SNAPSHOTS_DIR"/*/"$STAMP_FILE"; do
+        [ -f "$meta" ] || continue
+        [ -d "$(dirname "$meta")/root" ] || continue
+        stamp="$(basename "$(dirname "$meta")")"
+        stamps+=("$stamp")
+        labels+=("$(meta_value "$meta" date)  ($(meta_value "$meta" reason), kernel $(meta_value "$meta" kernel))")
+    done
+    [ "${#stamps[@]}" -gt 0 ] || die "en $dev no hay snapshots"
+    pick="$(choose "Snapshots en $dev (el último es el más reciente):" "${labels[@]}")"
+    stamp="${stamps[$((pick - 1))]}"
+    meta="$RO_MOUNT/$SNAPSHOTS_DIR/$stamp/$STAMP_FILE"
+    date="$(meta_value "$meta" date)"
+    reason="$(meta_value "$meta" reason)"
+    ro_umount
+
+    cat >&2 <<EOF
+
+Vas a volver al snapshot del $date ($reason) en $dev:
+  - El sistema actual NO se borra: pasa a @broken-<fecha>.
+  - /home también vuelve al $date. Lo que guardaste después sigue en
+    @home.broken-<fecha>: cópialo de ahí antes de borrar ese subvolumen.
+  - Al terminar, reinicia y quita el USB.
+EOF
+    [ "$(ask "Escribe RESTAURAR para seguir (cualquier otra cosa cancela):")" = RESTAURAR ] \
+        || { log "cancelado: no se ha tocado nada"; exit 0; }
+
+    restore "$stamp" "$dev"
+
+    # Comprobar el resultado en el disco, no fiarse del mensaje.
+    top_cleanup
+    ro_mount "$dev" || die "restaurado, pero no se pudo comprobar $dev"
+    [ -d "$RO_MOUNT/@" ] || die "tras restaurar no hay @ en $dev: no reinicies y pide ayuda"
+    local backups=("$RO_MOUNT"/@broken-*)
+    [ -d "${backups[-1]}" ] || die "tras restaurar no está el respaldo @broken-*: no reinicies y pide ayuda"
+    log "comprobado: @ es el snapshot del $date y el estado anterior está en $(basename "${backups[-1]}")"
+    log "ya puedes reiniciar (quita el USB)"
+}
+
 # ---------------------------------------------------------------- main
 
 CMD="${1:-}"
@@ -321,8 +468,12 @@ case "$CMD" in
                     ;;
             esac
         done
-        [ -n "$stamp" ] || usage 1
-        restore "$stamp" "$dev"
+        if [ -z "$stamp" ]; then
+            [ -z "$dev" ] || usage 1
+            guided_restore
+        else
+            restore "$stamp" "$dev"
+        fi
         ;;
     ""|-h|--help)
         usage 0

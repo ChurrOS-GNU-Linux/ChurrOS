@@ -3744,3 +3744,31 @@ replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+[[mutation]]
+name = "churros-snapshot: el restore guiado restaura sin escribir RESTAURAR"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = '        || { log "cancelado: no se ha tocado nada"; exit 0; }'
+replace = '        || true'
+caught_by = "python3 scripts/test-privileged-helpers.py GuidedRestore"
+expect = "[guided-restore]"
+why = "Un Enter de más movería el sistema a @broken-* sin que el usuario lo confirmara."
+
+[[mutation]]
+name = "churros-snapshot: el restore guiado monta el disco en escritura antes de confirmar"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = 'mount -o ro,subvolid=5 "$1" "$RO_MOUNT"'
+replace = 'mount -o subvolid=5 "$1" "$RO_MOUNT"'
+caught_by = "python3 scripts/test-privileged-helpers.py GuidedRestore"
+expect = "[guided-restore]"
+why = "Hasta la confirmación solo se lee el disco (#327)."
+
+[[mutation]]
+name = "churros-snapshot: la pregunta del disco cifrado lee su respuesta de lsblk"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = """    mapfile -t parts < <(lsblk -rpno NAME,FSTYPE 2>/dev/null | awk '$2 == "crypto_LUKS" { print $1 }')
+    for part in "${parts[@]}"; do"""
+replace = """    while read -r part; do"""
+caught_by = "python3 scripts/test-privileged-helpers.py GuidedRestore"
+expect = "[guided-restore]"
+why = "Dentro de while read … < <(lsblk) el «¿abrirlo?» se contestaba con la línea siguiente de lsblk."
