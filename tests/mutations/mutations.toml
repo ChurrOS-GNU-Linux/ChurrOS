@@ -3742,8 +3742,35 @@ file = "rust/preferences/src/pages/display.rs"
 find = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--minimal"];'
 replace = 'const PROJECT_ARGV: [&str; 2] = ["xfce4-display-settings", "--help"];'
 caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings project_opens_the_quick_dialog"
+requires = "container"
 expect = "[xfce-project-minimal]"
 why = "Sin --minimal el usuario no ve los cuatro botones (solo esta, duplicar, extender, solo la externa)."
+
+[[mutation]]
+name = "churros-settings: Tocar para hacer clic vuelve a gsettings (niri no lo lee)"
+file = "rust/preferences/src/pages/input.rs"
+find = "        Some(Box::new(|active| NiriConfig::set_touchpad_flag(TAP, active))),"
+replace = "        Some(Box::new(|active| set_gsettings(\"org.gnome.desktop.peripherals.touchpad\", \"tap-to-click\", if active { \"true\" } else { \"false\" }))),"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings touchpad_and_speed_are_written_to_niri"
+requires = "container"
+expect = "[niri-touchpad-gsettings]"
+why = "En niri el interruptor no hacía nada: el panel táctil se configura en config.kdl."
+
+[[mutation]]
+name = "churros-settings: desactivar Tocar para hacer clic no quita tap"
+file = "rust/preferences/src/services/niri_config.rs"
+find = """
+        (false, Some(i)) => {
+            lines.remove(i);
+        }
+"""
+replace = """
+        (false, Some(_)) => {}
+"""
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings touchpad_flags_roundtrip_on_the_real_config"
+requires = "container"
+expect = "[niri-touchpad-flags]"
+why = "El interruptor se quedaría encendido para siempre."
 
 [[mutation]]
 name = "churros-settings: el aviso de modo avión mira el bloqueo por software"

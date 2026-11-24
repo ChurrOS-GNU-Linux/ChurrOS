@@ -4,14 +4,16 @@
 // ==========================================
 
 
-use std::process::Command;
-
 use crate::services::niri_config::NiriConfig;
 use crate::widgets::combo_row::ComboRow;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
 use crate::widgets::slider_row::SliderRow;
 use crate::widgets::switch_row::SwitchRow;
+
+/// Opciones de niri en input > touchpad que maneja esta página.
+pub(crate) const TAP: &str = "tap";
+pub(crate) const NATURAL_SCROLL: &str = "natural-scroll";
 
 pub(crate) const LAYOUTS: [&str; 6] = ["es", "us", "latam", "fr", "de", "it"];
 
@@ -99,65 +101,63 @@ pub fn build(navigator: gtk::Stack) -> Page {
     keyboard.add(&layout_combo);
     page.add(keyboard.widget());
 
-    // ============ Ratón ============
-    let mut mouse = Group::new("Raton");
+    // ============ Panel táctil ============
+    // niri lo lee de config.kdl (input > touchpad), no de gsettings.
+    let mut touchpad = Group::new("Panel táctil");
 
-    let tap_value = run_gsettings(&[
-        "get",
-        "org.gnome.desktop.peripherals.touchpad",
-        "tap-to-click",
-    ]);
-    let tap_active = tap_value.to_lowercase().contains("true");
-
-    mouse.add(&SwitchRow::new(
-        "Tocar para clic",
+    touchpad.add(&SwitchRow::new(
+        "Tocar para hacer clic",
         None,
-        Some("Raton: clic con un toque"),
-        tap_active,
-        Some(Box::new(|active| {
-            set_gsettings(
-                "org.gnome.desktop.peripherals.touchpad",
-                "tap-to-click",
-                if active { "true" } else { "false" },
-            );
-        })),
+        Some("Un toque es un clic; dos dedos, clic derecho"),
+        NiriConfig::get_touchpad_flag(TAP),
+        Some(Box::new(|active| NiriConfig::set_touchpad_flag(TAP, active))),
+    ));
+    touchpad.add(&SwitchRow::new(
+        "Desplazamiento natural",
+        None,
+        Some("El contenido sigue a los dedos, como en el móvil"),
+        NiriConfig::get_touchpad_flag(NATURAL_SCROLL),
+        Some(Box::new(|active| NiriConfig::set_touchpad_flag(NATURAL_SCROLL, active))),
     ));
 
-    page.add(mouse.widget());
+    page.add(touchpad.widget());
 
-    // ============ Velocidad del ratón ============
+    // ============ Velocidad ============
     let mut speed_group = Group::new("Velocidad");
 
-    let speed_raw = run_gsettings(&[
-        "get",
-        "org.gnome.desktop.peripherals.mouse",
-        "speed",
-    ]);
-    let speed: f64 = speed_raw.parse().unwrap_or(0.0);
-
     let speed_slider = SliderRow::new(
-        "Velocidad del raton",
+        "Velocidad del puntero",
         None,
-        None,
+        Some("Panel táctil y ratón"),
         -100.0,
         100.0,
         10.0,
-        speed * 100.0,
-        Some(Box::new(|value| {
-            let v = value / 100.0;
-            let _ = Command::new("gsettings")
-                .args([
-                    "set",
-                    "org.gnome.desktop.peripherals.mouse",
-                    "speed",
-                    &v.to_string(),
-                ])
-                .output();
-        })),
+        NiriConfig::get_pointer_speed() * 100.0,
+        Some(Box::new(|value| NiriConfig::set_pointer_speed(value / 100.0))),
     );
 
     speed_group.add(&speed_slider);
     page.add(speed_group.widget());
 
     page
+}
+
+#[cfg(test)]
+mod tests {
+    /// Esta página tal cual: en niri el panel táctil y la velocidad se
+    /// guardan en config.kdl. gsettings (org.gnome.desktop.peripherals) no
+    /// lo lee niri y el interruptor no hacía nada.
+    const SOURCE: &str = include_str!("input.rs");
+
+    #[test]
+    fn touchpad_and_speed_are_written_to_niri() {
+        let code: String = SOURCE.split("#[cfg(test)]").next().unwrap().to_string();
+        assert!(
+            !code.contains("org.gnome.desktop.peripherals"),
+            "[niri-touchpad-gsettings] Entrada vuelve a guardar el panel táctil o la velocidad en gsettings"
+        );
+        for call in ["set_touchpad_flag(TAP", "set_touchpad_flag(NATURAL_SCROLL", "set_pointer_speed("] {
+            assert!(code.contains(call), "[niri-touchpad-gsettings] falta NiriConfig::{call}");
+        }
+    }
 }

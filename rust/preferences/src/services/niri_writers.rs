@@ -25,7 +25,7 @@ use super::keyboard::{is_valid_key, KeyboardService};
 use super::niri_config::NiriConfig;
 use super::test_support::{rule_form, skel_niri_config, TempHome};
 use super::window_rules_service::WindowRulesService;
-use crate::pages::input::LAYOUTS;
+use crate::pages::input::{LAYOUTS, NATURAL_SCROLL, TAP};
 use crate::pages::keyboard::BUILTIN_ACTIONS;
 
 /// La página de niri: de aquí salen los nombres de animación que escribe.
@@ -140,6 +140,8 @@ fn page_animations() -> Vec<&'static str> {
 
 fn niri_config_cases() -> Vec<Case> {
     const LAYOUT: &[&str] = &["NiriConfig::set_keyboard_layout"];
+    const TOUCHPAD: &[&str] = &["NiriConfig::set_touchpad_flag"];
+    const SPEED: &[&str] = &["NiriConfig::set_pointer_speed"];
     const GAPS: &[&str] = &["NiriConfig::set_gaps"];
     const BORDER: &[&str] = &["NiriConfig::set_border"];
     const FOCUS_RING: &[&str] = &["NiriConfig::set_focus_ring"];
@@ -170,6 +172,31 @@ fn niri_config_cases() -> Vec<Case> {
         })
         .after(|| edit_config(|text| without_block(text, "input"))),
     );
+
+    for flag in [TAP, NATURAL_SCROLL] {
+        for on in [true, false] {
+            cases.push(
+                case(TOUCHPAD, format!("NiriConfig::set_touchpad_flag({flag:?}, {on})"), move || {
+                    NiriConfig::set_touchpad_flag(flag, on);
+                    true
+                })
+                .after(move || NiriConfig::set_touchpad_flag(flag, !on)),
+            );
+        }
+    }
+    cases.push(
+        case(TOUCHPAD, "NiriConfig::set_touchpad_flag(\"tap\", true) sin bloque input", || {
+            NiriConfig::set_touchpad_flag(TAP, true);
+            true
+        })
+        .after(|| edit_config(|text| without_block(text, "input"))),
+    );
+    for speed in [-1.0, 0.35, 1.0] {
+        cases.push(case(SPEED, format!("NiriConfig::set_pointer_speed({speed})"), move || {
+            NiriConfig::set_pointer_speed(speed);
+            true
+        }));
+    }
 
     // pages/niri.rs: los extremos de cada control.
     for gaps in [0, 32] {
