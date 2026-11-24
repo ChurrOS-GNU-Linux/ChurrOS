@@ -220,6 +220,54 @@ fn extract_value(content: &str, block_path: &[&str], key: &str) -> Option<String
     None
 }
 
+/// ¿Tiene el bloque `path` una línea que es exactamente `flag` (p. ej. `tap`)?
+fn block_has_flag(content: &str, path: &[&str], flag: &str) -> bool {
+    let Some((start, end)) = find_nested_block(content, path) else {
+        return false;
+    };
+    content.lines().skip(start + 1).take(end - start - 1).any(|l| l.trim() == flag)
+}
+
+/// Pone o quita la línea `flag` dentro del bloque `path` (lo crea si hace
+/// falta). Conserva el salto de línea final del fichero.
+fn set_block_flag(content: &str, path: &[&str], flag: &str, on: bool) -> String {
+    let Some((start, end)) = find_nested_block(content, path) else {
+        return if on { create_block(content, path, &[flag]) } else { content.to_string() };
+    };
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let present = (start + 1..end).find(|&i| lines[i].trim() == flag);
+    match (on, present) {
+        (true, None) => {
+            let indent: String = lines[start].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+            lines.insert(end, format!("{indent}    {flag}"));
+        }
+        (false, Some(i)) => {
+            lines.remove(i);
+        }
+        _ => return content.to_string(),
+    }
+    let mut out = lines.join("\n");
+    if content.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Pone `accel-speed` en los bloques `input > touchpad` e `input > mouse`.
+fn set_pointer_speed_in(content: &str, speed: f64) -> String {
+    let value = py_float_str((speed.clamp(-1.0, 1.0) * 100.0).round() / 100.0);
+    let mut out = content.to_string();
+    for device in ["touchpad", "mouse"] {
+        let path = ["input", device];
+        out = match update_value_in_block(&out, &path, "accel-speed", &value) {
+            Some(updated) if content.ends_with('\n') && !updated.ends_with('\n') => updated + "\n",
+            Some(updated) => updated,
+            None => create_block(&out, &path, &[&format!("accel-speed {value}")]),
+        };
+    }
+    out
+}
+
 /// str(float) estilo Python: 2.0 -> "2.0", 1.2 -> "1.2", 0.05 -> "0.05"
 /// (siempre decimal: niri rechaza un entero donde espera f64).
 pub(crate) fn py_float_str(v: f64) -> String {
@@ -255,6 +303,36 @@ impl NiriConfig {
             &[&format!("layout \"{layout}\"")],
         );
         write_atomic(&result);
+    }
+
+    // ----------------------------------------------------- Panel táctil
+    //
+    // niri lee el touchpad y el ratón de config.kdl (input > touchpad /
+    // mouse), no de gsettings: antes Ajustes > Entrada escribía en
+    // org.gnome.desktop.peripherals y en niri no cambiaba nada.
+
+    /// `tap` (tocar para hacer clic) o `natural-scroll`.
+    pub fn get_touchpad_flag(flag: &str) -> bool {
+        block_has_flag(&read(), &["input", "touchpad"], flag)
+    }
+
+    pub fn set_touchpad_flag(flag: &str, on: bool) {
+        let content = read();
+        let updated = set_block_flag(&content, &["input", "touchpad"], flag, on);
+        if updated != content {
+            write_atomic(&updated);
+        }
+    }
+
+    /// Velocidad del puntero, de -1.0 a 1.0 (0.0 si no está puesta).
+    pub fn get_pointer_speed() -> f64 {
+        extract_value(&read(), &["input", "touchpad"], "accel-speed")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0)
+    }
+
+    pub fn set_pointer_speed(speed: f64) {
+        write_atomic(&set_pointer_speed_in(&read(), speed));
     }
 
     /// Recarga la config de niri en vivo (equivalente a reload()).
@@ -886,5 +964,33 @@ mod tests {
             .expect("actualizar layout");
         assert!(updated.contains("layout \"es\""), "no actualizo layout: {updated}");
         assert!(!updated.contains("layout \"us\""), "no quito el layout viejo: {updated}");
+    }
+
+    #[test]
+    fn touchpad_flags_roundtrip_on_the_real_config() {
+        // [niri-touchpad-flags] Ajustes > Entrada tiene que escribir en niri, no en gsettings
+        let content = real_config();
+        let on = set_block_flag(content, &["input", "touchpad"], "tap", true);
+        assert!(block_has_flag(&on, &["input", "touchpad"], "tap"), "[niri-touchpad-flags] no activa tap: {on}");
+        assert!(on.contains("input {") && on.contains("keyboard {"), "[niri-touchpad-flags] pierde el teclado");
+        let both = set_block_flag(&on, &["input", "touchpad"], "natural-scroll", true);
+        assert!(block_has_flag(&both, &["input", "touchpad"], "natural-scroll"));
+        assert!(block_has_flag(&both, &["input", "touchpad"], "tap"));
+        // Idempotente y reversible
+        assert_eq!(set_block_flag(&both, &["input", "touchpad"], "tap", true), both);
+        let off = set_block_flag(&both, &["input", "touchpad"], "tap", false);
+        assert!(!block_has_flag(&off, &["input", "touchpad"], "tap"), "[niri-touchpad-flags] no quita tap");
+        assert!(block_has_flag(&off, &["input", "touchpad"], "natural-scroll"));
+        assert_eq!(set_block_flag(content, &["input", "touchpad"], "tap", false), content);
+    }
+
+    #[test]
+    fn pointer_speed_goes_to_touchpad_and_mouse() {
+        let out = set_pointer_speed_in(real_config(), 0.5);
+        assert_eq!(extract_value(&out, &["input", "touchpad"], "accel-speed").as_deref(), Some("0.5"));
+        assert_eq!(extract_value(&out, &["input", "mouse"], "accel-speed").as_deref(), Some("0.5"));
+        let again = set_pointer_speed_in(&out, -2.0);
+        assert_eq!(extract_value(&again, &["input", "touchpad"], "accel-speed").as_deref(), Some("-1.0"));
+        assert_eq!(again.matches("accel-speed").count(), 2, "duplica accel-speed: {again}");
     }
 }
