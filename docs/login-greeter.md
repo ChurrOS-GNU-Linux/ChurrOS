@@ -78,7 +78,7 @@ user = "churros"
 - En el **Live**, `[initial_session]` entra directamente al escritorio del usuario `churros`.
 - En el **sistema instalado**, el archivo lo reescribe `configure-greetd-session` (sección 6): `[default_session]` siempre lanza ReGreet para pedir credenciales y `[initial_session]` solo aparece si se eligió el inicio automático.
 
-`getty@tty1` está enmascarado (lo hace `services.sh` en el Live y el módulo `services-systemd` de Calamares en el sistema instalado): el único inicio de sesión gráfico es el de greetd.
+En el Live y en las ediciones de escritorio instaladas, `getty@tty1` está enmascarado (lo hace `services.sh` en el Live y el módulo `services-systemd` de Calamares en el instalado): el único inicio de sesión gráfico es el de greetd. En Server, `configure-server` quita esa máscara para que la consola local muestre el login.
 
 ### `/etc/greetd/regreet.toml`
 
