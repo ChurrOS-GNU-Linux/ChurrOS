@@ -29,7 +29,7 @@ Ver [Pruebas según el tipo de cambio](../docs/contributing.md#pruebas-según-el
 
 ## Pruebas
 
-- [ ] Este cambio arregla un fallo y añade la prueba que lo habría detectado (y su mutación en `tests/mutations/mutations.toml`)
+- [ ] Este cambio arregla un fallo y añade la prueba que lo habría detectado (y su mutación en un fichero propio de `tests/mutations/mutations.d/`)
 - [ ] No se ha borrado, saltado ni suavizado ninguna prueba para que el CI pase
 - [ ] Si añade una entrada a `tests/known_issues.toml`, la nota explica qué falla y por qué no se arregla aquí
 

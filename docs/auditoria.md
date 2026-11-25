@@ -191,7 +191,7 @@ El diálogo de confirmación existe y avisa de que se borrarán los ajustes (`ba
 
 1. Hacer que `restore_dotfiles` y `reset_to_defaults` devuelvan `Result<(), String>` propagando cada error de `remove_dir_all` y `copy_dir_all`.
 2. Copiar a un directorio temporal y renombrar al final (o mover el original a `.bak` y restaurarlo si la copia falla), en vez de borrar primero.
-3. Añadir la prueba que lo cubre y su mutación en `tests/mutations/mutations.toml`, como exige `AGENTS.md`.
+3. Añadir la prueba que lo cubre y su mutación en `tests/mutations/mutations.d/`, como exige `AGENTS.md`.
 
 ---
 
@@ -606,7 +606,7 @@ La suite de ChurrOS es inusualmente buena — modela el sistema entero desde el 
 6. **A3**, **A6**, **A7**: cadena de suministro y visibilidad del CI.
 7. **Verdes** en cualquier momento; **V1** es el de mejor relación esfuerzo/beneficio porque a partir de ahí el resto se detecta solo.
 
-Cada corrección debería llegar con su prueba y su mutación en `tests/mutations/mutations.toml`, como exige `AGENTS.md`, y la de R1 con la rotación de claves en el mismo cambio.
+Cada corrección debería llegar con su prueba y su mutación en `tests/mutations/mutations.d/`, como exige `AGENTS.md`, y la de R1 con la rotación de claves en el mismo cambio.
 
 ---
 
