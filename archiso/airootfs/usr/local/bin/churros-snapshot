@@ -12,7 +12,7 @@
 #   churros-snapshot list [--json|--plain]
 #   churros-snapshot info <stamp>
 #   churros-snapshot delete <stamp>
-#   churros-snapshot cleanup [KEEP]
+#   churros-snapshot cleanup [KEEP]   (solo los automáticos; los manuales se quedan)
 #   churros-snapshot restore [-d DISPOSITIVO] <stamp>
 #
 # restore: intercambia @/@home por los del snapshot. El sistema en marcha no
@@ -41,6 +41,21 @@ device_of() {
         || die "no se pudo resolver el dispositivo de $mnt"
     # findmnt devuelve /dev/sdXn[/@] en btrfs; mount solo admite /dev/sdXn.
     printf '%s\n' "${src%%\[*}"
+}
+
+# Razones de los snapshots automáticos: el hook de pacman y el actualizador
+# de ChurrOS. Solo esos entran en la retención; los demás (Ajustes «Crear
+# snapshot ahora», `create antes-de-algo`...) los creó alguien a propósito y
+# no se borran solos (#329).
+is_automatic() {
+    case "$1" in
+        pacman-pre|churros-utils-pre-*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+reason_of() {
+    sed -n 's/^reason=//p' "$(snapshot_path "$1")/$STAMP_FILE" 2>/dev/null | head -1
 }
 
 is_btrfs() {
@@ -97,7 +112,10 @@ create() {
     dir="$(snapshot_path "$stamp")"
     mkdir -p "$dir"
 
-    btrfs subvol snapshot -r "$TOP_MOUNT/@" "$dir/root" >/dev/null
+    if ! btrfs subvol snapshot -r "$TOP_MOUNT/@" "$dir/root" >/dev/null; then
+        rmdir "$dir" 2>/dev/null || true
+        die "no se pudo crear el snapshot de @ ($reason): no hay punto de vuelta. Mira el espacio libre con 'sudo btrfs filesystem usage /'"
+    fi
 
     if [ -d "$TOP_MOUNT/@home" ]; then
         if btrfs subvol snapshot -r "$TOP_MOUNT/@home" "$dir/home" >/dev/null 2>&1; then
@@ -105,7 +123,7 @@ create() {
         else
             btrfs subvol delete "$dir/root" >/dev/null 2>&1 || true
             rmdir "$dir" 2>/dev/null || true
-            die "fallo al crear el snapshot de @home; se abortó el snapshot completo"
+            die "no se pudo crear el snapshot de @home ($reason): se abortó el snapshot completo y no hay punto de vuelta. Mira el espacio libre con 'sudo btrfs filesystem usage /'"
         fi
     fi
 
@@ -138,7 +156,7 @@ list_plain() {
 }
 
 list_json() {
-    local first=1 meta stamp reason date esc
+    local first=1 meta stamp reason date
     for meta in "$TOP_MOUNT/$SNAPSHOTS_DIR"/*/"$STAMP_FILE"; do
         [ -f "$meta" ] || continue
         stamp="$(basename "$(dirname "$meta")")"
@@ -210,15 +228,22 @@ cleanup_inner() {
     [ "$keep" -lt 0 ] && keep=0
     [ -d "$TOP_MOUNT/$SNAPSHOTS_DIR" ] || return 0
 
-    local stamps=() d
+    local stamps=() d stamp manual=0
     for d in "$TOP_MOUNT/$SNAPSHOTS_DIR"/*/; do
         [ -d "$d" ] || continue
-        [ -f "${d}${STAMP_FILE}" ] && stamps+=("$(basename "$d")")
+        [ -f "${d}${STAMP_FILE}" ] || continue
+        stamp="$(basename "$d")"
+        if is_automatic "$(reason_of "$stamp")"; then
+            stamps+=("$stamp")
+        else
+            manual=$((manual + 1))
+        fi
     done
+    [ "$manual" -gt 0 ] && log "cleanup: $manual snapshots manuales se conservan (se borran con 'churros-snapshot delete')"
 
     local total=${#stamps[@]}
     if [ "$total" -le "$keep" ]; then
-        log "cleanup: $total snapshots (máx. $keep) — nada que borrar"
+        log "cleanup: $total snapshots automáticos (máx. $keep) — nada que borrar"
         return 0
     fi
 
@@ -226,7 +251,7 @@ cleanup_inner() {
     for s in "${stamps[@]:0:$((total - keep))}"; do
         delete_one "$s"
     done
-    log "cleanup: borrados $((total - keep)) snapshots (quedan $keep)"
+    log "cleanup: borrados $((total - keep)) snapshots automáticos (quedan $keep)"
 }
 
 cleanup() {

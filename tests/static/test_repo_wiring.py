@@ -1187,6 +1187,69 @@ class WorkflowHygieneTest(unittest.TestCase):
         self.assertIn('missing_tool "actionlint not installed"', text,
                       "en modo estricto, actionlint ausente tiene que ser un fallo")
 
+    def test_dependencies_are_audited(self):
+        """Cargo.lock fija versiones, pero alguien tiene que mirar sus CVE.
+
+        Auditoría A6: dependabot.yml solo cubría github-actions y no había
+        cargo-audit ni cargo-deny en ninguna parte. Una dependencia vulnerable
+        llega a la ISO compilada y se queda hasta que alguien la suba a mano.
+        """
+        findings = {}
+        rust = read(".github/workflows/rust.yml")
+        if "cargo audit" not in rust and "cargo-deny" not in rust:
+            findings["audit:no-cargo-audit"] = (
+                "rust.yml no audita las dependencias de Cargo: añade un paso con "
+                "cargo audit (o cargo-deny) sobre rust/Cargo.lock")
+        deps = testlib.read_text(ROOT / ".github/dependabot.yml")
+        if "package-ecosystem: cargo" not in deps:
+            findings["audit:no-dependabot-cargo"] = (
+                "dependabot.yml no actualiza Cargo: rust/Cargo.lock se queda quieto "
+                "y nadie mueve las versiones fijadas")
+        testlib.assert_findings(self, "audit", findings)
+
+    def test_secrets_never_reach_pull_request_code(self):
+        """Un `secrets.*` en un job que ejecuta código de la PR es una fuga.
+
+        Auditoría A7/R1: los cuatro workflows de QA visual pasaban claves de
+        API a classify.py resuelto desde el checkout de la PR, con
+        continue-on-error. Aquí se fija la regla general.
+        """
+        findings = {}
+        for name, data in workflows():
+            triggers = data.get("on", data.get(True)) or {}
+            if isinstance(triggers, str):
+                triggers = {triggers: None}
+            if "pull_request" not in triggers:
+                continue
+            text = ROOT / ".github/workflows" / name
+            body = testlib.read_text(text)
+            if "secrets." not in body:
+                continue
+            # Un workflow de pull_request que usa secretos tiene que ejecutar el
+            # paso con credenciales desde una copia de main. No basta con que
+            # el fichero mencione trusted-scripts.sh en algún sitio: el paso que
+            # recibe las claves es el que tiene que usarlo (auditoría R1).
+            steps = []
+            try:
+                import yaml as _yaml
+                data_pr = _yaml.safe_load(body) or {}
+                for job in (data_pr.get("jobs") or {}).values():
+                    steps.extend(s for s in (job.get("steps") or []) if isinstance(s, dict))
+            except Exception:
+                steps = []
+            secret_steps = [s for s in steps if "secrets." in str(s.get("env") or "")]
+            trusted_ok = all(
+                "trusted/" in str(s.get("run", "")) or "trusted-scripts" in str(s.get("run", ""))
+                for s in secret_steps
+            ) if secret_steps else ("trusted-scripts.sh" in body or "workflow_run" in body)
+            if not trusted_ok:
+                findings[f"secrets-in-pr:{name}"] = (
+                    f"{name} se dispara con pull_request y usa secrets.*: el paso que "
+                    "recibe las claves ejecuta código del checkout de la PR. Cualquiera "
+                    "con push al repo puede exfiltrarlas. Ejecuta ese paso desde main "
+                    "(scripts/qa/visual/trusted-scripts.sh) o desde un workflow_run")
+        testlib.assert_findings(self, "secrets-in-pr", findings)
+
 
 def action_ref_problem(uses: str) -> str | None:
     if uses.startswith("./"):
@@ -1721,5 +1784,36 @@ class MutationsTest(unittest.TestCase):
             if error:
                 problems.append(f"{mutation['name']}: {error}")
         self.assertFalse(problems, "mutaciones obsoletas: el texto que buscan cambió. Actualiza su "
-                                   "`find`/`find_re` en tests/mutations/mutations.toml para que siga "
-                                   "describiendo la misma regresión:\n  " + "\n  ".join(problems))
+                                   "`find`/`find_re` (tests/mutations/mutations.toml o mutations.d/) para "
+                                   "que siga describiendo la misma regresión:\n  " + "\n  ".join(problems))
+
+    def test_mutations_toml_does_not_grow(self):
+        """Las nuevas van en mutations.d/: al final de mutations.toml chocaban todos los PR."""
+        from tests.mutations import run_mutations
+        data = testlib.tomllib.loads(testlib.read_text(run_mutations.MUTATIONS_FILE))
+        count = len(data.get("mutation", []))
+        self.assertLessEqual(
+            count, run_mutations.MUTATIONS_FILE_MAX,
+            f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones (máx. "
+            f"{run_mutations.MUTATIONS_FILE_MAX}): pon las nuevas en tests/mutations/mutations.d/<tema>.toml, "
+            "un fichero por PR, para que los PR no choquen entre sí al final del fichero")
+
+    def test_mutations_d_files_are_loaded_and_names_stay_unique(self):
+        from tests.mutations import run_mutations
+        import tempfile
+        entry = ('[[mutation]]\nname = "{name}"\nfile = "AGENTS.md"\nfind = "x"\nreplace = "y"\n'
+                 'caught_by = "check"\nexpect = "z"\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "tema.toml").write_text(entry.format(name="mutación de prueba en mutations.d"))
+            saved = run_mutations.MUTATIONS_DIR
+            run_mutations.MUTATIONS_DIR = folder
+            try:
+                names = [m["name"] for m in run_mutations.load_mutations()]
+                self.assertIn("mutación de prueba en mutations.d", names,
+                              "[mutations-dir] run_mutations no lee tests/mutations/mutations.d/*.toml")
+                (folder / "otro.toml").write_text(entry.format(name="mutación de prueba en mutations.d"))
+                with self.assertRaises(SystemExit, msg="[mutations-dir] dos ficheros con la misma mutación"):
+                    run_mutations.load_mutations()
+            finally:
+                run_mutations.MUTATIONS_DIR = saved

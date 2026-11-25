@@ -47,6 +47,15 @@ build_aur() {
         git checkout --detach "${AUR_COMMITS[$name]}"
         [ "$(git rev-parse HEAD)" = "${AUR_COMMITS[$name]}" ]
         churros_pkgbuild_allow_arch PKGBUILD
+        # Llavero propio de este paquete (también lo usa makepkg al verificar):
+        # las claves de validpgpkeys solo sirven para él, y un gpg/keyboxd de
+        # otro paso del build no puede quedarse con el candado de la base de
+        # claves (en la QA visual: «waiting for lock (held by …)» y «SQL
+        # library used incorrectly» al importar la clave de python-pywal).
+        GNUPGHOME="$(mktemp -d "${TMPDIR:-/tmp}/churros-gnupg.XXXXXX")"
+        export GNUPGHOME
+        chmod 700 "$GNUPGHOME"
+        trap 'gpgconf --kill all >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
         # Importar las claves PGP de los mantenedores declaradas en validpgpkeys
         # para que makepkg verifique las firmas de los tarballs de origen.
         gpgconf --launch dirmngr 2>/dev/null || true

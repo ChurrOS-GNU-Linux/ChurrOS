@@ -5,4 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Type=oneshot sin TimeoutStartSec hereda infinity: un pacman bloqueado por
+# lock, una pregunta interactiva o una red colgada dejan la unidad en
+# `activating` para siempre y el timer no vuelve a disparar (auditoría V8).
+# Dos horas cubren una actualización real de raiz sin cortarla.
+TimeoutStartSec=2h
 ExecStart=/usr/local/bin/churros-update-auto

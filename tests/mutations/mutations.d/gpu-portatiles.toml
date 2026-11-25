@@ -1,0 +1,8 @@
+[[mutation]]
+name = "test_editions: falta el ICD Vulkan de AMD en la ISO XFCE"
+file = "archiso/packages.xfce.x86_64"
+find_re = "^vulkan-radeon\n"
+replace = ""
+caught_by = "tests.static.test_editions"
+expect = "[edition-gpu:xfce/x86_64:vulkan-radeon]"
+why = "vulkan-virtio solo cubre GPUs virtuales; sin el ICD Radeon, una laptop AMD no tiene el driver Vulkan abierto que la lista declara incluir."

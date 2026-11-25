@@ -9,4 +9,4 @@ Target = *
 Description = Creando snapshot btrfs antes de la transacción (rollback de ChurrOS)
 When = PreTransaction
 Depends = btrfs-progs
-Exec = /bin/sh -c '/usr/local/bin/churros-snapshot create pacman-pre || echo "churros-snapshot: aviso — no se creó snapshot (¿btrfs?)" >&2'
+Exec = /bin/sh -c '/usr/local/bin/churros-snapshot create pacman-pre || echo "churros-snapshot: AVISO: esta transacción NO tiene snapshot previo; si algo sale mal no se podrá volver atrás (el motivo está justo encima)" >&2'

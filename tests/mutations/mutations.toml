@@ -2470,16 +2470,6 @@ requires = "container"
 why = "Compila y pasa cargo test, clippy, la auditoría de la ISO y el arranque en QEMU (que solo mira la bienvenida); en la ISO (panic = \"abort\") Ajustes no se abre nunca."
 
 [[mutation]]
-name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante reload)"
-file = "rust/popups/src/network.rs"
-find_re = '^        \*self\.last\.borrow_mut\(\) = wifi::get\(\);$'
-replace = "        let mut last = self.last.borrow_mut();\n        *last = wifi::get();"
-caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
-expect = "FALLO churros-popup network"
-requires = "container"
-why = "El RefMut vive hasta el final de reload() y el self.last.borrow() de unas líneas más abajo aborta el popup: compila y ninguna otra capa ejecuta los popups."
-
-[[mutation]]
 name = "test-gui-smoke: el volumen hace unwrap de la salida de wpctl"
 file = "rust/services/src/audio.rs"
 find_re = '^        \.unwrap_or\(0\.0\);$'
@@ -3782,12 +3772,4 @@ requires = "container"
 expect = "[wifi-hard-block]"
 why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
 
-
-[[mutation]]
-name = "test_editions: falta el ICD Vulkan de AMD en la ISO XFCE"
-file = "archiso/packages.xfce.x86_64"
-find_re = "^vulkan-radeon\n"
-replace = ""
-caught_by = "tests.static.test_editions"
-expect = "[edition-gpu:xfce/x86_64:vulkan-radeon]"
-why = "vulkan-virtio solo cubre GPUs virtuales; sin el ICD Radeon, una laptop AMD no tiene el driver Vulkan abierto que la lista declara incluir."
+# --- auditoría R2: restablecer ajustes no puede perder la configuración ---
