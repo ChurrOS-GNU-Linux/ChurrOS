@@ -3773,6 +3773,16 @@ expect = "[niri-touchpad-flags]"
 why = "El interruptor se quedaría encendido para siempre."
 
 [[mutation]]
+name = "churros-settings: el aviso de modo avión mira el bloqueo por software"
+file = "rust/preferences/src/services/connectivity.rs"
+find = '        read("type") == "wlan" && read("hard") == "1"'
+replace = '        read("type") == "wlan" && read("soft") == "1"'
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings rfkill_tests"
+requires = "container"
+expect = "[wifi-hard-block]"
+why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
+
+[[mutation]]
 name = "churros-update-utils: vuelve a instalar cualquier versión distinta (también más antigua)"
 file = "archiso/airootfs/usr/bin/churros-update-utils"
 find = '    if [ -n "$installed" ] && ! version_gt "$version" "$installed"; then'

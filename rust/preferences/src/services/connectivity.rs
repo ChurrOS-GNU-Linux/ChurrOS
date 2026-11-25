@@ -111,6 +111,19 @@ pub struct NetworkInfo {
     pub saved: bool,
 }
 
+/// rfkill: algún dispositivo `wlan` de `root` (/sys/class/rfkill) con `hard` = 1.
+fn wlan_hard_blocked_in(root: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let read = |name: &str| {
+            std::fs::read_to_string(entry.path().join(name)).map(|s| s.trim().to_string()).unwrap_or_default()
+        };
+        read("type") == "wlan" && read("hard") == "1"
+    })
+}
+
 // ---------------------------------------------------------------- servicio
 
 pub struct ConnectivityService;
@@ -134,6 +147,14 @@ impl ConnectivityService {
             return false;
         }
         nm_run(&["systemctl", "is-active", "NetworkManager"]) == Some("active".to_string())
+    }
+
+    /// True si una radio Wi-Fi está apagada por hardware: la tecla de modo
+    /// avión (en las HP, F12 con su luz), un interruptor lateral o la BIOS.
+    /// NetworkManager no puede encenderla, y `nmcli radio wifi` sigue
+    /// diciendo «enabled» porque eso es solo el bloqueo por software.
+    pub fn wifi_hard_blocked() -> bool {
+        wlan_hard_blocked_in(std::path::Path::new("/sys/class/rfkill"))
     }
 
     /// True si la radio wifi está encendida.
@@ -394,5 +415,41 @@ fn parse_signal(signal: &str) -> i64 {
         signal.parse::<i64>().unwrap_or(0)
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod rfkill_tests {
+    use super::wlan_hard_blocked_in;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn rfkill(name: &str, devices: &[(&str, &str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("churros-rfkill-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for (i, (kind, soft, hard)) in devices.iter().enumerate() {
+            let dir = root.join(format!("rfkill{i}"));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("type"), format!("{kind}\n")).unwrap();
+            fs::write(dir.join("soft"), format!("{soft}\n")).unwrap();
+            fs::write(dir.join("hard"), format!("{hard}\n")).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn airplane_key_hard_block_is_detected() {
+        // [wifi-hard-block] HP ProBook: hp-wmi y la tarjeta Intel, las dos bloqueadas por la tecla
+        let root = rfkill("hard", &[("bluetooth", "0", "0"), ("wlan", "0", "1"), ("wlan", "0", "1")]);
+        assert!(wlan_hard_blocked_in(&root), "[wifi-hard-block] no ve el bloqueo por hardware");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn soft_block_or_bluetooth_is_not_a_hard_block() {
+        let root = rfkill("soft", &[("wlan", "1", "0"), ("bluetooth", "0", "1")]);
+        assert!(!wlan_hard_blocked_in(&root), "[wifi-hard-block] confunde software o Bluetooth con el modo avión");
+        let _ = fs::remove_dir_all(&root);
+        assert!(!wlan_hard_blocked_in(&root), "sin /sys/class/rfkill no hay bloqueo");
     }
 }
