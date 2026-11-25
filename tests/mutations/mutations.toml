@@ -3786,7 +3786,7 @@ why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «
 [[mutation]]
 name = "test_editions: falta el ICD Vulkan de AMD en la ISO XFCE"
 file = "archiso/packages.xfce.x86_64"
-find = "vulkan-radeon\n"
+find_re = "^vulkan-radeon\n"
 replace = ""
 caught_by = "tests.static.test_editions"
 expect = "[edition-gpu:xfce/x86_64:vulkan-radeon]"
