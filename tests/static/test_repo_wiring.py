@@ -1784,5 +1784,36 @@ class MutationsTest(unittest.TestCase):
             if error:
                 problems.append(f"{mutation['name']}: {error}")
         self.assertFalse(problems, "mutaciones obsoletas: el texto que buscan cambió. Actualiza su "
-                                   "`find`/`find_re` en tests/mutations/mutations.toml para que siga "
-                                   "describiendo la misma regresión:\n  " + "\n  ".join(problems))
+                                   "`find`/`find_re` (tests/mutations/mutations.toml o mutations.d/) para "
+                                   "que siga describiendo la misma regresión:\n  " + "\n  ".join(problems))
+
+    def test_mutations_toml_does_not_grow(self):
+        """Las nuevas van en mutations.d/: al final de mutations.toml chocaban todos los PR."""
+        from tests.mutations import run_mutations
+        data = testlib.tomllib.loads(testlib.read_text(run_mutations.MUTATIONS_FILE))
+        count = len(data.get("mutation", []))
+        self.assertLessEqual(
+            count, run_mutations.MUTATIONS_FILE_MAX,
+            f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones (máx. "
+            f"{run_mutations.MUTATIONS_FILE_MAX}): pon las nuevas en tests/mutations/mutations.d/<tema>.toml, "
+            "un fichero por PR, para que los PR no choquen entre sí al final del fichero")
+
+    def test_mutations_d_files_are_loaded_and_names_stay_unique(self):
+        from tests.mutations import run_mutations
+        import tempfile
+        entry = ('[[mutation]]\nname = "{name}"\nfile = "AGENTS.md"\nfind = "x"\nreplace = "y"\n'
+                 'caught_by = "check"\nexpect = "z"\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "tema.toml").write_text(entry.format(name="mutación de prueba en mutations.d"))
+            saved = run_mutations.MUTATIONS_DIR
+            run_mutations.MUTATIONS_DIR = folder
+            try:
+                names = [m["name"] for m in run_mutations.load_mutations()]
+                self.assertIn("mutación de prueba en mutations.d", names,
+                              "[mutations-dir] run_mutations no lee tests/mutations/mutations.d/*.toml")
+                (folder / "otro.toml").write_text(entry.format(name="mutación de prueba en mutations.d"))
+                with self.assertRaises(SystemExit, msg="[mutations-dir] dos ficheros con la misma mutación"):
+                    run_mutations.load_mutations()
+            finally:
+                run_mutations.MUTATIONS_DIR = saved

@@ -176,7 +176,7 @@ jobs:
         run: ./churros test --container
 
       # Autoprueba de tests/container (semanal y a mano; tarda ~10 min): cada
-      # mutación con requires = "container" de tests/mutations/mutations.toml
+      # mutación con requires = "container" de tests/mutations/ (mutations.toml y mutations.d/)
       # tiene que hacer fallar su prueba.
       - name: ./churros test --container --mutations
         if: github.event_name != 'pull_request' && matrix.iso-tools
