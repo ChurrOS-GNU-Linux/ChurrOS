@@ -20,6 +20,8 @@ use crate::widgets::switch_row::SwitchRow;
 #[derive(Default)]
 struct WifiData {
     available: bool,
+    /// Tecla de modo avión, interruptor o BIOS (rfkill hard).
+    hw_blocked: bool,
     enabled: bool,
     current: Option<String>,
     networks: Vec<(String, i64, String, bool, bool)>, // ssid, signal, security, connected, saved
@@ -42,6 +44,7 @@ fn load_data() -> ConnectivityData {
     ConnectivityData {
         wifi: WifiData {
             available: ConnectivityService::wifi_available(),
+            hw_blocked: ConnectivityService::wifi_hard_blocked(),
             enabled: ConnectivityService::wifi_enabled(),
             current: ConnectivityService::current_network(),
             networks: ConnectivityService::wifi_networks_full()
@@ -130,7 +133,18 @@ fn populate(
     // ============ Wi-Fi ============
     wifi_group.borrow_mut().clear();
 
-    if !data.wifi.available {
+    if data.wifi.hw_blocked {
+        // Con el bloqueo por hardware el interruptor de abajo no sirve y la
+        // lista sale vacía sin explicación: decir qué pasa y cómo se quita.
+        wifi_group.borrow_mut().add(&Row::new(
+            "El Wi-Fi está apagado por el modo avión",
+            Some("Pulsa la tecla de modo avión del portátil (la de la antena; en HP es F12 y tiene una luz) o el interruptor del lateral. Si sigue así, actívalo en la BIOS."),
+            None,
+            None,
+            None,
+            None,
+        ));
+    } else if !data.wifi.available {
         wifi_group.borrow_mut().add(&Row::new(
             "No se encontró un adaptador Wi-Fi",
             None,
