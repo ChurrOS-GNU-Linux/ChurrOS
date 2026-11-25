@@ -112,13 +112,27 @@ zsh
 # ChurrOS Desktop
 # ===========================
 
-# GPU / Mesa (required for niri + Wayland)
+# GPU / Mesa: hardware Vulkan ICDs plus virtio for virtual machines.
+# Keep Intel, AMD and Nouveau available in the Live system and installation.
 mesa
 mesa-utils
-vulkan-virtio
 vulkan-icd-loader
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
+vulkan-virtio
+vulkan-tools
 lib32-mesa
 lib32-vulkan-icd-loader
+lib32-vulkan-intel
+lib32-vulkan-radeon
+lib32-vulkan-nouveau
+# Intel VA-API: iHD for Broadwell+ and i965 for older supported generations.
+intel-media-driver
+libva-intel-driver
+libva-utils
+# Hybrid laptop GPU discovery/offload integration.
+switcheroo-control
 
 niri
 
