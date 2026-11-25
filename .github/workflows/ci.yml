@@ -66,7 +66,7 @@ jobs:
           echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz' | sha256sum -c
           sudo tar -C /usr/local/bin -xzf /tmp/actionlint.tar.gz actionlint
 
-      # Cada mutación de tests/mutations/mutations.toml es una regresión real
+      # Cada mutación de tests/mutations/mutations.toml y mutations.d/ es una regresión real
       # (un paquete quitado, un permiso perdido, un paso de Calamares fuera de
       # orden...). Si alguna deja la batería en verde, una prueba se ha
       # debilitado o ha dejado de cubrir lo que dice.
