@@ -3773,6 +3773,16 @@ expect = "[niri-touchpad-flags]"
 why = "El interruptor se quedaría encendido para siempre."
 
 [[mutation]]
+name = "churros-settings: el aviso de modo avión mira el bloqueo por software"
+file = "rust/preferences/src/services/connectivity.rs"
+find = '        read("type") == "wlan" && read("hard") == "1"'
+replace = '        read("type") == "wlan" && read("soft") == "1"'
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings rfkill_tests"
+requires = "container"
+expect = "[wifi-hard-block]"
+why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
+
+[[mutation]]
 name = "build-aur.sh: los paquetes AUR vuelven a compartir el llavero de gpg"
 file = "scripts/build-aur.sh"
 find = "        export GNUPGHOME\n"
