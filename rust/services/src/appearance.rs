@@ -57,12 +57,18 @@ pub fn solid_css_to_load() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn shipped_solid_css_makes_window_tokens_opaque() {
-        let path = solid_css_path().expect("falta usr/share/churros/styles/solid.css");
-        let css = std::fs::read_to_string(path).unwrap();
+        // cargo test arranca el binario con el cwd en la raíz de este crate,
+        // la de la copia que se está probando. CARGO_MANIFEST_DIR queda
+        // grabado al compilar: el runner de mutaciones reutiliza el binario
+        // de otra copia y solid_css_path() leería un solid.css sin mutar
+        // (o el de /usr/share, que la mutación tampoco toca).
+        let crate_dir = std::env::current_dir().expect("cwd");
+        let path = crate_dir.join("../../archiso/airootfs/usr/share/churros/styles/solid.css");
+        let css = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+            panic!("no se pudo leer {} (cwd {}): {error}", path.display(), crate_dir.display())
+        });
         for token in ["--bg-window", "--bg-sidebar", "--bg-surface", "--popover-bg"] {
             let lines: Vec<&str> = css.lines().filter(|l| l.trim_start().starts_with(token)).collect();
             assert!(lines.len() >= 2, "{token}: falta en modo oscuro o claro");
