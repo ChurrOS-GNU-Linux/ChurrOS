@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Autoprueba de la batería: cada regresión sembrada tiene que hacerla fallar.
 
-tests/mutations/mutations.toml lista cambios dañinos y realistas (quitar un
+tests/mutations/mutations.toml y tests/mutations/mutations.d/*.toml (las
+nuevas, un fichero por tema o PR) listan cambios dañinos y realistas (quitar un
 paquete, perder un permiso, desordenar Calamares, romper un script que solo
 corre al arrancar...) junto con la prueba que debe detectarlos. Este script
 copia el repo a un directorio temporal, aplica cada mutación por separado,
@@ -56,6 +57,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tests import testlib  # noqa: E402
 
 MUTATIONS_FILE = testlib.ROOT / "tests/mutations/mutations.toml"
+# Las mutaciones nuevas van aquí, un fichero por tema o por PR: si todas se
+# añadían al final de mutations.toml, cada PR fusionado dejaba en conflicto a
+# los demás. mutations.toml ya no crece (lo comprueba test_repo_wiring).
+MUTATIONS_DIR = testlib.ROOT / "tests/mutations/mutations.d"
+# Mutaciones que tenía mutations.toml al dejar de crecer: solo puede bajar.
+MUTATIONS_FILE_MAX = 404
+
+
+def mutation_files() -> list[Path]:
+    """mutations.toml y luego mutations.d/*.toml, por nombre."""
+    return [MUTATIONS_FILE, *sorted(MUTATIONS_DIR.glob("*.toml"))]
 KEYS = {"name", "file", "find", "find_re", "replace", "delete", "caught_by", "expect", "requires", "why"}
 # None: el host (./churros test --mutations); "container": --container.
 LAYERS = (None, "container")
@@ -84,8 +96,18 @@ def validate(mutations: list[dict]) -> list[dict]:
 
 
 def load_mutations() -> list[dict]:
-    data = testlib.tomllib.loads(testlib.read_text(MUTATIONS_FILE))
-    return validate(data.get("mutation", []))
+    mutations = []
+    for path in mutation_files():
+        try:
+            data = testlib.tomllib.loads(testlib.read_text(path))
+        except testlib.tomllib.TOMLDecodeError as error:
+            raise SystemExit(f"{path.relative_to(testlib.ROOT)}: {error}")
+        unknown = sorted(set(data) - {"mutation"})
+        if unknown:
+            raise SystemExit(f"{path.relative_to(testlib.ROOT)}: claves de primer nivel desconocidas {unknown}")
+        mutations += data.get("mutation", [])
+    # validate() rechaza un nombre repetido también entre ficheros distintos.
+    return validate(mutations)
 
 
 def command_for(caught_by: str) -> list[str]:
