@@ -598,6 +598,68 @@ class SnapshotRestore(unittest.TestCase):
         self.assertTrue((snap / "root/var/lib/pacman/db.lck").exists(), "el snapshot original no se toca")
 
 
+class SnapshotRetention(unittest.TestCase):
+    """La retención solo borra snapshots automáticos (#329) y un fallo se explica (#332)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-retention-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.top = self.tmp / "top"
+        (self.top / "@").mkdir(parents=True)
+        (self.top / "@snapshots").mkdir()
+        self.bin = self.tmp / "bin"
+        executable(self.bin / "findmnt", '#!/bin/sh\ncase "$*" in *FSTYPE*) echo btrfs ;; *) echo /dev/falso3 ;; esac\n')
+        executable(self.bin / "mount", f'#!/bin/sh\nrmdir "$4" && ln -s "{self.top}" "$4"\n')
+        executable(self.bin / "mountpoint", "#!/bin/sh\nexit 1\n")
+        self.btrfs(ok=True)
+
+    def btrfs(self, ok: bool):
+        snapshot = 'cp -a "$4" "$5"' if ok else 'echo "ERROR: cannot snapshot: No space left on device" >&2; exit 1'
+        executable(self.bin / "btrfs", "#!/bin/sh\ncase \"$1 $2\" in\n"
+                   f"    \"subvol snapshot\") {snapshot} ;;\n"
+                   "    \"subvol delete\") rm -rf \"$3\" ;;\n"
+                   "    \"subvol create\") mkdir -p \"$3\" ;;\nesac\n")
+
+    def snapshot(self, stamp: str, reason: str):
+        d = self.top / "@snapshots" / stamp
+        (d / "root").mkdir(parents=True)
+        (d / "meta.txt").write_text(f"stamp={stamp}\nreason={reason}\n")
+
+    def run_snapshot(self, *args):
+        return subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-snapshot"), *args],
+                              capture_output=True, text=True,
+                              env={**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}"})
+
+    def left(self):
+        return sorted(p.name for p in (self.top / "@snapshots").iterdir())
+
+    def test_manual_snapshots_survive_the_retention(self):
+        self.snapshot("20261101-000000", "manual")
+        self.snapshot("20261102-000000", "antes-de-actualizar")
+        for day in range(3, 10):
+            self.snapshot(f"202611{day:02d}-000000", "pacman-pre")
+        self.snapshot("20261110-000000", "churros-utils-pre-1.5.7")
+        result = self.run_snapshot("cleanup", "3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.left()[:2], ["20261101-000000", "20261102-000000"],
+                         "[keep-manual-snapshots] la retención borró un snapshot que el usuario creó a propósito")
+        self.assertEqual(self.left()[2:], ["20261108-000000", "20261109-000000", "20261110-000000"],
+                         "se quedan los 3 automáticos más recientes (pacman y bundle cuentan igual)")
+        self.assertIn("2 snapshots manuales se conservan", result.stderr)
+
+    def test_a_failed_snapshot_says_there_is_no_way_back(self):
+        self.btrfs(ok=False)
+        result = self.run_snapshot("create", "pacman-pre")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no hay punto de vuelta", result.stderr,
+                      "[snapshot-failure-explained] un snapshot fallido no puede pasar por protección")
+        self.assertIn("btrfs filesystem usage", result.stderr, "dice cómo mirar el espacio")
+        self.assertEqual(self.left(), [], "sin restos de un snapshot a medias")
+
+    def test_the_hook_warns_when_a_transaction_has_no_snapshot(self):
+        hook = (OVERLAY / "etc/pacman.d/hooks/50-churros-snapshot.hook").read_text()
+        self.assertIn("NO tiene snapshot previo", hook, "[snapshot-failure-explained] el hook no avisa claro")
+
 class StalePacmanLock(unittest.TestCase):
     """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
 
