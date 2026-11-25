@@ -23,6 +23,9 @@ snapshots anidados.
   transacción de pacman que instale, actualice o quite paquetes (también las
   que lanza `yay`). Si el snapshot falla (p. ej. el sistema no es btrfs), la
   transacción continúa igual.
+- `churros-update-utils` crea otro (`churros-utils-pre-<versión>`) justo antes
+  de instalar el bundle de utilidades, que no pasa por pacman. Ahí, en btrfs, un
+  snapshot fallido para la actualización: no se instala nada sin punto de vuelta.
 - Con el particionado por defecto (la ESP se monta en `/boot/efi`), `/boot`
   está dentro de `@`: restaurar también devuelve el kernel y el initramfs del
   snapshot. Esos ficheros siguen sin compresión (`/boot` tiene

@@ -473,6 +473,89 @@ class UpdateTimerOnlyNotifies(unittest.TestCase):
         self.assertEqual(log, "", "sin novedades no se molesta a nadie")
 
 
+    def test_an_older_manifest_is_not_announced(self):
+        # Una copia vieja de updates.json (caché o réplica) no es una actualización.
+        result, log = self.run_auto("", "", "0.1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log, "", "[updates-only-newer] avisa de una versión más antigua que la instalada")
+
+class UpdatesOnlyNewerAndSnapshot(unittest.TestCase):
+    """Solo se instala una versión más nueva, y con snapshot btrfs antes del bundle."""
+
+    MANIFEST = '{"version": "%s", "arch": "x86_64", "file": "churros-utils-%s-x86_64.tar.zst", "sha256": "%s"}\n'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="churros-newer-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.log = self.tmp / "log"
+        self.log.write_text("")
+        self.version_file = self.tmp / "churros-version"
+        self.version_file.write_text("1.5.6\n")
+        self.snapshot = executable(self.tmp / "churros-snapshot", f'#!/bin/sh\necho "snapshot $*" >> "{self.log}"\n')
+
+    def main(self, served: str):
+        manifest = self.tmp / "served.json"
+        manifest.write_text(self.MANIFEST % (served, served, "a" * 64))
+        # Todo lo de red y reparación, fuera: aquí solo cuenta qué decide main.
+        script = (f'VERSION_FILE="{self.version_file}"; UPDATE_ARCH=x86_64; '
+                  'clear_stale_pacman_lock() { :; }; repair_cachyos_packages() { :; }; check_boot_images() { :; }; '
+                  'detect_edition() { echo niri; }; '
+                  f'fetch_manifest() {{ cp "{manifest}" "$1"; }}; '
+                  f'download() {{ echo "download $2" >> "{self.log}"; return 1; }}; main')
+        return update_utils(script)
+
+    def test_an_older_version_is_not_installed(self):
+        result = self.main("1.5.5")
+        self.assertNotIn("download", self.log.read_text(),
+                         "[updates-only-newer] un updates.json viejo (con su firma válida) bajaba de versión")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("más antigua", result.stdout)
+
+    def test_a_newer_version_is_downloaded(self):
+        result = self.main("1.5.10")
+        self.assertIn("download", self.log.read_text(), "1.5.10 es más nueva que 1.5.6 (no es orden de texto)")
+        self.assertNotEqual(result.returncode, 0, "el download falso falla: main tiene que pararse ahí")
+
+    def test_version_order(self):
+        cases = {("1.5.6", "1.5.5"): True, ("1.5.5", "1.5.6"): False, ("1.5.10", "1.5.9"): True,
+                 ("1.5.1", "1.5"): True, ("1.5", "1.5.1"): False, ("1.6", "1.5.9"): True, ("1.5.6", "1.5.6"): False}
+        for (a, b), newer in cases.items():
+            got = update_utils('version_gt "$1" "$2"', a, b).returncode == 0
+            self.assertEqual(got, newer, f"[updates-only-newer] version_gt {a} {b}")
+
+    def snapshot_before(self, fstype: str):
+        script = (f'SNAPSHOT_BIN="{self.snapshot}"; LIVE_MARKER="{self.tmp}/no-live"; am_root() {{ return 0; }}; '
+                  f'findmnt() {{ echo {fstype}; }}; snapshot_before_bundle 1.5.7')
+        return update_utils(script)
+
+    def test_btrfs_gets_a_snapshot_before_the_bundle(self):
+        result = self.snapshot_before("btrfs")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.log.read_text().splitlines(), ["snapshot create churros-utils-pre-1.5.7"],
+                         "[snapshot-before-bundle] sin snapshot no hay a dónde volver si el bundle rompe algo")
+
+    def test_a_failed_snapshot_installs_nothing(self):
+        executable(self.snapshot, "#!/bin/sh\nexit 1\n")
+        result = self.snapshot_before("btrfs")
+        self.assertNotEqual(result.returncode, 0, "[snapshot-before-bundle] siguió sin punto de vuelta")
+        self.assertIn("no se ha instalado nada", result.stderr)
+
+    def test_ext4_goes_on_without_snapshot(self):
+        result = self.snapshot_before("ext4")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.log.read_text(), "", "en ext4 no hay snapshots que crear")
+        self.assertIn("no es btrfs", result.stdout)
+
+    def test_main_snapshots_right_before_installing(self):
+        main = (OVERLAY / "usr/bin/churros-update-utils").read_text()
+        main = main[main.index("\nmain() {"):]
+        self.assertIn('\n    snapshot_before_bundle "$version"\n', main,
+                      "[snapshot-before-bundle] main no crea el snapshot")
+        self.assertLess(main.index("validate_stage_arch"), main.index("snapshot_before_bundle"),
+                        "el snapshot va después de validar: un bundle inválido no deja snapshots de sobra")
+        self.assertLess(main.index("snapshot_before_bundle"), main.index("install_stage \"$STAGE\""),
+                        "[snapshot-before-bundle] el snapshot tiene que ir antes de instalar")
+
 class PackageManagerPrivileges(unittest.TestCase):
     """Un gestor de paquetes nunca debe quedar disponible sin autenticación."""
 
