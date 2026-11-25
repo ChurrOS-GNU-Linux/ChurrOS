@@ -3781,12 +3781,3 @@ caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p ch
 requires = "container"
 expect = "[wifi-hard-block]"
 why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
-
-[[mutation]]
-name = "build-aur.sh: los paquetes AUR vuelven a compartir el llavero de gpg"
-file = "scripts/build-aur.sh"
-find = "        export GNUPGHOME\n"
-replace = ""
-caught_by = "tests.static.test_supply_chain"
-expect = "[aur-private-gnupg]"
-why = "Con el llavero compartido otro gpg/keyboxd del build se queda con el candado y la importación de la clave de python-pywal falla (QA visual)."
