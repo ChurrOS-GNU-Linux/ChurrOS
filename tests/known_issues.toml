@@ -50,3 +50,38 @@ id = "ref:niri/aarch64:rust/preferences:gamemoded"
 note = "Ajustes > Energía (rust/preferences/src/services/power.rs, gamemode_status) muestra el estado de Feral GameMode con `gamemoded -s`, pero ninguna lista instala gamemode: el código lo comprueba con which() y en niri/aarch64 siempre dirá 'No instalado'. Decidir si gamemode entra en la lista (paquete gamemode de [extra]) o si se quita esa fila."
 
 # --- tests/static/test_editions.py (zram-generator) ---
+
+# --- test_shell_scripts (auditoría V1): avisos de shellcheck a nivel warning ---
+#
+# Con -S warning aparecen estos. Cada uno se revisó: o es un falso positivo
+# real de la herramienta o una forma consciente del repo. Los que eran
+# defectos (rm -rf sin ${:?}, ls|grep, local de más, cd sin ||) ya están
+# arreglados. Aquí quedan los que no lo son.
+
+[[issue]]
+id = "shellcheck:archiso/profiledef.sh:SC2155"
+note = "SC2155 en `export SOURCE_DATE_EPOCH=\"$(...)\"` (líneas 3-10). Declarar y asignar por separado no aplica: la variable se exporta para que mkarchiso y los subprocesos la vean, y el codigo de salida de `git log` no importa (lleva `|| date +%s`). Reestructurarlo en tres pasos solo añadiría ruido. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/build-kernel-vyper.sh:SC2155"
+note = "SC2155 en los `export DISTCC_HOSTS` / `export NUMJOBS` / `export _kernel_cc`. Son `export VAR` seguido de `VAR=\"$(...)\"` en dos pasos en la mayoria; los que shellcheck marca asignan y exportan en la misma linea una salida de funcion propia que no puede fallar. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/cli/check.sh:SC2034"
+note = "SC2034 en CHURROS_BINFMT_DIR. No es una variable muerta: scripts/lib/host.sh:52 la lee con ${CHURROS_BINFMT_DIR:-...} para que la prueba de binfmt use un directorio falso. Al estar en la misma shell no necesita export, y shellcheck no ve el uso porque esta en un fichero sourced. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/cli/build.sh:SC2034"
+note = "SC2034 en BAZAAR_PKG. Se asigna a vacio en la rama i686 para que el bloque de integracion del instalador no lo monte, y se vuelve a calcular arriba. Es intencional: documenta que en i686 no hay paquete de Bazaar. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/cli/run.sh:SC2054"
+note = "SC2054 en las lineas 284, 316 y 321. Falso positivo: las comas son parte del valor de QEMU (`-device virtio-vga-gl,xres=1920,yres=1080`), no separadores de array. Cambiarlas romperia la linea de QEMU. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/container-entrypoint.sh:SC2046"
+note = "SC2046 en la linea 34. La expansion `$(pacman -Qq | grep -- '-keyring$')` es deliberada: pacman_sync_with_retry recibe la lista de paquetes keyring como argumentos separados, y los nombres de paquete no llevan espacios. El disable=SC2046 de la linea 32 esta una linea antes del `source` y no alcanza al comando. Ver docs/auditoria.md V1."
+
+[[issue]]
+id = "shellcheck:scripts/lib/cluster.sh:SC2087"
+note = "SC2087 en las lineas 96 y 139. La expansion en el cliente es lo que se busca: el heredoc construye un script que se envia por ssh con los valores del host local ya interpolados (rutas del proyecto, lista de nodos). Poner EOF entre comillas haria que se expandiera en el servidor, que es justo lo que no se quiere. Ver docs/auditoria.md V1."

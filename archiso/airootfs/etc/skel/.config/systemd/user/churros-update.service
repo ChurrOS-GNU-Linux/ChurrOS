@@ -3,4 +3,8 @@ Description=Actualización automática de ChurrOS (pacman + flatpak)
 
 [Service]
 Type=oneshot
+# El timer de usuario solo comprueba y avisa (checkupdates, flatpak
+# remote-ls, una consulta https), pero una red colgada dejaría la unidad en
+# `activating` y el timer no volvería a disparar (auditoría V8).
+TimeoutStartSec=10min
 ExecStart=/usr/local/bin/churros-update-auto

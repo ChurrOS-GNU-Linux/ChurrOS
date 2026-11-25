@@ -14,6 +14,26 @@ use serde_json::json;
 
 use crate::services::settings;
 
+/// `remote` es una versión estrictamente más nueva que `installed`
+/// (1.5.10 > 1.5.9 > 1.5). Igual que churros-update-utils, que ya no
+/// instala una versión más antigua: un updates.json viejo no se ofrece.
+/// Sin versión instalada legible, cualquier versión válida es nueva.
+pub(crate) fn version_is_newer(remote: &str, installed: &str) -> bool {
+    fn parts(v: &str) -> Option<Vec<u64>> {
+        v.trim().split('.').map(|p| p.parse().ok()).collect()
+    }
+    match (parts(remote), parts(installed)) {
+        (None, _) => false,
+        (Some(_), None) => true,
+        (Some(mut r), Some(mut i)) => {
+            let len = r.len().max(i.len());
+            r.resize(len, 0);
+            i.resize(len, 0);
+            r > i
+        }
+    }
+}
+
 pub struct UpdateService;
 
 /// Release de utilidades de ChurrOS (del updates.json del servidor).
@@ -429,10 +449,10 @@ impl UpdateService {
         )
         .ok_or(CheckFailed)?;
         let update = parse_updates_json(&out).ok_or(CheckFailed)?;
-        if update.version == Self::installed_churros_version() {
-            Ok(None)
-        } else {
+        if version_is_newer(&update.version, &Self::installed_churros_version()) {
             Ok(Some(update))
+        } else {
+            Ok(None)
         }
     }
 
@@ -451,19 +471,29 @@ impl UpdateService {
     /// Reparación pendiente de las ISO 1.4/1.5: paquetes de CachyOS que Arch
     /// tiene (y, si el kernel no tiene repositorio, linux-cachyos). Vacía si
     /// no hay nada que hacer o en el Live.
-    pub fn repair_pending() -> Vec<String> {
+    ///
+    /// Si `pacman -Qi` o `pacman -Sl` fallan (base de datos bloqueada, timeout),
+    /// devuelve None en vez de una lista vacía: antes `unwrap_or_default()`
+    /// colapsaba el fallo a cadena vacía y una base bloqueada se presentaba
+    /// como "no hay nada que reparar" (auditoría V6).
+    pub fn repair_pending() -> Option<Vec<String>> {
         if std::path::Path::new("/run/archiso").exists() {
-            return Vec::new();
+            return Some(Vec::new());
         }
-        let query = churros_services::run(&["pacman", "-Qi"], 30_000).map(|r| r.1).unwrap_or_default();
-        let sync = churros_services::run(&["pacman", "-Sl"], 30_000).map(|r| r.1).unwrap_or_default();
+        // El código de salida importa: `run` devuelve None en timeout o error
+        // de ejecución, y un pacman que falla no da la lista de paquetes.
+        let (query_code, query) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
+        let (sync_code, sync) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
+        if query_code != 0 || sync_code != 0 {
+            return None;
+        }
         let mut pending = repair_candidates(&query, &sync);
         let kernel = churros_services::run(&["pacman", "-Q", "linux-cachyos"], 5_000).is_some_and(|r| r.0 == 0);
         let conf = std::fs::read_to_string("/etc/pacman.conf").unwrap_or_default();
         if kernel_without_repo(kernel, &conf) {
             pending.push("linux-cachyos".to_string());
         }
-        pending
+        Some(pending)
     }
 
     /// 1.4/1.5 instaladas: se coló el llavero de pacman en memoria del Live
@@ -651,6 +681,20 @@ impl UpdateService {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn only_a_newer_churros_version_is_offered() {
+        // [updates-only-newer] una copia vieja de updates.json no ofrece bajar de versión
+        assert!(version_is_newer("1.5.6", "1.5.5"));
+        assert!(version_is_newer("1.5.10", "1.5.9"));
+        assert!(version_is_newer("1.6", "1.5.9"));
+        assert!(version_is_newer("1.5.1", "1.5"));
+        assert!(version_is_newer("1.5.5", ""), "sin versión instalada");
+        assert!(!version_is_newer("1.5.5", "1.5.6"), "[updates-only-newer] ofrece bajar de versión");
+        assert!(!version_is_newer("1.5.6", "1.5.6"));
+        assert!(!version_is_newer("1.5", "1.5.0"));
+        assert!(!version_is_newer("x", "1.5"));
+    }
     use super::*;
 
     #[test]

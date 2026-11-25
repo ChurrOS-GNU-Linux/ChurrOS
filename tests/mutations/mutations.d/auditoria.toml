@@ -1,0 +1,308 @@
+[[mutation]]
+name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante repaint)"
+file = "rust/popups/src/network.rs"
+find = '''            move |info| {
+                *w.last.borrow_mut() = info;
+                w.repaint();
+            },'''
+replace = '''            move |info| {
+                let mut last = w.last.borrow_mut();
+                *last = info;
+                w.repaint();
+            },'''
+
+caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
+expect = "FALLO churros-popup network"
+requires = "container"
+why = "El RefMut vive hasta el final de reload() y el self.last.borrow() de unas líneas más abajo aborta el popup: compila y ninguna otra capa ejecuta los popups."
+
+[[mutation]]
+name = "backup: restablecer borra la config del usuario antes de copiar"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "churros_services::dotfiles::replace_dir(&src, &dst)"
+replace = "fs::remove_dir_all(&dst).ok(); churros_services::dotfiles::copy_dir_all(&src, &dst)"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:no-delete-first]"
+why = "Con remove_dir_all antes de copiar, un fallo de la copia deja al usuario sin su configuración de niri/foot/waybar."
+
+[[mutation]]
+name = "backup: restablecer ignora el error de la restauración"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "Self::restore_dotfiles()?;"
+replace = "Self::restore_dotfiles().ok();"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:reset-propagates]"
+why = "Un fallo de la restauración se presenta como éxito en la UI: la persona cree que sus ajustes volvieron a los defaults."
+
+[[mutation]]
+name = "backup: restore_noctalia_config descarta los errores de copia"
+file = "rust/preferences/src/services/backup_service.rs"
+find = "churros_services::dotfiles::copy_dir_all(src, dst)\n}"
+replace = "let _ = churros_services::dotfiles::copy_dir_all(src, dst);\n    Ok(())\n}"
+caught_by = "tests.static.test_backup_reset_safety"
+expect = "[backup:noctalia-ignored-error]"
+why = "Una restauración parcial de ~/.config/noctalia se reporta como correcta."
+
+# --- auditoría R3: un config de fastfetch corrupto no puede tumbar la app ---
+
+[[mutation]]
+name = "fastfetch: read_config deja pasar una raíz que no es objeto"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = "churros_services::nested::as_object(parsed)"
+replace = "parsed"
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[fastfetch:root-normalized]"
+why = "Con `[]` o `\"x\"` como raíz, el primer setter hace as_object_mut().unwrap() y, con panic=abort, mata churros-settings."
+
+[[mutation]]
+name = "fastfetch: los setters vuelven a usar as_object_mut().unwrap()"
+file = "rust/preferences/src/services/fastfetch_config.rs"
+find = """
+    pub fn set_logo_colors(colors: &[String; 4]) {
+        let mut cfg = read_config();
+        let obj = object_at(&mut cfg, &["logo"]);"""
+replace = """
+    pub fn set_logo_colors(colors: &[String; 4]) {
+        let mut cfg = read_config();
+        let obj = cfg.as_object_mut().unwrap();"""
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[fastfetch:no-unwrap]"
+why = "`\"logo\": \"texto\"` en el config del usuario hace panic en el callback de la UI."
+
+[[mutation]]
+name = "nested: object_at deja de sustituir una clave que no es objeto"
+file = "rust/services/src/nested.rs"
+find = "if !current.get(*key).is_some_and(Value::is_object) {"
+replace = "if current.get(*key).is_none() {"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-services object_at_replaces_a_key_that_is_not_an_object"
+expect = "object_at_replaces_a_key_that_is_not_an_object"
+why = "Con una clave existente que no es objeto, as_object_mut devuelve None y el expect aborta: es el segundo disparador de R3."
+
+# --- auditoría A1-A2: el instalado no hereda el estado de systemd del Live ---
+
+[[mutation]]
+name = "calamares: el instalado hereda do-not-suspend.conf del Live"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf /etc/systemd/system-generators/systemd-gpt-auto-generator"
+replace = "rm -f /etc/systemd/system-generators/systemd-gpt-auto-generator"
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-dropin:etc/systemd/logind.conf.d/do-not-suspend.conf]"
+why = "HandleLidSwitch=ignore del Live llega al instalado: el portátil no suspende nunca al cerrar la tapa."
+
+[[mutation]]
+name = "calamares: el instalado hereda el generador GPT enmascarado"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf /etc/systemd/system-generators/systemd-gpt-auto-generator"
+replace = "rm -f /etc/systemd/logind.conf.d/do-not-suspend.conf"
+caught_by = "tests.static.test_calamares_config"
+expect = "[live-dropin:etc/systemd/system-generators/systemd-gpt-auto-generator]"
+why = "systemd-gpt-auto-generator -> /dev/null heredado: el instalado no monta solo /home, /srv, swap GPT ni la ESP."
+
+# --- auditoría A3: la metadata de pacman no viaja en claro ---
+
+[[mutation]]
+name = "pacman aarch64: vuelve un mirror remoto por http en claro"
+file = "archiso/pacman.aarch64.conf"
+find = """[alarm]
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
+Server = https://ca.us.mirror.archlinuxarm.org/$arch/$repo"""
+replace = """[alarm]
+Server = https://ftp.halifax.rwth-aachen.de/archlinux-arm/$arch/$repo
+Server = http://mirror.archlinuxarm.org/$arch/$repo"""
+caught_by = "tests.static.test_supply_chain"
+expect = "[supply-chain:https-only:pacman.aarch64.conf:"
+why = "La base de datos de paquetes viaja sin cifrar: permite degradar a versiones antiguas firmadas o dirigir a otro paquete firmado."
+
+# --- auditoría A5 y V4: un solo popup y solo matar lo propio ---
+
+[[mutation]]
+name = "popup: vuelve a decidir leyendo el pidfile en vez de con el lock"
+file = "rust/popups/src/main.rs"
+find = "    let held = match churros_services::single_instance::InstanceLock::acquire(&lock_path) {"
+replace = "    if running_name().as_deref() == Some(name.as_str()) { kill_popup(); return; }\n    let held = match churros_services::single_instance::InstanceLock::acquire(&lock_path) {"
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:lock]"
+why = "Check-then-act: dos clics seguidos lanzan dos apps GTK y los pidfiles se pisan."
+
+[[mutation]]
+name = "popup: process_is_popup vuelve a fiarse de la línea de comandos"
+file = "rust/popups/src/main.rs"
+find = 'let Ok(theirs) = fs::read_link(format!("/proc/{pid}/exe")) else {'
+replace = 'let Ok(theirs) = fs::read_to_string(format!("/proc/{pid}/cmdline")).map(std::path::PathBuf::from) else {'
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:no-cmdline-match]"
+why = "Un proceso ajeno que mencione churros-popup recibe SIGKILL si su pid quedó en un pidfile obsoleto."
+
+[[mutation]]
+name = "popup: launch suelta el lock antes de abrir la ventana"
+file = "rust/popups/src/main.rs"
+find = "    let _lock = lock;"
+replace = "    drop(lock);"
+caught_by = "tests.static.test_popup_single_instance"
+expect = "[popup:lock-held]"
+why = "Sin el lock vivo, otra instancia entra con la ventana anterior aún abierta."
+
+# --- auditoría V3 y V6: sin UB en getpwuid y sin ocultar fallos de pacman ---
+
+[[mutation]]
+name = "services: home_dir vuelve a pasar pw_dir a CStr sin comprobar NULL"
+file = "rust/services/src/lib.rs"
+find = """        let raw = unsafe { (*pwd).pw_dir };
+        if !raw.is_null() {
+            let dir = unsafe { CStr::from_ptr(raw) };"""
+replace = """        let raw = unsafe { (*pwd).pw_dir };
+        if true {
+            let dir = unsafe { CStr::from_ptr(raw) };"""
+caught_by = "tests.static.test_services_error_handling"
+expect = "[services:pw-dir-null]"
+why = "Una entrada de passwd con home vacío deja pw_dir en NULL y CStr::from_ptr(NULL) es comportamiento indefinido."
+
+[[mutation]]
+name = "update: repair_pending vuelve a ignorar el código de salida de pacman"
+file = "rust/preferences/src/services/update.rs"
+find = "        if query_code != 0 || sync_code != 0 {\n            return None;\n        }"
+replace = "        let _ = (query_code, sync_code);"
+caught_by = "tests.static.test_services_error_handling"
+expect = "[update:repair-exit-code]"
+why = "Con la base de datos bloqueada la lista sale vacía y la UI presenta el sistema como sano."
+
+[[mutation]]
+name = "update: repair_pending devuelve Vec y colapsa el fallo a lista vacía"
+file = "rust/preferences/src/services/update.rs"
+find = "pub fn repair_pending() -> Option<Vec<String>> {"
+replace = "pub fn repair_pending() -> Vec<String> {"
+caught_by = "tests.static.test_services_error_handling"
+expect = "[update:repair-option]"
+why = "Sin Option, 'no se pudo comprobar' y 'no hay nada que reparar' son indistinguibles."
+
+# --- auditoría V1, V7 y V8: umbral de shellcheck, .gitignore y timeouts ---
+
+[[mutation]]
+name = "shellcheck: vuelve a -S error y deja pasar los avisos"
+file = "tests/static/test_shell_scripts.py"
+find = '"-S", "warning", "-f", "json1"'
+replace = '"-S", "error", "-f", "json1"'
+caught_by = "tests.static.test_shell_scripts"
+expect = "Ya no fallan"
+why = "Con -S error, un rm -rf \"$DIR\"/* sin ${:?} o una variable muerta pasan desapercibidos."
+
+[[mutation]]
+name = "gitignore: se pierden los patrones de credenciales"
+file = ".gitignore"
+find = "id_rsa*"
+replace = "# id_rsa*"
+caught_by = "tests.static.test_supply_chain"
+expect = "[gitignore:id_rsa*]"
+why = "Sin patrones, una clave privada que aparezca en el árbol se sube sin aviso."
+
+[[mutation]]
+name = "systemd: el update desatendido vuelve a no tener timeout"
+file = "archiso/airootfs/etc/systemd/system/churros-update.service"
+find = "TimeoutStartSec=2h\nExecStart=/usr/local/bin/churros-update-auto"
+replace = "ExecStart=/usr/local/bin/churros-update-auto"
+caught_by = "tests.static.test_systemd_units"
+expect = "[systemd:timeout:churros-update.service]"
+why = "Un pacman bloqueado deja la unidad en activating para siempre y el timer no vuelve a disparar."
+
+# --- auditoría A4: guardar un ajuste de root no congela la ventana ---
+
+[[mutation]]
+name = "greeter: el saludo vuelve a llamar a pkexec en el callback"
+file = "rust/preferences/src/pages/greeter.rs"
+find = """            apply_in_background(Rc::clone(&feedback), "Saludo guardado", move || {
+                UsersService::set_regreet_greeting(&text)
+            });"""
+replace = """            let ok = UsersService::set_regreet_greeting(&text);
+            say(&feedback, ok, "Saludo guardado");"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[greeter:background]"
+why = "Con .status() en el callback, GTK se congela mientras polkit pide la contraseña y el compositor puede marcar la ventana como no responde."
+
+[[mutation]]
+name = "background: el sondeo vuelve a bloquear con recv"
+file = "rust/services/src/background.rs"
+find = "self.receiver.try_recv()"
+replace = "self.receiver.recv().map_err(|_| TryRecvError::Disconnected)"
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[background:non-blocking]"
+why = "recv() bloquea el hilo de GTK hasta que el trabajo termina: es el mismo defecto con otra forma."
+
+# --- auditoría V2: ningún unwrap sobre JSON del usuario en producción ---
+
+[[mutation]]
+name = "settings: vuelve el as_object_mut().unwrap() al navegar claves"
+file = "rust/preferences/src/services/settings.rs"
+find = """                let Value::Object(map) = entry else {
+                    return;
+                };
+                current = map;"""
+replace = """                current = entry.as_object_mut().unwrap();"""
+caught_by = "tests.static.test_fastfetch_config_safety"
+expect = "[v2:no-unchecked-json]"
+why = "Con panic=\"abort\", un None en ese unwrap mata churros-settings sin diálogo."
+
+# --- auditoría R1: las claves de API no llegan al código de la PR ---
+
+[[mutation]]
+name = "visual-qa: el clasificador vuelve a ejecutarse desde el árbol de la PR"
+file = ".github/workflows/visual-qa-classify.yml"
+find = 'python3 "$RUNNER_TEMP/trusted/scripts/qa/visual/classify.py"'
+replace = 'python3 scripts/qa/visual/classify.py'
+caught_by = "tests.static.test_repo_wiring"
+expect = "[secrets-in-pr:visual-qa-classify.yml]"
+why = "Con el script saliendo del checkout de la PR, cualquiera con push a una rama del repo puede exfiltrar TYPESAFE_API_KEY y ANTHROPIC_API_KEY; el job termina en verde por continue-on-error."
+
+[[mutation]]
+name = "visual-qa: el gate de la ISO vuelve a ejecutar código de la PR con las claves"
+file = ".github/workflows/visual-qa-iso.yml"
+find = 'python3 "$RUNNER_TEMP/trusted/scripts/qa/visual/classify.py"'
+replace = 'python3 scripts/qa/visual/classify.py'
+caught_by = "tests.static.test_repo_wiring"
+expect = "[secrets-in-pr:visual-qa-iso.yml]"
+why = "Mismo vector que en classify.yml: el paso con secretos ejecuta un script que la PR puede cambiar."
+
+# --- auditoría A4 en los popups: nmcli fuera del hilo de GTK ---
+
+[[mutation]]
+name = "popup de red: la recarga vuelve a llamar a nmcli en el hilo de UI"
+file = "rust/popups/src/network.rs"
+find = """        crate::popup::run_bg(
+            || {
+                let info = wifi::get();
+                wifi::scan();
+                info
+            },"""
+replace = """        let info = wifi::get();
+        wifi::scan();
+        crate::popup::run_bg(
+            || (),"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[popup:no-blocking-reload]"
+why = "wifi::get() encadena cuatro nmcli de 5 s: con la radio apagada son ~20 s de ventana congelada."
+
+# --- auditoría V5: nmcli no puede fallar en silencio ---
+
+[[mutation]]
+name = "wifi: forget vuelve a descartar el resultado de nmcli"
+file = "rust/services/src/wifi.rs"
+find = """pub fn forget(ssid: &str) -> bool {
+    ok_status(run(&["nmcli", "connection", "delete", ssid], 5000))
+}"""
+replace = """pub fn forget(ssid: &str) -> bool {
+    let _ = run(&["nmcli", "connection", "delete", ssid], 5000);
+    true
+}"""
+caught_by = "tests.static.test_ui_does_not_block"
+expect = "[popup:forget-reports-failure]"
+why = "Si nmcli falla, la red reaparece como guardada sin explicación: el usuario no distingue 'no se pudo borrar' de 'no pasó nada'."
+
+# --- auditoría A7: el pipeline avisa cuando no pudo decidir ---
+
+[[mutation]]
+name = "visual-qa: el gate deja de avisar cuando el clasificador no decidió"
+file = ".github/workflows/visual-qa-report.yml"
+find = "      - name: Report that the classifier could not decide"
+replace = "      - name: (aviso eliminado)"
+caught_by = "tests.static.test_visual_pipeline_visibility"
+expect = "[visual-qa:silent-failure:visual-qa-report.yml]"
+why = "Sin el aviso, un classify.py roto y un diff no visual son indistinguibles: los dos dejan el job en verde y sin comentario."

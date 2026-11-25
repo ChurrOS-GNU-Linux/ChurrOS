@@ -120,8 +120,17 @@ pub fn set(key: &str, value: Value) {
         match entry {
             Value::Object(map) => current = map,
             _ => {
+                // Si `part` existía como no-objeto (el usuario editó
+                // settings.json a mano), se reemplaza por un objeto. Antes
+                // esto era `as_object_mut().unwrap()`: funcionaba porque la
+                // línea anterior acaba de insertar un Value::Object, pero un
+                // cambio en ese orden lo convertía en un panic con
+                // panic = "abort" en release (auditoría V2).
                 *entry = Value::Object(Map::new());
-                current = entry.as_object_mut().unwrap();
+                let Value::Object(map) = entry else {
+                    return;
+                };
+                current = map;
             }
         }
     }

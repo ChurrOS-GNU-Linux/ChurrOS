@@ -682,3 +682,34 @@ class PacmanHooksTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DesatendidoTieneLimite(unittest.TestCase):
+    """Un oneshot sin TimeoutStartSec hereda infinity (auditoría V8).
+
+    churros-update.service ejecuta `pacman -Syu --noconfirm` y `flatpak
+    update`. Un pacman bloqueado por un lock, una pregunta interactiva o una
+    red colgada dejan la unidad en `activating` indefinidamente; mientras
+    tanto el timer no vuelve a disparar y en un servidor nadie lo ve.
+    """
+
+    def test_update_units_set_a_start_timeout(self):
+        findings = {}
+        units = [
+            testlib.AIROOTFS / "etc/systemd/system/churros-update.service",
+            testlib.AIROOTFS / "etc/skel/.config/systemd/user/churros-update.service",
+        ]
+        for unit in units:
+            if not unit.is_file():
+                continue
+            text = unit.read_text(encoding="utf-8")
+            # Sin comentarios: el comentario que explica el ajuste nombra
+            # TimeoutStartSec y no puede contar como que esta puesto.
+            code = "\n".join(
+                line for line in text.splitlines() if not line.lstrip().startswith("#")
+            )
+            if "Type=oneshot" in code and "TimeoutStartSec" not in code:
+                findings[f"systemd:timeout:{unit.name}"] = (
+                    f"{unit.name} es Type=oneshot sin TimeoutStartSec: un comando "
+                    "colgado la deja en `activating` para siempre")
+        testlib.assert_findings(self, "systemd:timeout", findings)

@@ -461,7 +461,7 @@ fn check_updates(status: &Rc<RefCell<Option<Row>>>, churros_status: &Rc<RefCell<
 /// dice y ofrece repararlo: la reparación la hace churros-update-utils (root)
 /// dentro de «Actualizar ahora». Nada ocurre sin que el usuario lo pulse.
 fn show_pending_repair(group: &Rc<RefCell<Group>>, log_view: &Rc<RefCell<Option<gtk::TextView>>>) {
-    let (tx, rx) = std::sync::mpsc::channel::<(Vec<String>, bool)>();
+    let (tx, rx) = std::sync::mpsc::channel::<(Option<Vec<String>>, bool)>();
     std::thread::spawn(move || {
         let _ = tx.send((UpdateService::repair_pending(), UpdateService::live_keyring_pending()));
     });
@@ -469,8 +469,24 @@ fn show_pending_repair(group: &Rc<RefCell<Group>>, log_view: &Rc<RefCell<Option<
     let log_view = Rc::clone(log_view);
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || match rx.try_recv() {
         Ok((pending, keyring)) => {
-            if !pending.is_empty() || keyring {
+            // None = pacman no pudo responder (base bloqueada, timeout). No es
+            // "no hay nada que reparar": se dice que no se pudo comprobar
+            // (auditoría V6).
+            let pending_unknown = pending.is_none();
+            let pending = pending.unwrap_or_default();
+            if !pending.is_empty() || keyring || pending_unknown {
                 let mut g = group.borrow_mut();
+                if pending_unknown {
+                    g.add(&Row::new(
+                        "No se pudo comprobar el estado de los paquetes",
+                        Some("pacman no respondió (base de datos bloqueada por otra operación o sin red). \
+                              Vuelve a abrir esta página cuando termine."),
+                        Some("system.svg"),
+                        None,
+                        None,
+                        None,
+                    ));
+                }
                 if keyring {
                     g.add(&Row::new(
                         "El llavero de pacman se borra en cada arranque",

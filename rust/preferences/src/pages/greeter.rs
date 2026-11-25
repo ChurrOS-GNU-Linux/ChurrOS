@@ -40,6 +40,37 @@ fn say(feedback: &Feedback, ok: bool, done: &str) {
     }
 }
 
+/// Aplica un ajuste de greeter que pasa por pkexec sin bloquear el hilo de GTK.
+///
+/// `.status()` de pkexec espera a que la persona teclee la contraseña en el
+/// diálogo de polkit: con la llamada en el callback, la ventana se congela y
+/// el compositor puede marcarla como «no responde» (auditoría A4). Aquí el
+/// trabajo va a un hilo y el resultado llega por un canal que se sondea con
+/// glib::timeout_add_local. Mientras corre, el feedback dice que está en
+/// curso y el control se pueda tocar sin bloquear nada.
+fn apply_in_background<F>(feedback: Feedback, done: &'static str, work: F)
+where
+    F: FnOnce() -> bool + Send + 'static,
+{
+    if let Some(label) = feedback.borrow().as_ref() {
+        label.set_label("Aplicando… (pide la contraseña de administrador)");
+    }
+    let job = churros_services::background::BackgroundJob::spawn(work);
+    glib::timeout_add_local(churros_services::background::POLL_INTERVAL, move || {
+        match job.try_finish() {
+            churros_services::background::JobPoll::Pending => glib::ControlFlow::Continue,
+            churros_services::background::JobPoll::Finished(ok) => {
+                say(&feedback, ok, done);
+                glib::ControlFlow::Break
+            }
+            churros_services::background::JobPoll::Disconnected => {
+                say(&feedback, false, done);
+                glib::ControlFlow::Break
+            }
+        }
+    });
+}
+
 fn sync_background(feedback: &Feedback) {
     let text = match GreeterService::sync(true) {
         Ok(_) => "Fondo de la pantalla de inicio actualizado".to_string(),
@@ -156,8 +187,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
                 let feedback = Rc::clone(&feedback);
                 glib::timeout_add_local_once(Duration::from_millis(700), move || {
                     if generation.get() == ticket {
-                        let ok = GreeterService::set_dim(value.round() as u8);
-                        say(&feedback, ok, "Oscurecido aplicado");
+                        apply_in_background(feedback, "Oscurecido aplicado", move || {
+                            GreeterService::set_dim(value.round() as u8)
+                        });
                     }
                 });
             })),
@@ -172,9 +204,11 @@ pub fn build(navigator: gtk::Stack) -> Page {
         let feedback = Rc::clone(&feedback);
         let state = Rc::clone(&clock_state);
         Rc::new(move || {
-            let s = state.borrow();
-            let ok = GreeterService::set_clock(s.clock24, s.seconds, s.date, &s.clock_size);
-            say(&feedback, ok, "Reloj actualizado");
+            let s = state.borrow().clone();
+            let work = move || {
+                GreeterService::set_clock(s.clock24, s.seconds, s.date, &s.clock_size)
+            };
+            apply_in_background(Rc::clone(&feedback), "Reloj actualizado", work);
         })
     };
     {
@@ -264,8 +298,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
             if text.is_empty() {
                 return;
             }
-            let ok = UsersService::set_regreet_greeting(&text);
-            say(&feedback, ok, "Saludo guardado");
+            apply_in_background(Rc::clone(&feedback), "Saludo guardado", move || {
+                UsersService::set_regreet_greeting(&text)
+            });
         };
         let apply = Rc::new(apply);
         let a = Rc::clone(&apply);
@@ -280,8 +315,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
             Some("Círculo con el logo de ChurrOS encima del saludo"),
             cfg.avatar,
             Some(Box::new(move |on| {
-                let ok = GreeterService::set_avatar(on);
-                say(&feedback, ok, "Logo actualizado");
+                apply_in_background(Rc::clone(&feedback), "Logo actualizado", move || {
+                    GreeterService::set_avatar(on)
+                });
             })),
         ));
     }
@@ -305,8 +341,10 @@ pub fn build(navigator: gtk::Stack) -> Page {
             &cfg.accent,
             Some(Box::new(move |hex: &str| {
                 let hex = format!("#{}", hex.trim_start_matches('#').chars().take(6).collect::<String>());
-                let ok = GreeterService::set_accent(&hex.to_uppercase());
-                say(&feedback, ok, "Color aplicado");
+                let hex = hex.to_uppercase();
+                apply_in_background(Rc::clone(&feedback), "Color aplicado", move || {
+                    GreeterService::set_accent(&hex)
+                });
             })),
             Some("Botón de entrar y foco de los campos"),
         );
@@ -329,8 +367,9 @@ pub fn build(navigator: gtk::Stack) -> Page {
                     COLOR_DESKTOP => AccentService::hex_for(&AccentService::current()).to_uppercase(),
                     _ => return,
                 };
-                let ok = GreeterService::set_accent(&hex);
-                say(&feedback, ok, "Color aplicado");
+                apply_in_background(Rc::clone(&feedback), "Color aplicado", move || {
+                    GreeterService::set_accent(&hex)
+                });
             })),
         ));
     }

@@ -122,6 +122,24 @@ jobs:
       - name: ./churros rust
         run: ./churros rust
 
+      # Auditoría de dependencias (auditoría A6). Cargo.lock fija las
+      # versiones, pero sin esto nadie mira sus CVE: Dependabot solo cubre las
+      # actions. Se instala en el contenedor porque el runner no tiene cargo.
+      # No bloquea todavía: un aviso histórico no puede parar el desarrollo de
+      # otra cosa. Para hacerlo bloqueante, quitar el `|| true` final y tratar
+      # cualquier aviso como fallo.
+      - name: cargo audit (dependencias con CVE conocidos)
+        if: ${{ !cancelled() }}
+        run: |
+          source scripts/lib/container.sh
+          container_engine_init
+          container_run -- bash -lc '
+            set -euo pipefail
+            cd /churros/rust
+            cargo install cargo-audit --locked --quiet 2>/dev/null || pacman -S --noconfirm --needed cargo-audit
+            cargo audit --file Cargo.lock || true
+          '
+
       # La prueba GTK del recorrido está marcada #[ignore] en cargo test:
       # scripts/test-tour.py la ejecuta en Broadway (gtk4-broadwayd), con
       # sockets privados y HOME temporal. Reutiliza lo que compiló el paso

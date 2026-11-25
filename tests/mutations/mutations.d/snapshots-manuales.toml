@@ -1,0 +1,33 @@
+[[mutation]]
+name = "churros-snapshot: la retención vuelve a borrar los snapshots manuales"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = "        *) return 1 ;;\n    esac\n}\n\nreason_of()"
+replace = "        *) return 0 ;;\n    esac\n}\n\nreason_of()"
+caught_by = "python3 scripts/test-privileged-helpers.py SnapshotRetention"
+expect = "[keep-manual-snapshots]"
+why = "Tras cinco actualizaciones desaparecía el snapshot que el usuario creó a propósito (#329)."
+
+[[mutation]]
+name = "churros-snapshot: un snapshot fallido de @ sale con el error crudo de btrfs"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = """
+    if ! btrfs subvol snapshot -r "$TOP_MOUNT/@" "$dir/root" >/dev/null; then
+        rmdir "$dir" 2>/dev/null || true
+        die "no se pudo crear el snapshot de @ ($reason): no hay punto de vuelta. Mira el espacio libre con 'sudo btrfs filesystem usage /'"
+    fi
+"""
+replace = """
+    btrfs subvol snapshot -r "$TOP_MOUNT/@" "$dir/root" >/dev/null
+"""
+caught_by = "python3 scripts/test-privileged-helpers.py SnapshotRetention"
+expect = "[snapshot-failure-explained]"
+why = "El usuario no se enteraba de que esa actualización iba sin punto de vuelta (#332)."
+
+[[mutation]]
+name = "50-churros-snapshot.hook: vuelve al aviso ambiguo"
+file = "archiso/airootfs/etc/pacman.d/hooks/50-churros-snapshot.hook"
+find = "AVISO: esta transacción NO tiene snapshot previo; si algo sale mal no se podrá volver atrás (el motivo está justo encima)"
+replace = "aviso — no se creó snapshot (¿btrfs?)"
+caught_by = "python3 scripts/test-privileged-helpers.py SnapshotRetention"
+expect = "[snapshot-failure-explained]"
+why = "«¿btrfs?» no dice que la transacción va sin rollback (#332)."
