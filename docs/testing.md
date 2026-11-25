@@ -83,6 +83,12 @@ test --mutations` aplica cada una en una copia del repo y exige que la prueba
 indicada falle con el mensaje esperado. Si una sobrevive, una prueba se ha
 debilitado.
 
+Las mutaciones **nuevas** van en `tests/mutations/mutations.d/<tema>.toml`, un
+fichero por PR, con el mismo formato. `mutations.toml` ya no crece
+(`test_mutations_toml_does_not_grow`): cuando todas se añadían al final de ese
+fichero, cada PR fusionado dejaba en conflicto a los demás. `run_mutations.py`
+lee los dos y rechaza un nombre repetido entre ficheros.
+
 Cada vez que se arregla un fallo, la prueba que lo habría detectado lleva su
 mutación.
 
