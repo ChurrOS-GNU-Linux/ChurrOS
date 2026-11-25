@@ -1,8 +1,24 @@
-# Solo las acciones de GitHub (uses:). Cargo, pacman y las imágenes de
-# contenedor no se actualizan por aquí.
+# Solo las acciones de GitHub (uses:). Las imágenes de contenedor no se
+# actualizan por aquí.
+#
+# Cargo sí está: el workspace lleva Cargo.lock versionado y las apps se
+# distribuyen compiladas en la ISO. Sin esto, una dependencia con CVE se
+# queda en el árbol hasta que alguien la suba a mano (auditoría A6).
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # Un solo PR para los parches de seguridad y las subidas de parche:
+      # 40 PRs sueltos de parches no se revisan.
+      patch-and-security:
+        applies-to: security-updates
+        patterns: ["*"]

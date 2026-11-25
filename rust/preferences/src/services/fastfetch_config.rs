@@ -78,13 +78,21 @@ fn strip_jsonc_comments(src: &str) -> String {
 
 fn read_config() -> Value {
     let path = config_path();
-    match fs::read_to_string(&path) {
-        Ok(raw) => {
-            let clean = strip_jsonc_comments(&raw);
-            serde_json::from_str(&clean).unwrap_or_else(|_| json!({}))
-        }
+    let parsed = match fs::read_to_string(&path) {
+        Ok(raw) => serde_json::from_str(&strip_jsonc_comments(&raw)).unwrap_or_else(|_| json!({})),
         Err(_) => json!({}),
-    }
+    };
+    // El parseo solo descarta lo que no es JSONC. Un fichero válido cuya raíz
+    // sea un array, una cadena o un número llegaba hasta los setters, que
+    // forzaban el objeto con unwrap y abortaban el proceso (auditoría R3,
+    // agravado por panic = "abort" en release).
+    churros_services::nested::as_object(parsed)
+}
+
+/// Objeto en la ruta de claves `path`, creándolo si falta o si lo que hay no
+/// es un objeto. Ver churros_services::nested::object_at.
+fn object_at<'a>(cfg: &'a mut Value, path: &[&str]) -> &'a mut Map<String, Value> {
+    churros_services::nested::object_at(cfg, path)
 }
 
 fn write_config(value: &Value) {
@@ -266,12 +274,7 @@ impl FastfetchConfig {
     /// terminal able to show it).
     pub fn set_logo_source(source: &str, logo_type: &str) -> bool {
         let mut cfg = read_config();
-        let logo = cfg
-            .as_object_mut()
-            .unwrap()
-            .entry("logo")
-            .or_insert_with(|| json!({}));
-        let obj = logo.as_object_mut().unwrap();
+        let obj = object_at(&mut cfg, &["logo"]);
 
         match logo_type {
             "none" => {
@@ -309,12 +312,7 @@ impl FastfetchConfig {
     /// Set logo color overrides.
     pub fn set_logo_colors(colors: &[String; 4]) {
         let mut cfg = read_config();
-        let logo = cfg
-            .as_object_mut()
-            .unwrap()
-            .entry("logo")
-            .or_insert_with(|| json!({}));
-        let obj = logo.as_object_mut().unwrap();
+        let obj = object_at(&mut cfg, &["logo"]);
         let mut color_map = Map::new();
         for (i, c) in colors.iter().enumerate() {
             if !c.is_empty() {
@@ -332,19 +330,8 @@ impl FastfetchConfig {
     /// Set logo top padding.
     pub fn set_logo_padding_top(val: i64) {
         let mut cfg = read_config();
-        let logo = cfg
-            .as_object_mut()
-            .unwrap()
-            .entry("logo")
-            .or_insert_with(|| json!({}));
-        let obj = logo.as_object_mut().unwrap();
-        let padding = obj
-            .entry("padding")
-            .or_insert_with(|| json!({}));
-        padding
-            .as_object_mut()
-            .unwrap()
-            .insert("top".to_string(), json!(val));
+        let padding = object_at(&mut cfg, &["logo", "padding"]);
+        padding.insert("top".to_string(), json!(val));
         write_config(&cfg);
     }
 
@@ -370,32 +357,15 @@ impl FastfetchConfig {
 
     pub fn set_separator(sep: &str) {
         let mut cfg = read_config();
-        let display = cfg
-            .as_object_mut()
-            .unwrap()
-            .entry("display")
-            .or_insert_with(|| json!({}));
-        display
-            .as_object_mut()
-            .unwrap()
-            .insert("separator".to_string(), json!(sep));
+        let display = object_at(&mut cfg, &["display"]);
+        display.insert("separator".to_string(), json!(sep));
         write_config(&cfg);
     }
 
     pub fn set_key_width(width: i64) {
         let mut cfg = read_config();
-        let display = cfg
-            .as_object_mut()
-            .unwrap()
-            .entry("display")
-            .or_insert_with(|| json!({}));
-        let disp_obj = display.as_object_mut().unwrap();
-        let key = disp_obj
-            .entry("key")
-            .or_insert_with(|| json!({}));
-        key.as_object_mut()
-            .unwrap()
-            .insert("width".to_string(), json!(width));
+        let key = object_at(&mut cfg, &["display", "key"]);
+        key.insert("width".to_string(), json!(width));
         write_config(&cfg);
     }
 
@@ -486,9 +456,8 @@ impl FastfetchConfig {
         }
         new_modules.extend(footer);
 
-        cfg.as_object_mut()
-            .unwrap()
-            .insert("modules".to_string(), Value::Array(new_modules));
+        let mut root = object_at(&mut cfg, &[]);
+        root.insert("modules".to_string(), Value::Array(new_modules));
         write_config(&cfg);
     }
 

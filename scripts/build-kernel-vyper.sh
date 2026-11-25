@@ -112,7 +112,9 @@ choose_work_dir() {
 
 choose_work_dir
 mkdir -p "$PACKAGE_DIR" "$WORK_DIR"
-rm -rf "$WORK_DIR"/*
+# ${VAR:?} para que un WORK_DIR vacío aborte en vez de expandir a "/*"
+# (ShellCheck SC2115). Es un rm -rf con la receta del kernel.
+rm -rf "${WORK_DIR:?}"/*
 
 echo "[1/3] Preparando entorno de compilación en $WORK_DIR..."
 cp -r "$PKGBUILD_DIR"/* "$WORK_DIR/"

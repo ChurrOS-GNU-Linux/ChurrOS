@@ -52,6 +52,11 @@ struct WifiWidget {
 }
 
 impl WifiWidget {
+    /// Copia del último estado cargado, sin volver a ejecutar nmcli.
+    fn snapshot(&self) -> WifiInfo {
+        self.last.borrow().clone()
+    }
+
     fn new() -> Self {
         let stack = gtk::Stack::new();
         stack.set_hexpand(true);
@@ -66,7 +71,10 @@ impl WifiWidget {
         title.add_css_class("section-title");
         network_page.append(&title);
 
-        let (toggle, sw) = toggle_widget();
+        // El estado ya lo cargó wire() con su run_bg: pasar la copia evita
+        // otra tanda de nmcli aquí, que retrasaba la apertura del popup
+        // (auditoría A4).
+        let (toggle, sw) = toggle_widget(&wifi.snapshot());
         network_page.append(&toggle);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -108,13 +116,13 @@ impl WifiWidget {
                     }
                 },
                 move |_| {
-                    w.reload();
+                    w.reload_async();
                 },
             );
             glib::Propagation::Proceed
         });
 
-        self.reload();
+        self.reload_async();
 
         let wifi3 = wifi.clone();
         glib::timeout_add_seconds_local(3, move || {
@@ -130,7 +138,7 @@ impl WifiWidget {
         let w = self.clone();
         crate::popup::run_bg(wifi::get, move |state| {
             if state != *w.last.borrow() {
-                w.reload();
+                w.reload_async();
             }
         });
     }
@@ -142,9 +150,30 @@ impl WifiWidget {
         self.list.append(&label);
     }
 
-    fn reload(self: &Rc<Self>) {
-        *self.last.borrow_mut() = wifi::get();
-        wifi::scan();
+    /// Recarga sin bloquear el hilo de GTK (auditoría A4).
+    ///
+    /// `wifi::get()` encadena `available()`, `enabled()`, `saved_networks()` y
+    /// `nmcli ... wifi list`, cada uno con 5 s de espera; `wifi::scan()` es otro
+    /// nmcli. Con la radio apagada o el daemon lento son ~20 s de ventana
+    /// congelada si se llaman desde un callback. Aquí van a un hilo y solo el
+    /// repintado ocurre en el hilo de UI.
+    fn reload_async(self: &Rc<Self>) {
+        let w = self.clone();
+        crate::popup::run_bg(
+            || {
+                let info = wifi::get();
+                wifi::scan();
+                info
+            },
+            move |info| {
+                *w.last.borrow_mut() = info;
+                w.repaint();
+            },
+        );
+    }
+
+    /// Dibuja el estado ya cargado en `last`.
+    fn repaint(self: &Rc<Self>) {
         clear_children(&self.list);
 
         let state = self.last.borrow().clone();
@@ -174,7 +203,10 @@ impl WifiWidget {
         let refresh = gtk::Button::with_label("Refresh");
         refresh.add_css_class("network-button");
         let wifi2 = wifi.clone();
-        refresh.connect_clicked(move |_| wifi2.reload());
+        // reload_async() hace los nmcli en un hilo: hasta ~20 s con la radio
+        // apagada o el daemon lento, que en el callback congelarian la
+        // ventana (auditoria A4).
+        refresh.connect_clicked(move |_| wifi2.reload_async());
         actions_box.append(&refresh);
 
         let hidden_btn = gtk::Button::with_label("Connect to hidden network");
@@ -192,8 +224,17 @@ impl WifiWidget {
 
     fn select_network(self: &Rc<Self>, network: &Network) {
         if network.connected {
-            wifi::disconnect();
-            self.reload();
+            let w = self.clone();
+            let ssid = network.ssid.clone();
+            crate::popup::run_bg(
+                move || wifi::disconnect(),
+                move |ok| {
+                    if !ok {
+                        w.show_message(&format!("No se pudo desconectar de {ssid}."));
+                    }
+                    w.reload_async();
+                },
+            );
             return;
         }
 
@@ -208,16 +249,33 @@ impl WifiWidget {
             return;
         }
 
-        let (success, message) = wifi::connect(&network.ssid, None);
-        self.reload();
-        if !success {
-            self.show_message(&message);
-        }
+        let w = self.clone();
+        let ssid = network.ssid.clone();
+        crate::popup::run_bg(
+            move || wifi::connect(&ssid, None),
+            move |(success, message)| {
+                w.reload_async();
+                if !success {
+                    w.show_message(&message);
+                }
+            },
+        );
     }
 
     fn forget_network(self: &Rc<Self>, network: &Network) {
-        wifi::forget(&network.ssid);
-        self.reload();
+        let w = self.clone();
+        let ssid = network.ssid.clone();
+        crate::popup::run_bg(
+            move || wifi::forget(&ssid),
+            move |ok| {
+                // Antes el fallo se descartaba y la red reaparecia como
+                // guardada sin explicacion (auditoria V5).
+                if !ok {
+                    w.show_message(&format!("No se pudo olvidar {ssid}."));
+                }
+                w.reload_async();
+            },
+        );
     }
 
     fn show_page(self: &Rc<Self>, page: gtk::Box, name: &str) {
@@ -269,13 +327,23 @@ impl WifiWidget {
         let error2 = error.clone();
         let wifi3 = wifi.clone();
         let do_connect = move || {
+            // nmcli connect puede tardar (asociacion, DHCP, 4-way handshake):
+            // en el callback congelaria la ventana (auditoria A4).
             let password = entry2.text();
-            let (success, message) = wifi::connect(&ssid, Some(password.as_str()));
-            if success {
-                wifi3.back();
-            } else {
-                error2.set_label(&message);
-            }
+            let ssid = ssid.clone();
+            let wifi4 = wifi3.clone();
+            let error3 = error2.clone();
+            crate::popup::run_bg(
+                move || wifi::connect(&ssid, Some(password.as_str())),
+                move |(success, message)| {
+                    if success {
+                        wifi4.back();
+                        wifi4.reload_async();
+                    } else {
+                        error3.set_label(&message);
+                    }
+                },
+            );
         };
 
         let do_connect2 = do_connect.clone();
@@ -331,17 +399,26 @@ impl WifiWidget {
                 return;
             }
             let password = password2.text();
-            let pwd = if password.is_empty() {
-                None
-            } else {
-                Some(password.as_str())
-            };
-            let (success, message) = wifi::connect_hidden(&ssid, pwd);
-            if success {
-                wifi3.back();
-            } else {
-                error2.set_label(&message);
-            }
+            let wifi4 = wifi3.clone();
+            let error3 = error2.clone();
+            crate::popup::run_bg(
+                move || {
+                    let pwd = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password.as_str())
+                    };
+                    wifi::connect_hidden(&ssid, pwd)
+                },
+                move |(success, message)| {
+                    if success {
+                        wifi4.back();
+                        wifi4.reload_async();
+                    } else {
+                        error3.set_label(&message);
+                    }
+                },
+            );
         });
 
         self.show_page(page, "hidden");
@@ -349,7 +426,7 @@ impl WifiWidget {
 }
 
 /// Toggle de Wi-Fi (port de network/widgets/wifi.py — _build_toggle).
-fn toggle_widget() -> (gtk::Box, gtk::Switch) {
+fn toggle_widget(info: &WifiInfo) -> (gtk::Box, gtk::Switch) {
     let box_ = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     box_.add_css_class("network-toggle");
 
@@ -359,7 +436,6 @@ fn toggle_widget() -> (gtk::Box, gtk::Switch) {
     label.set_xalign(0.0);
 
     let sw = gtk::Switch::new();
-    let info = wifi::get();
     if info.available {
         sw.set_active(info.enabled);
     } else {

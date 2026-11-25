@@ -140,7 +140,7 @@ churros_repo_add() {
         return 1
     fi
     (
-        cd "$dir"
+        cd "$dir" || return 1
         repo-add churros.db.tar.gz "${pkgs[@]}"
     )
 }

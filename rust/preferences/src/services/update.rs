@@ -451,19 +451,29 @@ impl UpdateService {
     /// Reparación pendiente de las ISO 1.4/1.5: paquetes de CachyOS que Arch
     /// tiene (y, si el kernel no tiene repositorio, linux-cachyos). Vacía si
     /// no hay nada que hacer o en el Live.
-    pub fn repair_pending() -> Vec<String> {
+    ///
+    /// Si `pacman -Qi` o `pacman -Sl` fallan (base de datos bloqueada, timeout),
+    /// devuelve None en vez de una lista vacía: antes `unwrap_or_default()`
+    /// colapsaba el fallo a cadena vacía y una base bloqueada se presentaba
+    /// como "no hay nada que reparar" (auditoría V6).
+    pub fn repair_pending() -> Option<Vec<String>> {
         if std::path::Path::new("/run/archiso").exists() {
-            return Vec::new();
+            return Some(Vec::new());
         }
-        let query = churros_services::run(&["pacman", "-Qi"], 30_000).map(|r| r.1).unwrap_or_default();
-        let sync = churros_services::run(&["pacman", "-Sl"], 30_000).map(|r| r.1).unwrap_or_default();
+        // El código de salida importa: `run` devuelve None en timeout o error
+        // de ejecución, y un pacman que falla no da la lista de paquetes.
+        let (query_code, query) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
+        let (sync_code, sync) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
+        if query_code != 0 || sync_code != 0 {
+            return None;
+        }
         let mut pending = repair_candidates(&query, &sync);
         let kernel = churros_services::run(&["pacman", "-Q", "linux-cachyos"], 5_000).is_some_and(|r| r.0 == 0);
         let conf = std::fs::read_to_string("/etc/pacman.conf").unwrap_or_default();
         if kernel_without_repo(kernel, &conf) {
             pending.push("linux-cachyos".to_string());
         }
-        pending
+        Some(pending)
     }
 
     /// 1.4/1.5 instaladas: se coló el llavero de pacman en memoria del Live

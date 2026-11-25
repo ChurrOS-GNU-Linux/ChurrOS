@@ -113,7 +113,14 @@ class ShellScripts(unittest.TestCase):
                                 f"{result.stdout.strip()}")
 
     def test_shellcheck(self):
-        """shellcheck -S error con el dialecto del shebang, también sin extensión."""
+        """shellcheck -S warning con el dialecto del shebang, también sin extensión.
+
+        Antes era -S error, que dejaba pasar 15 avisos de nivel warning: entre
+        ellos un rm -rf "$DIR"/* sin ${:?} (potencialmente destructivo) y dos
+        variables calculadas y nunca usadas (auditoría V1). Un falso positivo
+        legítimo va a tests/known_issues.toml con su nota, no a bajar el
+        umbral.
+        """
         shellcheck = testlib.require_tool(self, "shellcheck")
         batches = []
         for dialect in ("bash", "sh"):
@@ -122,7 +129,7 @@ class ShellScripts(unittest.TestCase):
 
         def check(batch):
             dialect, files = batch
-            result = subprocess.run([shellcheck, "-S", "error", "-f", "json1", "-s", dialect, *files],
+            result = subprocess.run([shellcheck, "-S", "warning", "-f", "json1", "-s", dialect, *files],
                                     cwd=testlib.ROOT, capture_output=True, text=True, timeout=120)
             # 0: limpio; 1: hay hallazgos; otro: no pudo leer algún fichero u opción inválida.
             if result.returncode not in (0, 1):
