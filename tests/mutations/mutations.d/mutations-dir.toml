@@ -1,0 +1,27 @@
+[[mutation]]
+name = "run_mutations: deja de leer tests/mutations/mutations.d"
+file = "tests/mutations/run_mutations.py"
+find = '    return [MUTATIONS_FILE, *sorted(MUTATIONS_DIR.glob("*.toml"))]'
+replace = '    return [MUTATIONS_FILE]'
+caught_by = "tests.static.test_repo_wiring"
+expect = "[mutations-dir]"
+why = "Las mutaciones de mutations.d/ no se ejecutarían nunca y nadie lo notaría."
+
+[[mutation]]
+name = "mutations.toml vuelve a crecer al final"
+file = "tests/mutations/mutations.toml"
+find = '''why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
+'''
+replace = '''why = "Con la tecla de modo avión (rfkill hard) Ajustes volvería a enseñar «No se encontraron redes» sin explicar nada."
+
+[[mutation]]
+name = "mutación añadida al final de mutations.toml"
+file = "AGENTS.md"
+find = "AGENTS.md"
+replace = "X"
+caught_by = "check"
+expect = "x"
+'''
+caught_by = "tests.static.test_repo_wiring"
+expect = "[mutations-file-frozen]"
+why = "Con todas las mutaciones al final del mismo fichero, cada PR fusionado deja en conflicto a los demás."
