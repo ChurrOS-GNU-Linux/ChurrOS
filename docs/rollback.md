@@ -52,7 +52,8 @@ sudo churros-snapshot list --plain        # lista (tabla)
 sudo churros-snapshot list --json         # salida JSON (la usa Ajustes; sin opción, igual)
 sudo churros-snapshot info <stamp>        # metadatos de un snapshot
 sudo churros-snapshot delete <stamp>      # elimina un snapshot
-sudo churros-snapshot cleanup [KEEP]      # borra los más antiguos hasta dejar KEEP
+sudo churros-snapshot cleanup [KEEP]      # borra los automáticos más antiguos hasta dejar KEEP
+sudo churros-snapshot cleanup --dry-run [KEEP]   # vista previa: qué borraría y cuánto liberaría (no borra)
 sudo churros-snapshot restore -d <partición> <stamp>   # restaura desde la ISO live
 ```
 

@@ -1,0 +1,14 @@
+[[mutation]]
+name = "churros-snapshot: cleanup --dry-run borra de verdad"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = """
+    if [ "$dry" = yes ]; then
+        local s meta freed=0 n drop=()
+"""
+replace = """
+    if false; then
+        local s meta freed=0 n drop=()
+"""
+caught_by = "python3 scripts/test-privileged-helpers.py SnapshotRetention"
+expect = "[cleanup-dry-run]"
+why = "La vista previa tiene que poder usarse sin miedo: no escribe ni borra subvolúmenes (#342)."
