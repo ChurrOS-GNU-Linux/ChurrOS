@@ -109,10 +109,26 @@ zsh
 # ChurrOS XFCE Desktop
 # ===========================
 
-# GPU / Xorg / Mesa
+# GPU / Xorg / Mesa: hardware Vulkan ICDs plus virtio for virtual machines.
 mesa
 mesa-utils
+vulkan-icd-loader
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
 vulkan-virtio
+vulkan-tools
+lib32-mesa
+lib32-vulkan-icd-loader
+lib32-vulkan-intel
+lib32-vulkan-radeon
+lib32-vulkan-nouveau
+# Intel VA-API: iHD for Broadwell+ and i965 for older supported generations.
+intel-media-driver
+libva-intel-driver
+libva-utils
+# Hybrid laptop GPU discovery/offload integration.
+switcheroo-control
 xorg-server
 xorg-xinit
 xorg-xrandr
@@ -133,6 +149,7 @@ xfwm4
 xfce4-terminal
 xfce4-pulseaudio-plugin
 xfce4-power-manager
+power-profiles-daemon
 xfce4-screenshooter
 xfce4-taskmanager
 xfce4-notifyd
