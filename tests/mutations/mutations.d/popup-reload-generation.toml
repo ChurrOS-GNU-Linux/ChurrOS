@@ -1,0 +1,15 @@
+[[mutation]]
+name = "popup de red: una recarga vieja pisa el interruptor"
+file = "rust/popups/src/network.rs"
+find = '''            move |info| {
+                if generation != w.generation.get() {
+                    return;
+                }
+                *w.last.borrow_mut() = info;
+'''
+replace = '''            move |info| {
+                *w.last.borrow_mut() = info;
+'''
+caught_by = "tests.static.test_ui_does_not_block.NetworkPopupDoesNotBlock.test_reload_drops_a_stale_result"
+expect = "[popup:stale-reload]"
+why = "reload_async lanza un hilo por llamada. Si el de antes termina después, pinta el interruptor con un estado que el usuario ya cambió."

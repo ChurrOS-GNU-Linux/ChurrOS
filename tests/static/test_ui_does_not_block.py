@@ -131,6 +131,24 @@ class NetworkPopupDoesNotBlock(unittest.TestCase):
             "[popup:no-blocking-reload] falta la llamada a wifi::get().",
         )
 
+    def test_reload_drops_a_stale_result(self) -> None:
+        """Una recarga vieja no puede pintar el interruptor después de otra."""
+        body = self.code.split("fn reload_async", 1)
+        self.assertEqual(len(body), 2, "reload_async tiene que existir")
+        chunk = body[1].split("\n    fn ", 1)[0]
+        guard = chunk.find("generation != w.generation.get()")
+        assign = chunk.find("*w.last.borrow_mut() = info")
+        self.assertGreater(
+            guard, -1,
+            "[popup:stale-reload] el resultado de reload_async tiene que comparar "
+            "su generación con la actual antes de guardar el estado",
+        )
+        self.assertLess(
+            guard, assign,
+            "[popup:stale-reload] la comparación de generación tiene que ir antes "
+            "de escribir last: si no, una recarga vieja enciende el interruptor",
+        )
+
     def test_no_nmcli_call_outside_run_bg(self) -> None:
         """Ninguna llamada a wifi::* que ejecute nmcli en el hilo de UI."""
         blocking = (

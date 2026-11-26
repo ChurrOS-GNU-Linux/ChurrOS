@@ -52,6 +52,9 @@ struct WifiWidget {
     /// `set_active` durante el repintado no es un clic: si no, el handler
     /// volvería a llamar a nmcli.
     applying: Cell<bool>,
+    /// Cada reload_async sube el contador. Un resultado de una recarga
+    /// anterior no pisa el interruptor ni la lista.
+    generation: Cell<u64>,
 }
 
 impl WifiWidget {
@@ -102,6 +105,7 @@ impl WifiWidget {
             last: RefCell::new(WifiInfo::default()),
             page: RefCell::new(None),
             applying: Cell::new(false),
+            generation: Cell::new(0),
         }
     }
 
@@ -165,6 +169,8 @@ impl WifiWidget {
     /// congelada si se llaman desde un callback. Aquí van a un hilo y solo el
     /// repintado ocurre en el hilo de UI.
     fn reload_async(self: &Rc<Self>) {
+        let generation = self.generation.get().wrapping_add(1);
+        self.generation.set(generation);
         let w = self.clone();
         crate::popup::run_bg(
             || {
@@ -173,6 +179,9 @@ impl WifiWidget {
                 info
             },
             move |info| {
+                if generation != w.generation.get() {
+                    return;
+                }
                 *w.last.borrow_mut() = info;
                 w.repaint();
             },
