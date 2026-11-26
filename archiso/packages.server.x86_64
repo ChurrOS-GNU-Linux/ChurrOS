@@ -80,6 +80,17 @@ md4c
 mdadm
 mesa
 mesa-utils
+vulkan-icd-loader
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
+vulkan-virtio
+vulkan-tools
+intel-media-driver
+libva-intel-driver
+libva-utils
+switcheroo-control
+power-profiles-daemon
 mkinitcpio
 mkinitcpio-archiso
 mkinitcpio-nfs-utils
@@ -159,7 +170,6 @@ usbutils
 vim
 virtualbox-guest-utils-nox
 vpnc
-vulkan-virtio
 wireless-regdb
 wireless_tools
 wpa_supplicant
