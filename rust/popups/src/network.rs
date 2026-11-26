@@ -52,9 +52,14 @@ struct WifiWidget {
     /// `set_active` durante el repintado no es un clic: si no, el handler
     /// volvería a llamar a nmcli.
     applying: Cell<bool>,
-    /// Cada reload_async sube el contador. Un resultado de una recarga
-    /// anterior no pisa el interruptor ni la lista.
+    /// Cada reload_async que de verdad arranca sube el contador. Un
+    /// resultado de una recarga anterior no pisa el interruptor ni la lista.
     generation: Cell<u64>,
+    /// Una sola recarga a la vez. Si llega otra mientras esa corre, queda
+    /// pendiente y se lanza al terminar: si no, el sondeo de 3 s sube la
+    /// generación antes de que nmcli acabe y el resultado nunca se pinta.
+    reloading: Cell<bool>,
+    reload_pending: Cell<bool>,
 }
 
 impl WifiWidget {
@@ -106,6 +111,8 @@ impl WifiWidget {
             page: RefCell::new(None),
             applying: Cell::new(false),
             generation: Cell::new(0),
+            reloading: Cell::new(false),
+            reload_pending: Cell::new(false),
         }
     }
 
@@ -169,6 +176,11 @@ impl WifiWidget {
     /// congelada si se llaman desde un callback. Aquí van a un hilo y solo el
     /// repintado ocurre en el hilo de UI.
     fn reload_async(self: &Rc<Self>) {
+        if self.reloading.get() {
+            self.reload_pending.set(true);
+            return;
+        }
+        self.reloading.set(true);
         let generation = self.generation.get().wrapping_add(1);
         self.generation.set(generation);
         let w = self.clone();
@@ -179,11 +191,15 @@ impl WifiWidget {
                 info
             },
             move |info| {
-                if generation != w.generation.get() {
-                    return;
+                w.reloading.set(false);
+                let again = w.reload_pending.replace(false);
+                if generation == w.generation.get() {
+                    *w.last.borrow_mut() = info;
+                    w.repaint();
                 }
-                *w.last.borrow_mut() = info;
-                w.repaint();
+                if again {
+                    w.reload_async();
+                }
             },
         );
     }
