@@ -1,15 +1,15 @@
 [[mutation]]
 name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut vivo durante repaint)"
 file = "rust/popups/src/network.rs"
-find = '''            move |info| {
-                *w.last.borrow_mut() = info;
-                w.repaint();
-            },'''
-replace = '''            move |info| {
-                let mut last = w.last.borrow_mut();
-                *last = info;
-                w.repaint();
-            },'''
+find = '''                if generation == w.generation.get() {
+                    *w.last.borrow_mut() = info;
+                    w.repaint();
+                }'''
+replace = '''                if generation == w.generation.get() {
+                    let mut last = w.last.borrow_mut();
+                    *last = info;
+                    w.repaint();
+                }'''
 
 caught_by = "python3 scripts/test-gui-smoke.py -k 'churros-popup network'"
 expect = "FALLO churros-popup network"

@@ -23,6 +23,9 @@ snapshots anidados.
   transacción de pacman que instale, actualice o quite paquetes (también las
   que lanza `yay`). Si el snapshot falla (p. ej. el sistema no es btrfs), la
   transacción continúa igual.
+- `churros-update-utils` crea otro (`churros-utils-pre-<versión>`) justo antes
+  de instalar el bundle de utilidades, que no pasa por pacman. Ahí, en btrfs, un
+  snapshot fallido para la actualización: no se instala nada sin punto de vuelta.
 - Con el particionado por defecto (la ESP se monta en `/boot/efi`), `/boot`
   está dentro de `@`: restaurar también devuelve el kernel y el initramfs del
   snapshot. Esos ficheros siguen sin compresión (`/boot` tiene
@@ -60,7 +63,27 @@ sea btrfs); desde la ISO se usa el procedimiento de abajo.
 ## Restaurar
 
 El subvolumen raíz está montado en uso, así que **no se puede restaurar desde
-el sistema en marcha**. Para volver a un snapshot:
+el sistema en marcha**: se hace desde el USB (la ISO live).
+
+### Guiado (USB 1.5.7 o posterior)
+
+Arranca el USB, abre una terminal y ejecuta:
+
+```bash
+sudo churros-snapshot restore
+```
+
+Busca las particiones btrfs con `@` y `@snapshots` (si hay un disco cifrado,
+pregunta si abrirlo con `cryptsetup open`, que no borra nada), enseña los
+snapshots en **solo lectura** con su fecha, motivo y kernel, explica qué va a
+pasar y no toca nada hasta que escribes `RESTAURAR`. Restaura con el mismo
+código que `restore -d` y comprueba en el disco que `@` es el snapshot y que el
+estado anterior quedó en `@broken-<fecha>` (#327).
+
+El modo guiado va en el `churros-snapshot` del USB, no en el del sistema
+instalado: un USB 1.5.5 o anterior no lo trae. Con esos, a mano:
+
+### A mano
 
 1. Arranca la ISO live de ChurrOS y abre una terminal.
 2. Busca la **partición** btrfs del sistema instalado: es la que `lsblk -f`

@@ -2,7 +2,7 @@
 // network.rs — popup de red (port de network/window.py + widgets)
 // ==========================================
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use churros_services::ethernet;
@@ -49,6 +49,17 @@ struct WifiWidget {
     sw: gtk::Switch,
     last: RefCell<WifiInfo>,
     page: RefCell<Option<gtk::Box>>,
+    /// `set_active` durante el repintado no es un clic: si no, el handler
+    /// volvería a llamar a nmcli.
+    applying: Cell<bool>,
+    /// Cada reload_async que de verdad arranca sube el contador. Un
+    /// resultado de una recarga anterior no pisa el interruptor ni la lista.
+    generation: Cell<u64>,
+    /// Una sola recarga a la vez. Si llega otra mientras esa corre, queda
+    /// pendiente y se lanza al terminar: si no, el sondeo de 3 s sube la
+    /// generación antes de que nmcli acabe y el resultado nunca se pinta.
+    reloading: Cell<bool>,
+    reload_pending: Cell<bool>,
 }
 
 impl WifiWidget {
@@ -71,10 +82,10 @@ impl WifiWidget {
         title.add_css_class("section-title");
         network_page.append(&title);
 
-        // El estado ya lo cargó wire() con su run_bg: pasar la copia evita
-        // otra tanda de nmcli aquí, que retrasaba la apertura del popup
-        // (auditoría A4).
-        let (toggle, sw) = toggle_widget(&wifi.snapshot());
+        // wire() todavía no ha corrido: no hay snapshot, y wifi::get() aquí
+        // encadenaría nmcli en el hilo de GTK (auditoría A4). El interruptor
+        // sale apagado y repaint() lo pone al día cuando reload_async termina.
+        let (toggle, sw) = toggle_widget(&WifiInfo::default());
         network_page.append(&toggle);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -98,6 +109,10 @@ impl WifiWidget {
             sw,
             last: RefCell::new(WifiInfo::default()),
             page: RefCell::new(None),
+            applying: Cell::new(false),
+            generation: Cell::new(0),
+            reloading: Cell::new(false),
+            reload_pending: Cell::new(false),
         }
     }
 
@@ -106,6 +121,9 @@ impl WifiWidget {
 
         let wifi2 = wifi.clone();
         self.sw.connect_state_set(move |_, state| {
+            if wifi2.applying.get() {
+                return glib::Propagation::Proceed;
+            }
             let w = wifi2.clone();
             crate::popup::run_bg(
                 move || {
@@ -158,6 +176,13 @@ impl WifiWidget {
     /// congelada si se llaman desde un callback. Aquí van a un hilo y solo el
     /// repintado ocurre en el hilo de UI.
     fn reload_async(self: &Rc<Self>) {
+        if self.reloading.get() {
+            self.reload_pending.set(true);
+            return;
+        }
+        self.reloading.set(true);
+        let generation = self.generation.get().wrapping_add(1);
+        self.generation.set(generation);
         let w = self.clone();
         crate::popup::run_bg(
             || {
@@ -166,10 +191,26 @@ impl WifiWidget {
                 info
             },
             move |info| {
-                *w.last.borrow_mut() = info;
-                w.repaint();
+                w.reloading.set(false);
+                let again = w.reload_pending.replace(false);
+                if generation == w.generation.get() {
+                    *w.last.borrow_mut() = info;
+                    w.repaint();
+                }
+                if again {
+                    w.reload_async();
+                }
             },
         );
+    }
+
+    fn apply_switch(&self, info: &WifiInfo) {
+        self.applying.set(true);
+        self.sw.set_sensitive(info.available);
+        if info.available {
+            self.sw.set_active(info.enabled);
+        }
+        self.applying.set(false);
     }
 
     /// Dibuja el estado ya cargado en `last`.
@@ -177,6 +218,7 @@ impl WifiWidget {
         clear_children(&self.list);
 
         let state = self.last.borrow().clone();
+        self.apply_switch(&state);
         if !state.available {
             self.show_message("No Wi-Fi adapter detected.");
             return;
@@ -265,13 +307,14 @@ impl WifiWidget {
     fn forget_network(self: &Rc<Self>, network: &Network) {
         let w = self.clone();
         let ssid = network.ssid.clone();
+        let name = ssid.clone();
         crate::popup::run_bg(
             move || wifi::forget(&ssid),
             move |ok| {
                 // Antes el fallo se descartaba y la red reaparecia como
                 // guardada sin explicacion (auditoria V5).
                 if !ok {
-                    w.show_message(&format!("No se pudo olvidar {ssid}."));
+                    w.show_message(&format!("No se pudo olvidar {name}."));
                 }
                 w.reload_async();
             },

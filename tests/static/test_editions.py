@@ -459,6 +459,38 @@ class PackageListTest(unittest.TestCase):
                     f"{item.id}: {item.package_list} instala también 'linux': dos kernels y dos entradas en GRUB")
         testlib.assert_findings(self, "edition-kernel", findings)
 
+    def test_x86_64_desktops_ship_hardware_gpu_drivers(self):
+        """Every x86_64 desktop ISO carries open Vulkan drivers for the laptop GPU vendors.
+
+        Vulkan-virtio only covers virtual GPUs; it cannot stand in for Intel,
+        AMD or Nouveau ICDs on physical laptops. Keep the 32-bit ICDs in the
+        consumer desktop editions as well, so 32-bit Vulkan apps can use them.
+        """
+        hardware_icds = {"vulkan-intel", "vulkan-radeon", "vulkan-nouveau"}
+        media_tools = {"intel-media-driver", "libva-intel-driver", "libva-utils"}
+        findings = {}
+        for item in testlib.EDITIONS:
+            if item.arch != "x86_64" or item.desktop not in ("niri", "xfce"):
+                continue
+            have = testlib.packages(item)
+            for package in sorted(hardware_icds | media_tools | {"vulkan-tools", "switcheroo-control"}):
+                if package not in have:
+                    findings[f"edition-gpu:{item.id}:{package}"] = (
+                        f"{item.id}: falta '{package}' en {item.package_list}; "
+                        "la ISO debe traer drivers GPU/diagnóstico para hardware físico")
+            if item.name in ("niri", "xfce"):
+                for package in sorted({"lib32-vulkan-icd-loader", "lib32-vulkan-intel",
+                                       "lib32-vulkan-radeon", "lib32-vulkan-nouveau"}):
+                    if package not in have:
+                        findings[f"edition-gpu:{item.id}:{package}"] = (
+                            f"{item.id}: falta '{package}' en {item.package_list}; "
+                            "las apps Vulkan de 32 bits deben poder usar la GPU física")
+            if item.name in ("xfce", "server") and "power-profiles-daemon" not in have:
+                findings[f"edition-gpu:{item.id}:power-profiles-daemon"] = (
+                    f"{item.id}: falta 'power-profiles-daemon' en {item.package_list}; "
+                    "Ajustes XFCE debe poder consultar/cambiar perfiles de energía")
+        testlib.assert_findings(self, "edition-gpu", findings)
+
     def test_required_packages(self):
         findings = {}
         initcpio = testlib.require_module(self, "yaml").safe_load(

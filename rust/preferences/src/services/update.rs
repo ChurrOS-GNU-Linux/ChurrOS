@@ -14,6 +14,26 @@ use serde_json::json;
 
 use crate::services::settings;
 
+/// `remote` es una versión estrictamente más nueva que `installed`
+/// (1.5.10 > 1.5.9 > 1.5). Igual que churros-update-utils, que ya no
+/// instala una versión más antigua: un updates.json viejo no se ofrece.
+/// Sin versión instalada legible, cualquier versión válida es nueva.
+pub(crate) fn version_is_newer(remote: &str, installed: &str) -> bool {
+    fn parts(v: &str) -> Option<Vec<u64>> {
+        v.trim().split('.').map(|p| p.parse().ok()).collect()
+    }
+    match (parts(remote), parts(installed)) {
+        (None, _) => false,
+        (Some(_), None) => true,
+        (Some(mut r), Some(mut i)) => {
+            let len = r.len().max(i.len());
+            r.resize(len, 0);
+            i.resize(len, 0);
+            r > i
+        }
+    }
+}
+
 pub struct UpdateService;
 
 /// Release de utilidades de ChurrOS (del updates.json del servidor).
@@ -429,10 +449,10 @@ impl UpdateService {
         )
         .ok_or(CheckFailed)?;
         let update = parse_updates_json(&out).ok_or(CheckFailed)?;
-        if update.version == Self::installed_churros_version() {
-            Ok(None)
-        } else {
+        if version_is_newer(&update.version, &Self::installed_churros_version()) {
             Ok(Some(update))
+        } else {
+            Ok(None)
         }
     }
 
@@ -462,8 +482,10 @@ impl UpdateService {
         }
         // El código de salida importa: `run` devuelve None en timeout o error
         // de ejecución, y un pacman que falla no da la lista de paquetes.
-        let (query_code, query) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
-        let (sync_code, sync) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
+        // RunOut es (código, stdout, stderr). La lista sale por stdout; el
+        // código de salida distingue «no hay nada» de «pacman no pudo mirar».
+        let (query_code, query, _) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
+        let (sync_code, sync, _) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
         if query_code != 0 || sync_code != 0 {
             return None;
         }
@@ -661,6 +683,20 @@ impl UpdateService {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn only_a_newer_churros_version_is_offered() {
+        // [updates-only-newer] una copia vieja de updates.json no ofrece bajar de versión
+        assert!(version_is_newer("1.5.6", "1.5.5"));
+        assert!(version_is_newer("1.5.10", "1.5.9"));
+        assert!(version_is_newer("1.6", "1.5.9"));
+        assert!(version_is_newer("1.5.1", "1.5"));
+        assert!(version_is_newer("1.5.5", ""), "sin versión instalada");
+        assert!(!version_is_newer("1.5.5", "1.5.6"), "[updates-only-newer] ofrece bajar de versión");
+        assert!(!version_is_newer("1.5.6", "1.5.6"));
+        assert!(!version_is_newer("1.5", "1.5.0"));
+        assert!(!version_is_newer("x", "1.5"));
+    }
     use super::*;
 
     #[test]

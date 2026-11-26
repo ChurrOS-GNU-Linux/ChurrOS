@@ -449,7 +449,11 @@ El origen está **fijado en el binario** y el comando no acepta argumentos: una 
 
 La extracción se hace en un directorio de stage y después se instala fichero a fichero: modo 0755 o 0644, temporal en el directorio de destino y `rename` atómico. Los directorios existentes no se tocan; antes, `cp -a` copiaba el modo 0700 del stage sobre `/` (#130).
 
-El manifiesto se descarga antes de verificar su firma (#139). Si existe `/usr/share/churros/churros-release.pubkey`, el manifiesto debe venir firmado por minisign y la actualización se aborta si la firma no valida o si falta `minisign`. Sin clave publicada solo se avisa; que la firma sea obligatoria está pendiente (#139, #141).
+El manifiesto se descarga antes de verificar su firma (#139). La firma minisign es obligatoria: sin `/usr/share/churros/churros-release.pubkey`, sin `updates.json.minisig` o con una firma que no valida, se aborta. Si falta `minisign`, como root se instala desde Arch (la 1.4 no lo traía).
+
+Solo se instala una versión **más nueva** que la de `/etc/churros-version` (orden numérico: 1.5.10 > 1.5.9 > 1.5). Un `updates.json` antiguo también tiene una firma válida, y una caché (Cloudflare guarda el manifiesto una hora) puede servir el de la versión anterior; antes bastaba con que la versión fuera distinta y el equipo bajaba de versión. Ajustes y el aviso diario usan la misma regla.
+
+Antes de instalar el bundle, ya validado, se crea un snapshot (`churros-snapshot create churros-utils-pre-<versión>`): el hook de pacman solo cubre las transacciones de pacman. En btrfs, si el snapshot falla no se instala nada; en ext4 se instala avisando de que no hay rollback.
 
 Antes del bundle, y solo como root fuera del Live, hace dos cosas más:
 

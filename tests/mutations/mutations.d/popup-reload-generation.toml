@@ -1,0 +1,31 @@
+[[mutation]]
+name = "popup de red: una recarga vieja pisa el interruptor"
+file = "rust/popups/src/network.rs"
+find = '''            move |info| {
+                w.reloading.set(false);
+                let again = w.reload_pending.replace(false);
+                if generation == w.generation.get() {
+                    *w.last.borrow_mut() = info;
+'''
+replace = '''            move |info| {
+                w.reloading.set(false);
+                let again = w.reload_pending.replace(false);
+                if true {
+                    *w.last.borrow_mut() = info;
+'''
+caught_by = "tests.static.test_ui_does_not_block.NetworkPopupDoesNotBlock.test_reload_drops_a_stale_result"
+expect = "[popup:stale-reload]"
+why = "reload_async lanza un hilo por llamada. Si el de antes termina después, pinta el interruptor con un estado que el usuario ya cambió."
+
+[[mutation]]
+name = "popup de red: el sondeo arranca otra recarga encima de la que sigue"
+file = "rust/popups/src/network.rs"
+find = '''        if self.reloading.get() {
+            self.reload_pending.set(true);
+            return;
+        }
+'''
+replace = ""
+caught_by = "tests.static.test_ui_does_not_block.NetworkPopupDoesNotBlock.test_reload_drops_a_stale_result"
+expect = "[popup:reload-overlap]"
+why = "Con nmcli más lento que el sondeo de 3 s, cada sondeo sube la generación y el resultado anterior se tira: el interruptor no se entera nunca."

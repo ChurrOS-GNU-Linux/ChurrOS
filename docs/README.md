@@ -15,6 +15,7 @@ Hay una [guía inicial de uso](user-guide.md) para probar, instalar, actualizar 
 | [Rollback](rollback.md) | Recuperar el sistema con los snapshots Btrfs cuando una actualización falla. |
 | [Server](server.md) | Qué instala y qué activa la edición servidor, y qué tienes que configurar tú. |
 | [Login Greeter](login-greeter.md) | Pantalla de inicio de sesión (greetd + ReGreet): qué sesión arranca cada edición y dónde se configura. |
+| [Gráficos, GPU y laptops](hardware-graphics.md) | Drivers x86_64 incluidos, alcance de Vulkan/VA-API, límites de NVIDIA y diagnóstico en equipos reales. |
 
 Para preguntas y ayuda: [issues de GitHub](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues).
 
