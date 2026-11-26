@@ -147,4 +147,4 @@ La edición pi no entra en este control, porque su lista es `packages.pi.aarch64
 | [`docs/build-system.md`](build-system.md) | La construcción de la ISO, incluido `apply-calamares.sh` |
 | [`docs/server.md`](server.md) | La edición server en detalle |
 | [`docs/privileged-execution.md`](privileged-execution.md) | Qué comandos pueden obtener privilegio y con qué reglas |
-| [`docs/rollback.md`](rollback.md) | Snapshots btrfs que crea el hook de pacman en el sistema instalado (el instalador no crea un snapshot inicial) |
+| [`docs/rollback.md`](rollback.md) | Snapshots btrfs del sistema instalado: el inicial que deja el instalador (razón `instalacion`) y los que crea el hook de pacman |

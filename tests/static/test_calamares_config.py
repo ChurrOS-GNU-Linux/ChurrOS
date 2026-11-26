@@ -33,6 +33,7 @@ from functools import lru_cache
 import hashlib
 import os
 from pathlib import Path
+import fnmatch
 import re
 import shlex
 import shutil
@@ -1289,6 +1290,24 @@ class CalamaresConfigTest(unittest.TestCase):
         self.assertIn("qt6-declarative", targets, "[calamares-deps-removed]")
         verify = next(i for i, c in enumerate(commands) if c.endswith("/verify-install"))
         self.assertLess(commands.index(removal[0]), verify, "verify-install tiene que ver el sistema final")
+
+    def test_install_ends_with_an_initial_snapshot_that_cannot_fail_it(self):
+        """#324: el último paso deja un snapshot «recién instalado», solo en btrfs."""
+        cleanup = self.load(CALAMARES / "modules/shellprocess-cleanup.conf")
+        commands = [command for command, _ in command_entries(cleanup.get("script")) if command]
+        snapshot = [c for c in commands if "churros-snapshot create" in c]
+        self.assertEqual(len(snapshot), 1, "[initial-snapshot] post-install no crea el snapshot inicial")
+        self.assertIs(commands[-1], snapshot[0],
+                      "[initial-snapshot] tiene que ser el último paso: si no, el snapshot no recoge lo que viene después")
+        command, ignored = strip_ignore(snapshot[0])
+        self.assertTrue(ignored, "[initial-snapshot] un fallo del snapshot no puede romper la instalación (falta el '-')")
+        self.assertRegex(command, r"^findmnt -t btrfs / >/dev/null && ",
+                         "[initial-snapshot] solo en btrfs; en ext4 se omite")
+        reason = re.search(r"churros-snapshot create (\S+)", command).group(1)
+        snapshot_tool = testlib.read_text(testlib.AIROOTFS / "usr/local/bin/churros-snapshot")
+        automatic = re.search(r"is_automatic\(\) \{.*?case \"\$1\" in\s*(\S+)\)", snapshot_tool, re.S).group(1)
+        self.assertFalse(any(fnmatch.fnmatch(reason, pattern) for pattern in automatic.split("|")),
+                         f"[initial-snapshot] la razón '{reason}' es automática: la retención lo borraría")
 
     def test_boot_nocow_fails_closed_only_on_btrfs(self):
         config = self.load(CALAMARES / "modules/shellprocess-boot-nocow.conf")

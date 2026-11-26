@@ -1,0 +1,17 @@
+[[mutation]]
+name = "instalador: el snapshot inicial puede romper la instalación"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = '  - command: "-findmnt -t btrfs / >/dev/null && /usr/local/bin/churros-snapshot create instalacion'
+replace = '  - command: "findmnt -t btrfs / >/dev/null && /usr/local/bin/churros-snapshot create instalacion'
+caught_by = "tests.static.test_calamares_config"
+expect = "[initial-snapshot]"
+why = "Sin espacio en btrfs, la instalación entera fallaría al final por un snapshot opcional (#324)."
+
+[[mutation]]
+name = "instalador: el snapshot inicial usa una razón automática"
+file = "installer/calamares/modules/shellprocess-cleanup.conf"
+find = "churros-snapshot create instalacion"
+replace = "churros-snapshot create pacman-pre"
+caught_by = "tests.static.test_calamares_config"
+expect = "[initial-snapshot]"
+why = "La retención lo borraría tras unas cuantas actualizaciones y se perdería el punto «recién instalado» (#324)."
