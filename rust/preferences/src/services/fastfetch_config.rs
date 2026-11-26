@@ -456,7 +456,7 @@ impl FastfetchConfig {
         }
         new_modules.extend(footer);
 
-        let mut root = object_at(&mut cfg, &[]);
+        let root = object_at(&mut cfg, &[]);
         root.insert("modules".to_string(), Value::Array(new_modules));
         write_config(&cfg);
     }

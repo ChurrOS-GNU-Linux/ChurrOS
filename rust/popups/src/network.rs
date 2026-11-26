@@ -52,11 +52,6 @@ struct WifiWidget {
 }
 
 impl WifiWidget {
-    /// Copia del último estado cargado, sin volver a ejecutar nmcli.
-    fn snapshot(&self) -> WifiInfo {
-        self.last.borrow().clone()
-    }
-
     fn new() -> Self {
         let stack = gtk::Stack::new();
         stack.set_hexpand(true);
@@ -71,10 +66,10 @@ impl WifiWidget {
         title.add_css_class("section-title");
         network_page.append(&title);
 
-        // El estado ya lo cargó wire() con su run_bg: pasar la copia evita
-        // otra tanda de nmcli aquí, que retrasaba la apertura del popup
-        // (auditoría A4).
-        let (toggle, sw) = toggle_widget(&wifi.snapshot());
+        // Sin nmcli aquí (retrasaba la apertura del popup, auditoría A4): el
+        // interruptor empieza con el estado por defecto y sync_switch lo pone
+        // en su sitio cuando reload_async (lanzado por wire) trae el real.
+        let (toggle, sw) = toggle_widget(&WifiInfo::default());
         network_page.append(&toggle);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -106,6 +101,11 @@ impl WifiWidget {
 
         let wifi2 = wifi.clone();
         self.sw.connect_state_set(move |_, state| {
+            // sync_switch mueve el interruptor al estado real: eso no es una
+            // orden del usuario y no tiene que encender ni apagar nada.
+            if state == wifi2.last.borrow().enabled {
+                return glib::Propagation::Proceed;
+            }
             let w = wifi2.clone();
             crate::popup::run_bg(
                 move || {
@@ -167,9 +167,19 @@ impl WifiWidget {
             },
             move |info| {
                 *w.last.borrow_mut() = info;
+                w.sync_switch();
                 w.repaint();
             },
         );
+    }
+
+    /// El interruptor sigue al estado cargado (con `last` ya actualizado, el
+    /// manejador de connect_state_set lo ignora).
+    fn sync_switch(&self) {
+        let on = self.last.borrow().enabled;
+        if self.sw.is_active() != on {
+            self.sw.set_active(on);
+        }
     }
 
     /// Dibuja el estado ya cargado en `last`.
@@ -265,8 +275,9 @@ impl WifiWidget {
     fn forget_network(self: &Rc<Self>, network: &Network) {
         let w = self.clone();
         let ssid = network.ssid.clone();
+        let forgotten = ssid.clone();
         crate::popup::run_bg(
-            move || wifi::forget(&ssid),
+            move || wifi::forget(&forgotten),
             move |ok| {
                 // Antes el fallo se descartaba y la red reaparecia como
                 // guardada sin explicacion (auditoria V5).
