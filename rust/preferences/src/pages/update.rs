@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 
-use crate::services::update::{CheckFailed, Snapshot, UpdateService};
+use crate::services::update::{root_space, snapshot_summary, CheckFailed, Snapshot, SnapshotList, UpdateService};
 use crate::widgets::combo_row::ComboRow;
 use crate::widgets::group::Group;
 use crate::widgets::page::Page;
@@ -609,31 +609,51 @@ fn append_log(log_view: &Rc<RefCell<Option<gtk::TextView>>>, text: &str) {
 // ------------------------------------------------------------ rollback UI
 
 fn refresh_snapshots(snap_box: Rc<gtk::Box>) {
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<Snapshot>>();
+    let (tx, rx) = std::sync::mpsc::channel::<(SnapshotList, Option<(u64, u64)>)>();
     std::thread::spawn(move || {
         let list = UpdateService::list_snapshots();
-        let _ = tx.send(list);
+        let _ = tx.send((list, root_space()));
     });
 
     glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
         match rx.try_recv() {
-            Ok(list) => {
+            Ok((result, space)) => {
                 while let Some(child) = snap_box.first_child() {
                     snap_box.remove(&child);
                 }
-                if list.is_empty() {
-                    let empty = gtk::Label::new(Some("Sin snapshots todavía."));
-                    empty.add_css_class("row-subtitle");
-                    empty.set_xalign(0.0);
-                    empty.set_margin_top(10);
-                    empty.set_margin_bottom(10);
-                    empty.set_margin_start(14);
-                    empty.set_margin_end(14);
-                    snap_box.append(&empty);
-                } else {
-                    for snap in &list {
-                        let row = build_snapshot_row(snap, Rc::clone(&snap_box));
-                        snap_box.append(row.widget());
+                let note = |text: &str| {
+                    let label = gtk::Label::new(Some(text));
+                    label.add_css_class("row-subtitle");
+                    label.set_xalign(0.0);
+                    label.set_wrap(true);
+                    label.set_margin_top(10);
+                    label.set_margin_bottom(10);
+                    label.set_margin_start(14);
+                    label.set_margin_end(14);
+                    label
+                };
+                match result {
+                    SnapshotList::NotBtrfs => snap_box.append(&note(
+                        "Este sistema no está instalado en btrfs: no hay snapshots ni vuelta atrás.",
+                    )),
+                    SnapshotList::Failed => snap_box.append(&note(
+                        "No se pudo leer la lista de snapshots (¿se canceló la contraseña?). \
+                         Vuelve a abrir esta página para intentarlo.",
+                    )),
+                    SnapshotList::Ready(list) => {
+                        let summary = Row::new(
+                            "Espacio y antigüedad",
+                            Some(&snapshot_summary(&list, space)),
+                            Some("system.svg"),
+                            None,
+                            None,
+                            None,
+                        );
+                        snap_box.append(summary.widget());
+                        for snap in &list {
+                            let row = build_snapshot_row(snap, Rc::clone(&snap_box));
+                            snap_box.append(row.widget());
+                        }
                     }
                 }
                 glib::ControlFlow::Break

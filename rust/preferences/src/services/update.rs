@@ -59,6 +59,103 @@ pub struct Snapshot {
     pub date: String,
 }
 
+/// Resultado de listar snapshots: Ajustes distingue «no hay», «no se pudo
+/// leer» y «el sistema no está en btrfs» (#338).
+#[derive(Debug, Clone, PartialEq)]
+pub enum SnapshotList {
+    Ready(Vec<Snapshot>),
+    NotBtrfs,
+    Failed,
+}
+
+/// Como `is_automatic` de churros-snapshot: la retención solo borra estos.
+pub fn is_automatic_reason(reason: &str) -> bool {
+    reason == "pacman-pre" || reason.starts_with("churros-utils-pre-")
+}
+
+/// Tipo del sistema de ficheros montado en `/` según /proc/self/mounts
+/// (la última línea gana, como en el kernel).
+pub fn root_fstype(mounts: &str) -> Option<String> {
+    mounts
+        .lines()
+        .rev()
+        .find_map(|line| {
+            let mut f = line.split_whitespace();
+            let (_, target, fstype) = (f.next()?, f.next()?, f.next()?);
+            (target == "/").then(|| fstype.to_string())
+        })
+}
+
+fn human_bytes(bytes: u64) -> String {
+    let units = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let (mut value, mut i) = (bytes as f64, 0);
+    while value >= 1024.0 && i < units.len() - 1 {
+        value /= 1024.0;
+        i += 1;
+    }
+    if i == 0 { format!("{bytes} B") } else { format!("{value:.1} {}", units[i]).replace('.', ",") }
+}
+
+/// Resumen de la lista de snapshots para Ajustes. No suma tamaños: en btrfs
+/// los snapshots comparten bloques y no hay un «cuánto ocupan» exacto sin
+/// recorrer cada uno (segundos por snapshot); eso lo da
+/// `churros-snapshot cleanup --dry-run` (#338).
+pub fn snapshot_summary(list: &[Snapshot], space: Option<(u64, u64)>) -> String {
+    let auto = list.iter().filter(|s| is_automatic_reason(&s.reason)).count();
+    let manual = list.len() - auto;
+    let mut text = match list.len() {
+        0 => "Ningún snapshot todavía.".to_string(),
+        n => {
+            let oldest = list.iter().map(|s| s.date.as_str()).filter(|d| !d.is_empty()).min().unwrap_or("?");
+            let plural = |k: usize, one: &str, many: &str| format!("{k} {}", if k == 1 { one } else { many });
+            format!(
+                "{} ({}, {}); el más antiguo es del {oldest}.",
+                plural(n, "snapshot", "snapshots"),
+                plural(auto, "automático", "automáticos"),
+                plural(manual, "manual", "manuales")
+            )
+        }
+    };
+    if let Some((avail, total)) = space {
+        text.push_str(&format!(" Libre en el disco: {} de {} (aproximado en btrfs).", human_bytes(avail), human_bytes(total)));
+        if total > 0 && avail * 10 < total {
+            text.push_str(" Queda poco espacio: borra snapshots que no necesites.");
+        }
+    }
+    text.push_str(" Los snapshots comparten datos con el sistema, así que no se puede decir exactamente cuánto ocupan; \
+                   para ver cuánto liberaría la limpieza: sudo churros-snapshot cleanup --dry-run");
+    text
+}
+
+/// Espacio libre y total del sistema de ficheros de `/` (statvfs).
+pub fn root_space() -> Option<(u64, u64)> {
+    let path = std::ffi::CString::new("/").ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(path.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    let frsize = st.f_frsize as u64;
+    Some((st.f_bavail as u64 * frsize, st.f_blocks as u64 * frsize))
+}
+
+/// Parsea `churros-snapshot list --json`; None si no es una lista JSON.
+pub fn parse_snapshot_list(out: &str) -> Option<Vec<Snapshot>> {
+    let value = serde_json::from_str::<serde_json::Value>(out).ok()?;
+    Some(
+        value
+            .as_array()?
+            .iter()
+            .filter_map(|item| {
+                Some(Snapshot {
+                    stamp: item.get("stamp")?.as_str()?.to_string(),
+                    reason: item.get("reason").and_then(|r| r.as_str()).unwrap_or_default().to_string(),
+                    date: item.get("date").and_then(|d| d.as_str()).unwrap_or_default().to_string(),
+                })
+            })
+            .collect(),
+    )
+}
+
 /// Parsea el updates.json del servidor de releases, seleccionando la edición correspondiente
 /// (niri, xfce o server) si está definida en el mapa "editions", o usando los campos globales como fallback.
 fn parse_updates_json(raw: &str) -> Option<ChurrosUpdate> {
@@ -508,7 +605,11 @@ impl UpdateService {
     // ------------------------------------------------ snapshots (rollback)
 
     /// Lista los snapshots btrfs disponibles (vía churros-snapshot, root).
-    pub fn list_snapshots() -> Vec<Snapshot> {
+    pub fn list_snapshots() -> SnapshotList {
+        let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_default();
+        if root_fstype(&mounts).is_some_and(|fs| fs != "btrfs") {
+            return SnapshotList::NotBtrfs;
+        }
         let Some(out) = run_capture(
             &[
                 "churros-pkexec",
@@ -518,33 +619,14 @@ impl UpdateService {
             ],
             30,
         ) else {
-            return Vec::new();
+            return SnapshotList::Failed;
         };
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&out) else {
-            return Vec::new();
-        };
-        let Some(items) = value.as_array() else {
-            return Vec::new();
-        };
-        items
-            .iter()
-            .filter_map(|item| {
-                Some(Snapshot {
-                    stamp: item.get("stamp")?.as_str()?.to_string(),
-                    reason: item
-                        .get("reason")
-                        .and_then(|r| r.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    date: item
-                        .get("date")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                })
-            })
-            .collect()
+        match parse_snapshot_list(&out) {
+            Some(list) => SnapshotList::Ready(list),
+            None => SnapshotList::Failed,
+        }
     }
+
 
     /// Crea un snapshot btrfs manual (razón "manual").
     pub fn create_snapshot() -> bool {
@@ -698,6 +780,58 @@ mod tests {
         assert!(!version_is_newer("x", "1.5"));
     }
     use super::*;
+
+    fn snap(stamp: &str, reason: &str, date: &str) -> Snapshot {
+        Snapshot { stamp: stamp.into(), reason: reason.into(), date: date.into() }
+    }
+
+    #[test]
+    fn snapshot_summary_counts_and_never_sums_sizes() {
+        let list = vec![
+            snap("20261102-000000", "pacman-pre", "2026-11-02 00:00:00"),
+            snap("20261101-000000", "manual", "2026-11-01 00:00:00"),
+            snap("20261103-000000", "churros-utils-pre-1.5.7", "2026-11-03 00:00:00"),
+        ];
+        let text = snapshot_summary(&list, Some((50 << 30, 100 << 30)));
+        assert!(text.contains("3 snapshots (2 automáticos, 1 manual)"), "[snapshot-summary] {text}");
+        let one = snapshot_summary(&list[..1], None);
+        assert!(one.starts_with("1 snapshot (1 automático, 0 manuales)"), "[snapshot-summary] {one}");
+        assert!(text.contains("el más antiguo es del 2026-11-01"), "[snapshot-summary] {text}");
+        assert!(text.contains("Libre en el disco: 50,0 GiB de 100,0 GiB"), "[snapshot-summary] {text}");
+        assert!(text.contains("aproximado"), "[snapshot-summary] tiene que rotularse como estimación");
+        assert!(text.contains("cleanup --dry-run"), "[snapshot-summary] remite a la vista previa exacta");
+        assert!(!text.contains("Queda poco espacio"));
+        let low = snapshot_summary(&list, Some((5 << 30, 100 << 30)));
+        assert!(low.contains("Queda poco espacio"), "[snapshot-summary] avisa con menos del 10 % libre");
+        assert!(snapshot_summary(&[], None).starts_with("Ningún snapshot"), "[snapshot-summary] estado vacío");
+    }
+
+    #[test]
+    fn automatic_reasons_match_churros_snapshot() {
+        assert!(is_automatic_reason("pacman-pre"));
+        assert!(is_automatic_reason("churros-utils-pre-1.5.7"));
+        assert!(!is_automatic_reason("manual"));
+        assert!(!is_automatic_reason("antes-de-probar"));
+    }
+
+    #[test]
+    fn root_fstype_takes_the_last_mount_of_root() {
+        let mounts = "proc /proc proc rw 0 0\n/dev/sda2 / ext4 rw 0 0\n/dev/sda3 / btrfs rw,subvol=/@ 0 0\n";
+        assert_eq!(root_fstype(mounts).as_deref(), Some("btrfs"));
+        assert_eq!(root_fstype("/dev/sda2 / ext4 rw 0 0\n").as_deref(), Some("ext4"));
+        assert_eq!(root_fstype(""), None);
+    }
+
+    #[test]
+    fn snapshot_list_parse_failure_is_not_an_empty_list() {
+        // [snapshot-list-failed] un error (p. ej. pkexec denegado) no se enseña como «sin snapshots»
+        assert_eq!(parse_snapshot_list("[]"), Some(vec![]));
+        assert_eq!(parse_snapshot_list("no es json"), None, "[snapshot-list-failed]");
+        assert_eq!(
+            parse_snapshot_list(r#"[{"stamp":"20261101-000000","reason":"manual","date":"2026-11-01 00:00:00"}]"#),
+            Some(vec![snap("20261101-000000", "manual", "2026-11-01 00:00:00")])
+        );
+    }
 
     #[test]
     fn streamed_lines_keep_their_newline() {
