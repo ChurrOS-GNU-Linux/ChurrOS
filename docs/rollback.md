@@ -76,7 +76,9 @@ sudo churros-snapshot restore
 Busca las particiones btrfs con `@` y `@snapshots` (si hay un disco cifrado,
 pregunta si abrirlo con `cryptsetup open`, que no borra nada), enseña los
 snapshots en **solo lectura** con su fecha, motivo y kernel, explica qué va a
-pasar y no toca nada hasta que escribes `RESTAURAR`. Restaura con el mismo
+pasar y no toca nada hasta que escribes `RESTAURAR`. Antes pregunta si `/home`
+(tus archivos) también vuelve a esa fecha: por defecto **no**, y el resumen dice
+qué subvolúmenes se mueven (#333). Restaura con el mismo
 código que `restore -d` y comprueba en el disco que `@` es el snapshot y que el
 estado anterior quedó en `@broken-<fecha>` (#327).
 
@@ -103,15 +105,29 @@ instalado: un USB 1.5.5 o anterior no lo trae. Con esos, a mano:
    de una transacción.
 4. Restaura:
    ```bash
-   sudo churros-snapshot restore -d /dev/sdXN <stamp>
+   sudo churros-snapshot restore -d /dev/sdXN <stamp>             # sistema y /home
+   sudo churros-snapshot restore -d /dev/sdXN --sin-home <stamp>  # solo el sistema
    ```
 5. Reinicia: el sistema quedará en el estado del snapshot. El estado anterior
    queda resguardado como `@broken-<fecha>` (y `@home.broken-<fecha>`) por si
    hay que recuperar algo; se puede borrar después.
 
-**Ojo:** restaurar también devuelve `/home` al momento del snapshot. Lo que
-guardaste después no se pierde, pero ya no está en `/home`: sigue en
-`@home.broken-<fecha>`. Cópialo antes de borrar ese subvolumen.
+**`/home`:** `restore -d` sin opciones también devuelve `/home` al momento del
+snapshot (`--con-home` lo dice explícito); `--sin-home` lo deja como está y solo
+cambia el sistema. El modo guiado pregunta, y por defecto no lo toca.
+
+Si devolviste `/home`, lo que guardaste después no se pierde: sigue en
+`@home.broken-<fecha>`. Para recuperar un archivo, desde el sistema ya arrancado:
+
+```bash
+sudo mount -o subvolid=5 /dev/sdXN /mnt               # la misma partición de antes
+ls /mnt/@home.broken-*/<usuario>/                      # lo que había en tu carpeta
+cp -a /mnt/@home.broken-<fecha>/<usuario>/Documentos/informe.odt ~/Documentos/
+sudo umount /mnt
+```
+
+Cuando hayas copiado lo que necesitas, el respaldo se borra con
+`sudo btrfs subvolume delete /mnt/@home.broken-<fecha>` (con la partición montada).
 
 ## Interfaz
 

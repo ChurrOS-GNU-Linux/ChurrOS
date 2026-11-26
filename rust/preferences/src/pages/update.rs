@@ -175,7 +175,8 @@ pub fn build(navigator: gtk::Stack) -> Page {
               Te guía: busca el sistema (abre el disco si está cifrado), \
               enseña los snapshots de abajo con su fecha, explica qué pasará \
               y no toca nada hasta que escribas RESTAURAR. El sistema actual \
-              no se borra: queda en @broken-<fecha>. Necesita un USB 1.5.7 o \
+              no se borra: queda en @broken-<fecha>. Tus archivos (/home) solo \
+              vuelven atrás si lo pides. Necesita un USB 1.5.7 o \
               posterior; con uno anterior: sudo churros-snapshot restore -d \
               /dev/sdXN <stamp> (la partición btrfs, no el disco entero)."),
         Some("system.svg"),

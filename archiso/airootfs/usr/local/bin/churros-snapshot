@@ -13,10 +13,10 @@
 #   churros-snapshot info <stamp>
 #   churros-snapshot delete <stamp>
 #   churros-snapshot cleanup [KEEP]   (solo los automáticos; los manuales se quedan)
-#   churros-snapshot restore [-d DISPOSITIVO] <stamp>
+#   churros-snapshot restore [-d DISPOSITIVO] [--sin-home|--con-home] <stamp>
 #   churros-snapshot restore            (desde la ISO: guiado, pregunta todo)
 #
-# restore: intercambia @/@home por los del snapshot. El sistema en marcha no
+# restore: intercambia @ (y @home, salvo --sin-home) por los del snapshot. El sistema en marcha no
 # puede renombrar el subvolumen raíz montado: hay que arrancar desde la ISO
 # live y apuntar al disco instalado con -d.
 
@@ -263,8 +263,10 @@ cleanup() {
 
 # ---------------------------------------------------------------- restore
 
+# restore STAMP DEV [HOME]: HOME=yes también devuelve /home al snapshot (lo de
+# antes queda en @home.broken-*); HOME=no deja /home como está (#333).
 restore() {
-    local stamp="$1" dev="$2"
+    local stamp="$1" dev="$2" home="${3:-yes}"
     [ -n "$stamp" ] || usage 1
 
     if [ -z "$dev" ]; then
@@ -292,12 +294,13 @@ restore() {
     # en cada orden (visto al restaurar desde la ISO en una VM).
     rm -f -- "$TOP_MOUNT/@/var/lib/pacman/db.lck"
 
-    if [ -d "$src/home" ] && [ -d "$TOP_MOUNT/@home" ]; then
+    if [ "$home" = yes ] && [ -d "$src/home" ] && [ -d "$TOP_MOUNT/@home" ]; then
         mv "$TOP_MOUNT/@home" "$TOP_MOUNT/@home.$backup_stamp"
         btrfs subvol snapshot "$src/home" "$TOP_MOUNT/@home" >/dev/null
+        log "restaurado '$stamp': el sistema (@) y /home (@home) (respaldos: @$backup_stamp, @home.$backup_stamp)"
+    else
+        log "restaurado '$stamp': solo el sistema (@); /home no se ha tocado (respaldo: @$backup_stamp)"
     fi
-
-    log "restaurado '$stamp' como subvolumen raíz (respaldos: @$backup_stamp, @home.$backup_stamp)"
     log "reinicia el sistema para completar la restauración"
 }
 
@@ -424,18 +427,29 @@ guided_restore() {
     reason="$(meta_value "$meta" reason)"
     ro_umount
 
+    # /home son los archivos del usuario: por defecto no se tocan (#333).
+    local home=no home_line
+    case "$(ask "¿Devolver también /home (tus archivos) al $date? Solo si están dañados. [s/N]")" in
+        s|S|si|sí|Sí|SI) home=yes ;;
+    esac
+    if [ "$home" = yes ]; then
+        home_line="  - /home TAMBIÉN vuelve al $date. Lo que guardaste después sigue en
+    @home.broken-<fecha>: cópialo de ahí antes de borrar ese subvolumen."
+    else
+        home_line="  - /home NO se toca: tus archivos se quedan como están ahora."
+    fi
+
     cat >&2 <<EOF
 
 Vas a volver al snapshot del $date ($reason) en $dev:
-  - El sistema actual NO se borra: pasa a @broken-<fecha>.
-  - /home también vuelve al $date. Lo que guardaste después sigue en
-    @home.broken-<fecha>: cópialo de ahí antes de borrar ese subvolumen.
+  - El sistema (@) vuelve al $date. El actual NO se borra: pasa a @broken-<fecha>.
+$home_line
   - Al terminar, reinicia y quita el USB.
 EOF
     [ "$(ask "Escribe RESTAURAR para seguir (cualquier otra cosa cancela):")" = RESTAURAR ] \
         || { log "cancelado: no se ha tocado nada"; exit 0; }
 
-    restore "$stamp" "$dev"
+    restore "$stamp" "$dev" "$home"
 
     # Comprobar el resultado en el disco, no fiarse del mensaje.
     top_cleanup
@@ -480,12 +494,23 @@ case "$CMD" in
         shift
         dev=""
         stamp=""
+        # Sin opción, restore -d DEV STAMP sigue devolviendo también /home
+        # (como siempre y como está documentado); el mensaje dice qué movió.
+        home=yes
         while [ "$#" -gt 0 ]; do
             case "$1" in
                 -d)
                     [ "$#" -ge 2 ] || usage 1
                     dev="$2"
                     shift 2
+                    ;;
+                --sin-home)
+                    home=no
+                    shift
+                    ;;
+                --con-home)
+                    home=yes
+                    shift
                     ;;
                 *)
                     stamp="$1"
@@ -497,7 +522,7 @@ case "$CMD" in
             [ -z "$dev" ] || usage 1
             guided_restore
         else
-            restore "$stamp" "$dev"
+            restore "$stamp" "$dev" "$home"
         fi
         ;;
     ""|-h|--help)
