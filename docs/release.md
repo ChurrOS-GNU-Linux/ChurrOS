@@ -65,7 +65,7 @@ git push origin vX.Y
 
 ### 4. Sumas de verificación
 
-Un único `SHA256SUMS` cubre todas las ISO de la versión. La release v1.5 incluye el manifiesto (como `SHA256SUMS-1.5`), que también está publicado en el servidor oficial:
+Un único `SHA256SUMS` cubre todas las ISO de la versión. `scripts/upload-release.py --iso-only` lo genera y sube además una copia `SHA256SUMS-<versión>`, que no reemplaza ninguna publicación posterior: así las ISO anteriores, que el historial de la web sigue enlazando, se pueden seguir verificando (al publicar la 1.5.5 se reemplazó `SHA256SUMS` y las ISO 1.5 se quedaron sin suma en el servidor). La release v1.5 incluye el manifiesto (como `SHA256SUMS-1.5`), que también está publicado en el servidor oficial:
 
 ```bash
 cd release/iso
