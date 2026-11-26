@@ -1823,6 +1823,11 @@ class MutationsTest(unittest.TestCase):
             f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones (máx. "
             f"{run_mutations.MUTATIONS_FILE_MAX}): pon las nuevas en tests/mutations/mutations.d/<tema>.toml, "
             "un fichero por PR, para que los PR no choquen entre sí al final del fichero")
+        self.assertEqual(
+            count, run_mutations.MUTATIONS_FILE_MAX,
+            f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones "
+            f"pero MUTATIONS_FILE_MAX es {run_mutations.MUTATIONS_FILE_MAX}: bájalo en el mismo cambio. "
+            "Con hueco, una mutación añadida al final sigue en verde")
 
     def test_mutations_d_files_are_loaded_and_names_stay_unique(self):
         from tests.mutations import run_mutations
