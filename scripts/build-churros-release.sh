@@ -107,8 +107,9 @@ for crate_dir in "$RUST_DIR"/*/; do
         echo "Error: cargo no produjo el binario desplegable $binary" >&2
         exit 1
     }
-    cp "$binary" "$STAGE/usr/bin/$crate_name"
-    STAGED_BINARIES+=("$STAGE/usr/bin/$crate_name")
+    dest="$STAGE/usr/bin/$crate_name"
+    cp "$binary" "$dest"
+    STAGED_BINARIES+=("$dest")
     echo "    + usr/bin/$crate_name"
 done
 [ "${#STAGED_BINARIES[@]}" -gt 0 ] || {
