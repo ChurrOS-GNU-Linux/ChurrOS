@@ -69,9 +69,34 @@ if [ "$ARCH" != "$HOST_ARCH" ]; then
 fi
 cargo "${CARGO_ARGS[@]}"
 
+# check_elf_arch ARCH FICHERO...: aborta si alguno no es un ELF de ARCH.
+# cargo --target no basta: si la compilación cruzada falla a medias o el
+# target cae al del equipo, el bundle llevaría binarios de otra máquina con
+# nombre de ARCH y solo lo vería el cliente al instalar (#311).
+check_elf_arch() {
+    python3 - "$@" <<'PY'
+import struct, sys
+arch, files = sys.argv[1], sys.argv[2:]
+want = {"x86_64": (62, 2), "aarch64": (183, 2), "i686": (3, 1)}[arch]
+bad = []
+for path in files:
+    with open(path, "rb") as handle:
+        head = handle.read(20)
+    if len(head) < 20 or head[:4] != b"\x7fELF":
+        bad.append(f"{path}: no es un ELF")
+        continue
+    machine = struct.unpack(("<" if head[5] == 1 else ">") + "H", head[18:20])[0]
+    if (machine, head[4]) != want:
+        bad.append(f"{path}: e_machine={machine}, clase ELF {head[4]}")
+if bad:
+    sys.exit(f"Error: binarios que no son de {arch}; no se publica nada:\n  " + "\n  ".join(bad))
+PY
+}
+
 # 2. Staging: binarios Rust (solo crates con deploy = true)
 echo "  [2/4] montando staging..."
 mkdir -p "$STAGE/usr/bin" "$STAGE/usr/local/bin" "$STAGE/etc"
+STAGED_BINARIES=()
 for crate_dir in "$RUST_DIR"/*/; do
     [ -f "$crate_dir/Cargo.toml" ] || continue
     grep -q '^deploy = true$' "$crate_dir/Cargo.toml" || continue
@@ -83,8 +108,14 @@ for crate_dir in "$RUST_DIR"/*/; do
         exit 1
     }
     cp "$binary" "$STAGE/usr/bin/$crate_name"
+    STAGED_BINARIES+=("$STAGE/usr/bin/$crate_name")
     echo "    + usr/bin/$crate_name"
 done
+[ "${#STAGED_BINARIES[@]}" -gt 0 ] || {
+    echo "Error: no hay ningún crate con deploy = true; el bundle saldría sin apps" >&2
+    exit 1
+}
+check_elf_arch "$ARCH" "${STAGED_BINARIES[@]}"
 
 # 3. Scripts de la ISO (usr/bin y usr/local/bin)
 for s in churros-apply-wallpaper churros-pick-image churros-pkexec churros-portal-start churros-update-utils; do
