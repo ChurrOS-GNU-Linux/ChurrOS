@@ -1,0 +1,8 @@
+[[mutation]]
+name = "linux.preset: la mutación del initramfs vuelve a esperar el marcador de XFCE"
+file = "tests/mutations/mutations.toml"
+find = "expect = \"kernel:packages.i686:initramfs-linux.img\""
+replace = "expect = \"kernel:packages.xfce.x86_64:initramfs-linux.img\""
+caught_by = "tests.static.test_repo_wiring.MutationsTest.test_linux_preset_initramfs_mutation_names_the_linux_package"
+expect = "[linux-preset-edition]"
+why = "XFCE ya no usa linux.preset (arranca linux-cachyos). Si el expect vuelve a packages.xfce.x86_64, la prueba de contenedor falla por packages.i686 y el runner lo cuenta como mensaje equivocado."

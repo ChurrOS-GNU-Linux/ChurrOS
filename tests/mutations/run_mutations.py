@@ -61,8 +61,10 @@ MUTATIONS_FILE = testlib.ROOT / "tests/mutations/mutations.toml"
 # añadían al final de mutations.toml, cada PR fusionado dejaba en conflicto a
 # los demás. mutations.toml ya no crece (lo comprueba test_repo_wiring).
 MUTATIONS_DIR = testlib.ROOT / "tests/mutations/mutations.d"
-# Mutaciones que tenía mutations.toml al dejar de crecer: solo puede bajar.
-MUTATIONS_FILE_MAX = 404
+# Tope exacto de mutations.toml. El fichero solo puede bajar, y el tope
+# baja en el mismo cambio: si queda por encima, cabe una mutación nueva al
+# final y test_mutations_toml_does_not_grow no se entera.
+MUTATIONS_FILE_MAX = 403
 
 
 def mutation_files() -> list[Path]:

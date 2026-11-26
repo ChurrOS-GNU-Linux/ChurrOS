@@ -2152,9 +2152,9 @@ file = "archiso/airootfs/etc/mkinitcpio.d/linux.preset"
 find = "archiso_image=\"/boot/initramfs-linux.img\""
 replace = "archiso_image=\"/boot/initramfs-linux-archiso.img\""
 caught_by = "tests.container.test_arch_repos"
-expect = "kernel:packages.xfce.x86_64:initramfs-linux.img"
+expect = "kernel:packages.i686:initramfs-linux.img"
 requires = "container"
-why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img. (niri x86_64 boots linux-churrosvyper through its own preset; XFCE and server still use linux.preset.)"
+why = "The preset renames the initramfs, but GRUB/syslinux/unpackfs still load initramfs-linux.img. i686 is the edition that still installs the linux package and boots linux.preset. niri, XFCE and server on x86_64 install linux-cachyos: initramfs-linux.img is an alias of that kernel and customize_airootfs.sh drops linux.preset, so the finding is kernel:packages.i686, not packages.xfce.x86_64."
 
 [[mutation]]
 name = "test_arch_repos: A wrong command->package mapping would make the static resolver accept a command that the"

@@ -1787,6 +1787,32 @@ class MutationsTest(unittest.TestCase):
                                    "`find`/`find_re` (tests/mutations/mutations.toml o mutations.d/) para "
                                    "que siga describiendo la misma regresión:\n  " + "\n  ".join(problems))
 
+    def test_linux_preset_initramfs_mutation_names_the_linux_package(self):
+        """linux.preset lo usa quien instala el paquete linux, no linux-cachyos.
+
+        niri, XFCE y server en x86_64 arrancan linux-cachyos: initramfs-linux.img
+        es un alias y customize_airootfs.sh borra linux.preset. i686 sigue con
+        el paquete linux. Si la mutación espera el marcador de XFCE, la prueba
+        de contenedor falla por packages.i686 y el runner la cuenta como MENSAJE.
+        """
+        from tests.mutations import run_mutations
+        name = ("test_arch_repos: The preset renames the initramfs, but GRUB/syslinux/unpackfs "
+                "still load initramfs-linux")
+        mutation = next(item for item in run_mutations.load_mutations() if item["name"] == name)
+        linux_lists = sorted(
+            Path(item.package_list).name
+            for item in testlib.EDITIONS
+            if "linux" in testlib.packages(item)
+        )
+        self.assertEqual(
+            linux_lists, ["packages.i686"],
+            "[linux-preset-edition] cambió quién instala el paquete linux; "
+            "el expect de la mutación del initramfs tiene que seguir a esa lista")
+        self.assertEqual(
+            mutation["expect"], "kernel:packages.i686:initramfs-linux.img",
+            "[linux-preset-edition] la mutación del initramfs espera un marcador que "
+            "KernelTest no imprime: i686 es quien instala linux y usa linux.preset")
+
     def test_mutations_toml_does_not_grow(self):
         """Las nuevas van en mutations.d/: al final de mutations.toml chocaban todos los PR."""
         from tests.mutations import run_mutations
@@ -1797,6 +1823,11 @@ class MutationsTest(unittest.TestCase):
             f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones (máx. "
             f"{run_mutations.MUTATIONS_FILE_MAX}): pon las nuevas en tests/mutations/mutations.d/<tema>.toml, "
             "un fichero por PR, para que los PR no choquen entre sí al final del fichero")
+        self.assertEqual(
+            count, run_mutations.MUTATIONS_FILE_MAX,
+            f"[mutations-file-frozen] tests/mutations/mutations.toml tiene {count} mutaciones "
+            f"pero MUTATIONS_FILE_MAX es {run_mutations.MUTATIONS_FILE_MAX}: bájalo en el mismo cambio. "
+            "Con hueco, una mutación añadida al final sigue en verde")
 
     def test_mutations_d_files_are_loaded_and_names_stay_unique(self):
         from tests.mutations import run_mutations

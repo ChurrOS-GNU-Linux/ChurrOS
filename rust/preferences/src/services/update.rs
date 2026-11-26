@@ -482,8 +482,10 @@ impl UpdateService {
         }
         // El código de salida importa: `run` devuelve None en timeout o error
         // de ejecución, y un pacman que falla no da la lista de paquetes.
-        let (query_code, query) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
-        let (sync_code, sync) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
+        // RunOut es (código, stdout, stderr). La lista sale por stdout; el
+        // código de salida distingue «no hay nada» de «pacman no pudo mirar».
+        let (query_code, query, _) = churros_services::run(&["pacman", "-Qi"], 30_000)?;
+        let (sync_code, sync, _) = churros_services::run(&["pacman", "-Sl"], 30_000)?;
         if query_code != 0 || sync_code != 0 {
             return None;
         }
