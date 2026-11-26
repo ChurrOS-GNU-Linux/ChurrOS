@@ -3,11 +3,13 @@ name = "test-gui-smoke: el popup de red entra en pánico al abrirse (borrow_mut 
 file = "rust/popups/src/network.rs"
 find = '''            move |info| {
                 *w.last.borrow_mut() = info;
+                w.sync_switch();
                 w.repaint();
             },'''
 replace = '''            move |info| {
                 let mut last = w.last.borrow_mut();
                 *last = info;
+                w.sync_switch();
                 w.repaint();
             },'''
 
