@@ -1,0 +1,17 @@
+[[mutation]]
+name = "upload-release: deja de comparar la edición del nombre con la de dentro de la ISO"
+file = "scripts/upload-release.py"
+find = '    if identity["edition"] != match["edition"]:'
+replace = '    if False:'
+caught_by = "tests.static.test_upload_release"
+expect = "[iso-identity]"
+why = "Una ISO Niri subida con nombre de XFCE llegaría a quien quiere XFCE, con su suma correcta (#344)."
+
+[[mutation]]
+name = "upload-release: SHA256SUMS acepta una ISO repetida"
+file = "scripts/upload-release.py"
+find = '        if seen.count(name) > 1:'
+replace = '        if False:'
+caught_by = "tests.static.test_upload_release"
+expect = "[sums-once]"
+why = "Dos sumas para el mismo nombre: sha256sum -c da una por mala y nadie sabe cuál vale (#344)."

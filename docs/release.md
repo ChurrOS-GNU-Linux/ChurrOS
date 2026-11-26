@@ -65,6 +65,8 @@ git push origin vX.Y
 
 ### 4. Sumas de verificación
 
+Antes de subir nada, `scripts/upload-release.py --iso-only` comprueba cada ISO: el nombre tiene que ser `ChurrOS-<versión>-<edición>-<arch>.iso` y coincidir con lo que lleva dentro (`VERSION_ID` de os-release, `/etc/churros-edition` y la arquitectura de `airootfs.sfs`, leídos sin montar la imagen; necesita `xorriso` y `squashfs-tools`). También comprueba que `SHA256SUMS` lista cada ISO una sola vez. Si algo no cuadra, no se sube ninguna.
+
 Un único `SHA256SUMS` cubre todas las ISO de la versión. `scripts/upload-release.py --iso-only` lo genera y sube además una copia `SHA256SUMS-<versión>`, que no reemplaza ninguna publicación posterior: así las ISO anteriores, que el historial de la web sigue enlazando, se pueden seguir verificando (al publicar la 1.5.5 se reemplazó `SHA256SUMS` y las ISO 1.5 se quedaron sin suma en el servidor). La release v1.5 incluye el manifiesto (como `SHA256SUMS-1.5`), que también está publicado en el servidor oficial:
 
 ```bash
