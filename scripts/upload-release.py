@@ -121,6 +121,23 @@ def upload_tus(base_url: str, token: str, local_path: Path, remote_dest_path: st
     print(f"\n  ✓ Completado en {total_time:.1f} s ({file_name})")
 
 
+def iso_sums_files(directory: Path, version: str, text: str) -> list[Path]:
+    """Escribe en `directory` las sumas de las ISO de `version`.
+
+    `SHA256SUMS` es el de la versión actual (docs/release.md) y se reemplaza
+    en cada publicación; `SHA256SUMS-<versión>` no lo pisa ninguna otra, así
+    que las ISO de versiones anteriores, que siguen enlazadas en el historial
+    de la web, se pueden seguir verificando. Antes solo se subía SHA256SUMS y
+    las sumas de la 1.5 desaparecieron al publicar la 1.5.5. Devuelve las dos
+    rutas en el orden de subida: la versionada primero.
+    """
+    versioned = directory / f"SHA256SUMS-{version}"
+    current = directory / "SHA256SUMS"
+    for path in (versioned, current):
+        path.write_text(text, encoding="utf-8")
+    return [versioned, current]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sube ficheros de release a download.churroslinux.org")
     parser.add_argument("--url", default=DEFAULT_URL, help=f"URL base de FileBrowser (def: {DEFAULT_URL})")
@@ -202,10 +219,9 @@ def main():
                 for p in files:
                     upload_tus(args.url, token, p, "")
                 with tempfile.TemporaryDirectory() as tmp:
-                    sums = Path(tmp) / "SHA256SUMS"
-                    sums.write_text("".join(lines), encoding="utf-8")
                     print("".join(lines), end="")
-                    upload_tus(args.url, token, sums, "")
+                    for sums in iso_sums_files(Path(tmp), VERSION, "".join(lines)):
+                        upload_tus(args.url, token, sums, "")
 
     print("\n✓ Proceso de subida finalizado con éxito.")
 

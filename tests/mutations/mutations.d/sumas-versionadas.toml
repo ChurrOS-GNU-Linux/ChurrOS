@@ -1,0 +1,8 @@
+[[mutation]]
+name = "upload-release: vuelve a subir solo SHA256SUMS"
+file = "scripts/upload-release.py"
+find = "    return [versioned, current]"
+replace = "    return [current]"
+caught_by = "tests.static.test_upload_release"
+expect = "[versioned-sha256sums]"
+why = "Al publicar la 1.5.5 se reemplazó SHA256SUMS y las ISO 1.5, que la web seguía enlazando, se quedaron sin suma."
