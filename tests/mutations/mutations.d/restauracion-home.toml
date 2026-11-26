@@ -1,0 +1,17 @@
+[[mutation]]
+name = "churros-snapshot: el restore guiado devuelve /home por defecto"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = "    local home=no home_line"
+replace = "    local home=yes home_line"
+caught_by = "python3 scripts/test-privileged-helpers.py GuidedRestore"
+expect = "[restore-home-choice]"
+why = "Un Enter de más devolvería los archivos del usuario a la fecha del snapshot sin que lo pidiera (#333)."
+
+[[mutation]]
+name = "churros-snapshot: restore ignora --sin-home"
+file = "archiso/airootfs/usr/local/bin/churros-snapshot"
+find = 'if [ "$home" = yes ] && [ -d "$src/home" ] && [ -d "$TOP_MOUNT/@home" ]; then'
+replace = 'if [ -d "$src/home" ] && [ -d "$TOP_MOUNT/@home" ]; then'
+caught_by = "python3 scripts/test-privileged-helpers.py RestoreWithoutHome"
+expect = "[restore-home-choice]"
+why = "Pedir solo el sistema también movería /home a @home.broken-* (#333)."

@@ -720,16 +720,29 @@ class GuidedRestore(unittest.TestCase):
         return [p.name for p in self.top.iterdir() if p.name.startswith("@broken-")]
 
     def test_guided_restore_asks_then_restores_and_checks(self):
-        result = self.guided("n\n2\nRESTAURAR\n")
+        (self.top / "@home/nota").write_text("de hoy\n")
+        result = self.guided("n\n2\n\nRESTAURAR\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.top / "@/version").read_text(), "dos\n",
                          "[guided-restore] restaura el snapshot elegido")
         self.assertEqual(len(self.broken()), 1, "[guided-restore] el estado roto queda en @broken-*")
         self.assertIn("pacman-pre", result.stderr, "enseña el motivo de cada snapshot")
-        self.assertIn("@home.broken", result.stderr, "avisa de que /home también vuelve atrás")
+        self.assertIn("/home NO se toca", result.stderr, "[restore-home-choice] dice qué subvolúmenes mueve")
+        self.assertEqual((self.top / "@home/nota").read_text(), "de hoy\n",
+                         "[restore-home-choice] sin decir que sí, los archivos de /home se quedan como están")
+        self.assertFalse(any(p.name.startswith("@home.broken") for p in self.top.iterdir()))
         self.assertIn("comprobado", result.stderr, "[guided-restore] comprueba el resultado en el disco")
         mounts = [l for l in self.log.read_text().splitlines() if l.startswith("mount")]
         self.assertIn("mount ro,subvolid=5", mounts[0], "[guided-restore] mira el disco en solo lectura antes de confirmar")
+
+    def test_guided_restore_can_bring_home_back_too(self):
+        (self.top / "@home/nota").write_text("de hoy\n")
+        result = self.guided("n\n2\ns\nRESTAURAR\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("/home TAMBIÉN vuelve", result.stderr)
+        homes = [p for p in self.top.iterdir() if p.name.startswith("@home.broken")]
+        self.assertEqual(len(homes), 1, "[restore-home-choice] el /home de antes queda en @home.broken-*")
+        self.assertEqual((homes[0] / "nota").read_text(), "de hoy\n", "y no se pierde nada de él")
 
     def test_anything_but_restaurar_touches_nothing(self):
         result = self.guided("n\n1\ns\n")
@@ -817,6 +830,37 @@ class SnapshotRetention(unittest.TestCase):
     def test_the_hook_warns_when_a_transaction_has_no_snapshot(self):
         hook = (OVERLAY / "etc/pacman.d/hooks/50-churros-snapshot.hook").read_text()
         self.assertIn("NO tiene snapshot previo", hook, "[snapshot-failure-explained] el hook no avisa claro")
+
+class RestoreWithoutHome(unittest.TestCase):
+    """restore -d DEV --sin-home STAMP vuelve el sistema atrás y deja /home (#333)."""
+
+    def test_restore_can_leave_home_alone(self):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-restore-home-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        top = tmp / "top"
+        snap = top / "@snapshots/20261115-052257"
+        (snap / "root").mkdir(parents=True)
+        (snap / "root/version").write_text("antes\n")
+        (snap / "home").mkdir()
+        (snap / "home/nota").write_text("antes\n")
+        (top / "@").mkdir()
+        (top / "@/version").write_text("roto\n")
+        (top / "@home").mkdir()
+        (top / "@home/nota").write_text("de hoy\n")
+        bin_dir = tmp / "bin"
+        executable(bin_dir / "mount", f'#!/bin/sh\nrmdir "$4" && ln -s "{top}" "$4"\n')
+        executable(bin_dir / "mountpoint", "#!/bin/sh\nexit 1\n")
+        executable(bin_dir / "btrfs", '#!/bin/sh\n[ "$1 $2" = "subvol snapshot" ] && cp -a "$3" "$4"\n')
+        result = subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-snapshot"), "restore", "-d", "/dev/falso3",
+                                 "--sin-home", "20261115-052257"], capture_output=True, text=True,
+                                env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((top / "@/version").read_text(), "antes\n", "el sistema vuelve al snapshot")
+        self.assertEqual((top / "@home/nota").read_text(), "de hoy\n",
+                         "[restore-home-choice] --sin-home tiene que dejar /home como está")
+        self.assertFalse(any(p.name.startswith("@home.broken") for p in top.iterdir()))
+        self.assertIn("/home no se ha tocado", result.stderr)
+
 
 class StalePacmanLock(unittest.TestCase):
     """Un apagón a mitad de transacción deja db.lck: pacman no lo quita nunca."""
