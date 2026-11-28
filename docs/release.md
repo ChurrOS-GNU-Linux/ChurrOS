@@ -67,6 +67,12 @@ git push origin vX.Y
 
 Antes de subir nada, `scripts/upload-release.py --iso-only` comprueba cada ISO: el nombre tiene que ser `ChurrOS-<versión>-<edición>-<arch>.iso` y coincidir con lo que lleva dentro (`VERSION_ID` de os-release, `/etc/churros-edition` y la arquitectura de `airootfs.sfs`, leídos sin montar la imagen; necesita `xorriso` y `squashfs-tools`). También comprueba que `SHA256SUMS` lista cada ISO una sola vez. Si algo no cuadra, no se sube ninguna.
 
+Junto a cada ISO sube su **inventario de paquetes**, `ChurrOS-<versión>-<edición>-<arch>.paquetes.txt` (#339). Sale de la propia imagen: `pkglist.<arch>.txt`, que mkarchiso escribe en la ISO a partir de la base de pacman del sistema ya construido, no de las listas `archiso/packages.*`. La cabecera lo liga a la ISO (nombre, versión, edición, arquitectura y SHA-256) y debajo va una línea `nombre versión` por paquete. Calamares, que se instala sin pacman, y los programas de ChurrOS no aparecen. Una línea que no sea `paquete versión` (una ruta, por ejemplo), un paquete repetido o una lista vacía paran la subida. Para subir solo los inventarios de una versión ya publicada: `scripts/upload-release.py --packages-only`. Para ver qué cambió entre dos versiones:
+
+```bash
+diff <(grep -v '^#' ChurrOS-1.5.5-niri-x86_64.paquetes.txt) <(grep -v '^#' ChurrOS-1.5.7-niri-x86_64.paquetes.txt)
+```
+
 Un único `SHA256SUMS` cubre todas las ISO de la versión. `scripts/upload-release.py --iso-only` lo genera y sube además una copia `SHA256SUMS-<versión>`, que no reemplaza ninguna publicación posterior: así las ISO anteriores, que el historial de la web sigue enlazando, se pueden seguir verificando (al publicar la 1.5.5 se reemplazó `SHA256SUMS` y las ISO 1.5 se quedaron sin suma en el servidor). La release v1.5 incluye el manifiesto (como `SHA256SUMS-1.5`), que también está publicado en el servidor oficial:
 
 ```bash
@@ -153,7 +159,7 @@ La sección de descargas la escribe `upload-release.py`, después de subir las I
 python3 scripts/upload-release.py --release-notes > release/notas-descargas.md
 ```
 
-No pide contraseña ni sube nada. Calcula el SHA-256 de las ISO de `VERSION` en `release/iso/` y, antes de escribir una sola línea, comprueba en download.churroslinux.org que cada ISO responde 200 con el mismo tamaño que la local y que `SHA256SUMS-<versión>` del servidor es idéntico a las sumas locales. Si algo falla, sale con 1 y dice qué enlace. Las notas tienen una tabla con edición, arquitectura, enlace, tamaño y SHA-256 de cada ISO, el enlace a `SHA256SUMS-<versión>`, el comando para comprobar la descarga y el aviso de que las sumas no van firmadas (#315). Solo enlaza el servidor oficial, nunca un artefacto de un workflow. El tamaño no demuestra que el contenido sea idéntico: para eso hay que descargar la ISO entera y comparar su SHA-256.
+No pide contraseña ni sube nada. Calcula el SHA-256 de las ISO de `VERSION` en `release/iso/` y, antes de escribir una sola línea, comprueba en download.churroslinux.org que cada ISO responde 200 con el mismo tamaño que la local, que su inventario de paquetes está publicado y es idéntico al que sale de la ISO local, y que `SHA256SUMS-<versión>` del servidor es idéntico a las sumas locales. Si algo falla, sale con 1 y dice qué enlace. Las notas tienen una tabla con edición, arquitectura, enlace, tamaño, lista de paquetes y SHA-256 de cada ISO, el enlace a `SHA256SUMS-<versión>`, el comando para comprobar la descarga y el aviso de que las sumas no van firmadas (#315). Solo enlaza el servidor oficial, nunca un artefacto de un workflow. El tamaño no demuestra que el contenido sea idéntico: para eso hay que descargar la ISO entera y comparar su SHA-256.
 
 Añade arriba los cambios y abajo el código fuente, y publica:
 

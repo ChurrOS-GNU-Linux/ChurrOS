@@ -205,6 +205,81 @@ def iso_problems(name: str, version: str, identity: dict) -> list[str]:
     return problems
 
 
+def read_iso_pkglist(iso: Path) -> tuple[str | None, str | None]:
+    """(ruta dentro de la ISO, contenido) de pkglist.<arch>.txt (#339).
+
+    mkarchiso lo escribe en /<install_dir>/ desde la base de pacman del
+    airootfs ya construido: es el contenido real de la imagen, no las listas
+    fuente de archiso/packages.*. Se extrae sin montar la ISO.
+    """
+    found = subprocess.run(["xorriso", "-indev", str(iso), "-find", "/", "-name", "pkglist.*.txt"],
+                           capture_output=True, text=True).stdout
+    paths = re.findall(r"^'(/[^/']+/pkglist\.[a-z0-9_]+\.txt)'$", found, re.M)
+    if len(paths) != 1:
+        return None, None
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pkglist.txt"
+        subprocess.run(["xorriso", "-osirrox", "on", "-indev", str(iso), "-extract", paths[0], str(out)],
+                       capture_output=True, text=True)
+        return paths[0], (out.read_text(encoding="utf-8") if out.is_file() else None)
+
+
+# «nombre versión» como lo escribe `pacman -Q`: sin rutas ni espacios de más.
+PKGLIST_LINE = re.compile(r"[a-z0-9@._+-]+ [0-9A-Za-z.:_+~-]+")
+
+
+def packages_name(iso_name: str) -> str:
+    """ChurrOS-1.5.7-niri-x86_64.iso -> ChurrOS-1.5.7-niri-x86_64.paquetes.txt"""
+    return iso_name.removesuffix(".iso") + ".paquetes.txt"
+
+
+def packages_inventory(iso_name: str, sha256: str, source: str | None, pkglist: str | None) -> tuple[str, list[str]]:
+    """Inventario de paquetes de una ISO, ligado a su nombre, versión, arquitectura y hash (#339).
+
+    Devuelve (texto, problemas); con problemas el texto va vacío y no se publica.
+    """
+    match = ISO_NAME.fullmatch(iso_name)
+    if not match:
+        return "", [f"{iso_name}: el nombre no es ChurrOS-<versión>-<edición>-<arch>.iso"]
+    if not pkglist or not source:
+        return "", [f"{iso_name}: no tiene pkglist.<arch>.txt (¿no la construyó mkarchiso?)"]
+    problems = []
+    if not source.endswith(f"/pkglist.{match['arch']}.txt"):
+        problems.append(f"{iso_name}: su lista es {source}, no la de {match['arch']}")
+    lines = [line for line in pkglist.splitlines() if line.strip()]
+    bad = [line for line in lines if not PKGLIST_LINE.fullmatch(line)]
+    problems += [f"{iso_name}: línea que no es «paquete versión»: {line!r}" for line in bad[:5]]
+    names = [line.split()[0] for line in lines]
+    problems += [f"{iso_name}: {name} aparece {names.count(name)} veces"
+                 for name in sorted(set(names)) if names.count(name) > 1]
+    if not lines:
+        problems.append(f"{iso_name}: la lista de paquetes está vacía")
+    if problems:
+        return "", problems
+    header = (f"# Paquetes de {iso_name}\n"
+              f"# Versión {match['version']}, edición {match['edition']}, arquitectura {match['arch']}\n"
+              f"# SHA-256 de la ISO: {sha256}\n"
+              f"# Sacado de la propia ISO ({source}, la base de pacman del sistema Live).\n"
+              f"# Calamares (se instala sin pacman) y los programas de ChurrOS no son paquetes y no aparecen.\n"
+              f"# {len(lines)} paquetes, «nombre versión»:\n")
+    return header + "\n".join(sorted(lines)) + "\n", []
+
+
+def iso_inventories(files: list[Path], sums: str, directory: Path) -> tuple[list[Path], list[str]]:
+    """Escribe en `directory` el inventario de cada ISO; (rutas, problemas)."""
+    digests = {name: digest for digest, name in (line.split("  ", 1) for line in sums.splitlines() if "  " in line)}
+    written, problems = [], []
+    for iso in files:
+        text, found = packages_inventory(iso.name, digests.get(iso.name, ""), *read_iso_pkglist(iso))
+        problems += found
+        if text:
+            path = directory / packages_name(iso.name)
+            path.write_text(text, encoding="utf-8")
+            written.append(path)
+    return written, problems
+
+
 def sums_problems(text: str, names: list[str]) -> list[str]:
     """SHA256SUMS: cada ISO que se sube exactamente una vez y nada más."""
     problems, seen = [], []
@@ -255,13 +330,16 @@ def human_size(size: int) -> str:
     return f"{size / 1024 ** 3:.1f} GiB".replace(".", ",")
 
 
-def release_notes(version: str, isos: list[tuple[str, int]], sums: str, probe=probe) -> tuple[str, list[str]]:
+def release_notes(version: str, isos: list[tuple[str, int]], sums: str, inventories: dict[str, str],
+                  probe=probe) -> tuple[str, list[str]]:
     """Sección «Descargas» de las notas de la GitHub Release (#340).
 
     Las ISO no caben en GitHub (2 GiB): la release las enlaza en el servidor
     oficial, la única ubicación fuente, nunca en artefactos de un workflow.
     Antes de escribir nada comprueba que cada enlace existe con el tamaño de la
-    ISO local y que el SHA256SUMS-<versión> del servidor es el local. Devuelve
+    ISO local, que su inventario de paquetes (`inventories`, nombre de ISO ->
+    texto) está publicado igual que el local (#339) y que el
+    SHA256SUMS-<versión> del servidor es el local. Devuelve
     (markdown, problemas); con algún problema el markdown va vacío.
     """
     names = [name for name, _ in isos]
@@ -279,8 +357,14 @@ def release_notes(version: str, isos: list[tuple[str, int]], sums: str, probe=pr
             problems.append(f"{url}: HTTP {status or 'sin respuesta'}")
         elif length != size:
             problems.append(f"{url}: el servidor tiene {length} bytes y la ISO local {size}")
+        packages_url = DOWNLOAD_BASE + urllib.parse.quote(packages_name(name))
+        status, served_packages, _ = probe(packages_url, "GET")
+        if status != 200:
+            problems.append(f"{packages_url}: HTTP {status or 'sin respuesta'}")
+        elif served_packages != inventories.get(name):
+            problems.append(f"{packages_url}: no es el inventario de la ISO local")
         rows.append(f"| {EDITION_TITLES.get(match['edition'], match['edition'])} | {match['arch']} "
-                    f"| [{name}]({url}) | {human_size(size)} | `{digests.get(name, '?')}` |")
+                    f"| [{name}]({url}) | {human_size(size)} | [lista]({packages_url}) | `{digests.get(name, '?')}` |")
     sums_name = f"SHA256SUMS-{version}"
     sums_url = DOWNLOAD_BASE + sums_name
     status, served, _ = probe(sums_url, "GET")
@@ -294,8 +378,8 @@ def release_notes(version: str, isos: list[tuple[str, int]], sums: str, probe=pr
 
 Las ISO pesan más de 2 GiB, el límite de GitHub Releases: se descargan del servidor oficial y esta release solo las enlaza.
 
-| Edición | Arquitectura | ISO | Tamaño | SHA-256 |
-|---|---|---|---|---|
+| Edición | Arquitectura | ISO | Tamaño | Paquetes | SHA-256 |
+|---|---|---|---|---|---|
 {chr(10).join(rows)}
 
 Sumas de esta versión: [{sums_name}]({sums_url}). Para comprobar la descarga, con la ISO y ese fichero en la misma carpeta:
@@ -303,6 +387,8 @@ Sumas de esta versión: [{sums_name}]({sums_url}). Para comprobar la descarga, c
 ```bash
 sha256sum -c {sums_name} --ignore-missing
 ```
+
+La lista de paquetes de cada ISO sale de la propia imagen. Para ver qué cambió respecto a otra versión: `diff <(grep -v '^#' vieja.paquetes.txt) <(grep -v '^#' nueva.paquetes.txt)`.
 
 > **Las sumas no van firmadas.** Detectan una descarga corrupta, pero no prueban que la ISO sea de ChurrOS: quien pudiera cambiar la ISO en el servidor podría cambiar también su suma. La firma independiente está pendiente ([#315](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/315)).
 """
@@ -321,6 +407,8 @@ def main():
     parser.add_argument("--iso-only", action="store_true", help="Solo subir ISOs y sumas a la raíz (/)")
     parser.add_argument("--file", help="Subir un fichero específico")
     parser.add_argument("--dest", default="", help="Directorio remoto de destino para --file (def: raíz)")
+    parser.add_argument("--packages-only", action="store_true",
+                        help="Solo generar y subir el inventario de paquetes de las ISO de esta versión (#339)")
     parser.add_argument("--release-notes", action="store_true",
                         help="No sube nada: comprueba en el servidor las ISO de esta versión y escribe en la "
                              "salida la sección «Descargas» de las notas de la GitHub Release")
@@ -334,7 +422,14 @@ def main():
             print(f"Error: no hay ISO de la {VERSION} en release/iso/", file=sys.stderr)
             sys.exit(1)
         print(f"==> Calculando el SHA-256 de {len(files)} ISO y comprobando el servidor...", file=sys.stderr)
-        notes, problems = release_notes(VERSION, [(p.name, p.stat().st_size) for p in files], iso_sums_text(files))
+        import tempfile
+        sums = iso_sums_text(files)
+        with tempfile.TemporaryDirectory() as tmp:
+            written, problems = iso_inventories(files, sums, Path(tmp))
+            inventories = {path.name: path.read_text(encoding="utf-8") for path in written}
+        inventories = {iso.name: inventories.get(packages_name(iso.name), "") for iso in files}
+        if not problems:
+            notes, problems = release_notes(VERSION, [(p.name, p.stat().st_size) for p in files], sums, inventories)
         if problems:
             print("Error: no se escriben las notas:\n  " + "\n  ".join(problems), file=sys.stderr)
             sys.exit(1)
@@ -360,7 +455,7 @@ def main():
     # churros-update-utils 1.5+ los lee de /churros/<arch>/ y exige
     # updates.json.minisig. La 1.4 (sin clave pública) lee /churros/ y solo
     # comprueba el sha256: se publica también ahí para que pueda actualizar.
-    if not args.iso_only:
+    if not args.iso_only and not args.packages_only:
         ota_dir = repo_root / "release" / args.arch
         manifest = ota_dir / "updates.json"
         signature = ota_dir / "updates.json.minisig"
@@ -400,17 +495,25 @@ def main():
                 for p in files:
                     problems += iso_problems(p.name, VERSION, read_iso_identity(p))
                 problems += sums_problems("".join(lines), [p.name for p in files])
-                if problems:
-                    print("\nError: no se sube ninguna ISO:\n  " + "\n  ".join(problems), file=sys.stderr)
-                    sys.exit(1)
-                print(f"✓ {len(files)} ISO comprobadas: nombre, versión, edición y arquitectura cuadran con su contenido")
-                print("\n==> Subiendo ISOs y sumas de verificación a /...")
-                for p in files:
-                    upload_tus(args.url, token, p, "")
                 with tempfile.TemporaryDirectory() as tmp:
-                    print("".join(lines), end="")
-                    for sums in iso_sums_files(Path(tmp), VERSION, "".join(lines)):
-                        upload_tus(args.url, token, sums, "")
+                    inventories, found = iso_inventories(files, "".join(lines), Path(tmp))
+                    problems += found
+                    if problems:
+                        print("\nError: no se sube ninguna ISO:\n  " + "\n  ".join(problems), file=sys.stderr)
+                        sys.exit(1)
+                    print(f"✓ {len(files)} ISO comprobadas: nombre, versión, edición y arquitectura cuadran con su contenido")
+                    if not args.packages_only:
+                        print("\n==> Subiendo ISOs a /...")
+                        for p in files:
+                            upload_tus(args.url, token, p, "")
+                    print("\n==> Subiendo los inventarios de paquetes a /...")
+                    for inventory in inventories:
+                        upload_tus(args.url, token, inventory, "")
+                    if not args.packages_only:
+                        print("\n==> Subiendo sumas de verificación a /...")
+                        print("".join(lines), end="")
+                        for sums in iso_sums_files(Path(tmp), VERSION, "".join(lines)):
+                            upload_tus(args.url, token, sums, "")
 
     print("\n✓ Proceso de subida finalizado con éxito.")
 

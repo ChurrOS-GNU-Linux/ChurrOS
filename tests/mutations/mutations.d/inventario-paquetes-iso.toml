@@ -1,0 +1,38 @@
+# #339: inventario de paquetes de cada ISO, sacado de la imagen final y
+# ligado a su nombre, versión, arquitectura y hash.
+
+[[mutation]]
+name = "inventario de paquetes: acepta líneas que no son «paquete versión»"
+file = "scripts/upload-release.py"
+find = "    bad = [line for line in lines if not PKGLIST_LINE.fullmatch(line)]"
+replace = "    bad = []"
+caught_by = "tests.static.test_upload_release"
+expect = "[packages-inventory]"
+why = "Se publicarían rutas temporales o basura del build como si fueran paquetes."
+
+[[mutation]]
+name = "inventario de paquetes: sin el hash de la ISO"
+file = "scripts/upload-release.py"
+find = "              f\"# SHA-256 de la ISO: {sha256}\\n\""
+replace = "              f\"\""
+caught_by = "tests.static.test_upload_release"
+expect = "[packages-inventory]"
+why = "Un inventario sin hash no se puede ligar a una ISO concreta: dos builds con el mismo nombre serían indistinguibles."
+
+[[mutation]]
+name = "notas de la release: no comprueban el inventario publicado"
+file = "scripts/upload-release.py"
+find = "        elif served_packages != inventories.get(name):"
+replace = "        elif False:"
+caught_by = "tests.static.test_upload_release"
+expect = "[packages-inventory]"
+why = "Las notas enlazarían el inventario de otra ISO (por ejemplo, el de un build anterior con el mismo nombre)."
+
+[[mutation]]
+name = "inventario de paquetes: no encuentra pkglist dentro de la ISO"
+file = "scripts/upload-release.py"
+find = "    paths = re.findall(r\"^'(/[^/']+/pkglist\\.[a-z0-9_]+\\.txt)'$\", found, re.M)"
+replace = "    paths = []"
+caught_by = "tests.static.test_upload_release"
+expect = "[packages-inventory]"
+why = "Sin leer la lista de la propia imagen no hay inventario, o habría que sacarlo de las listas fuente, que no son lo que lleva la ISO."
