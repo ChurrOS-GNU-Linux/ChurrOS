@@ -46,28 +46,35 @@ fi
 
 # Servidor (timer de sistema, como root): actualización desatendida, a
 # propósito (docs/server.md).
-# El timer corre churros-update.service como root: el log no puede estar en
-# /tmp (enlace simbólico de otro usuario); journald ya guarda la salida, y
-# aquí se conserva una copia en /var/log.
-LOG=/var/log/churros-update.log
+# Todo lo que se imprime va a la salida del servicio, que guarda journald
+# (`journalctl -u churros-update.service`), y a una copia en /var/log: el log no
+# puede estar en /tmp (enlace simbólico de otro usuario). En un servidor no hay
+# sesión gráfica, así que no se intenta ninguna notificación de escritorio (#331).
+LOG="${CHURROS_UPDATE_LOG:-/var/log/churros-update.log}"
 
-{
-    echo "=== $(date) ==="
-    churros-pkexec /usr/bin/pacman -Syu --noconfirm 2>&1
-    PAC_RC=$?
+run_update() {
+    local pac_rc flat_rc churros_rc
+    echo "=== Actualización automática: $(date '+%F %T %Z') ==="
+    churros-pkexec /usr/bin/pacman -Syu --noconfirm
+    pac_rc=$?
     if command -v flatpak >/dev/null 2>&1; then
-        churros-pkexec /usr/bin/flatpak update -y 2>&1
-        FLAT_RC=$?
+        churros-pkexec /usr/bin/flatpak update -y
+        flat_rc=$?
     else
-        FLAT_RC=0
+        flat_rc=0
     fi
-    churros-pkexec /usr/bin/churros-update-utils 2>&1
-    CHURROS_RC=$?
-    echo "=== fin ==="
-} >> "$LOG" 2>&1
+    churros-pkexec /usr/bin/churros-update-utils
+    churros_rc=$?
+    local codes="pacman=$pac_rc flatpak=$flat_rc utilidades=$churros_rc"
+    if [ "$pac_rc" -eq 0 ] && [ "$flat_rc" -eq 0 ] && [ "$churros_rc" -eq 0 ]; then
+        echo "Resultado: correcto ($codes)"
+        return 0
+    fi
+    echo "Resultado: FALLO ($codes); el detalle está arriba"
+    return 1
+}
 
-if [ "${PAC_RC:-1}" -eq 0 ] && [ "${FLAT_RC:-1}" -eq 0 ] && [ "${CHURROS_RC:-1}" -eq 0 ]; then
-    notify-send -a ChurrOS "Sistema actualizado" "pacman, flatpak y utilidades de ChurrOS al día" 2>/dev/null || true
-else
-    notify-send -a ChurrOS -u critical "Fallo en la actualización" "Revisa $LOG" 2>/dev/null || true
-fi
+# El código de salida es el de la actualización, no el de tee: un fallo deja
+# churros-update.service en «failed» y aparece en `systemctl --failed`.
+run_update 2>&1 | tee -a "$LOG"
+exit "${PIPESTATUS[0]}"

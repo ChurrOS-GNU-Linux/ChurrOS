@@ -1,0 +1,29 @@
+# #331: la actualización automática del servidor deja su resultado en el
+# journal y falla de verdad. #328: server no hereda el timer de usuario.
+
+[[mutation]]
+name = "churros-update-auto: el servicio del servidor vuelve a salir siempre con 0"
+file = "archiso/airootfs/usr/local/bin/churros-update-auto"
+find = "exit \"${PIPESTATUS[0]}\""
+replace = "exit 0"
+caught_by = "python3 scripts/test-privileged-helpers.py ServerUpdateReportsToJournal"
+expect = "[server-update-exit]"
+why = "Con exit 0, un pacman fallido deja churros-update.service en «success»: systemctl --failed no avisa y nadie se entera desde SSH."
+
+[[mutation]]
+name = "churros-update-auto: la salida vuelve a ir solo al fichero, no al journal"
+file = "archiso/airootfs/usr/local/bin/churros-update-auto"
+find = "run_update 2>&1 | tee -a \"$LOG\""
+replace = "run_update >> \"$LOG\" 2>&1"
+caught_by = "python3 scripts/test-privileged-helpers.py ServerUpdateReportsToJournal"
+expect = "[server-update-journal]"
+why = "journalctl -u churros-update.service solo diría que corrió, sin resultado ni errores (#331)."
+
+[[mutation]]
+name = "configure-server: el timer de usuario del skel vuelve a heredarse en server"
+file = "archiso/airootfs/usr/share/churros/scripts/configure-server"
+find = "rm -f /etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer \\"
+replace = "rm -f /etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer.bak \\"
+caught_by = "tests.static.test_calamares_config"
+expect = "[server-user-timer]"
+why = "Cada usuario nuevo del servidor tendría un timer que corre el actualizador sin agente polkit (#328)."

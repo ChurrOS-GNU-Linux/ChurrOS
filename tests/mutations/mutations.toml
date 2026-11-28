@@ -1607,8 +1607,8 @@ why = "Instalar sin el usuario delante: sin agente de polkit fallaba cada día c
 [[mutation]]
 name = "test_shell_scripts: el servicio root vuelve a escribir su log en /tmp"
 file = "archiso/airootfs/usr/local/bin/churros-update-auto"
-find = "LOG=/var/log/churros-update.log"
-replace = "LOG=/tmp/churros-update.log"
+find = "LOG=\"${CHURROS_UPDATE_LOG:-/var/log/churros-update.log}\""
+replace = "LOG=\"${CHURROS_UPDATE_LOG:-/tmp/churros-update.log}\""
 caught_by = "tests.static.test_shell_scripts"
 expect = "root-tmp-log"
 why = "churros-update.service corre como root: un log con ruta fija en /tmp permite a otro usuario preparar un enlace simbólico o competir por el fichero."
