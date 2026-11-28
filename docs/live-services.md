@@ -484,7 +484,7 @@ Como usuario (el timer de escritorio) **solo comprueba y avisa**: `checkupdates`
 2. `flatpak update -y`
 3. `churros-update-utils`
 
-Escribe la salida en `/var/log/churros-update.log` y al terminar envía una notificación de escritorio con el resultado.
+Como root, la salida va al journal de `churros-update.service` y a una copia en `/var/log/churros-update.log`; termina con una línea `Resultado: correcto` o `Resultado: FALLO (pacman=… flatpak=… utilidades=…)` y sale con error si algún paso falló, así el servicio queda en `failed` (#331). No envía notificación de escritorio: en un servidor no hay sesión gráfica.
 
 Lo lanzan dos timers con el mismo horario (cada día a las 04:00, con hasta 30 minutos de retraso aleatorio y `Persistent=true`):
 

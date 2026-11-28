@@ -1176,6 +1176,31 @@ class CalamaresConfigTest(unittest.TestCase):
         )
 
 
+    def test_configure_server_keeps_only_the_system_update_timer(self):
+        """Server actualiza con el timer de sistema; el de usuario del skel no se hereda (#328)."""
+        source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")
+        gate = re.search(r'if \[ "\$EDITION" != "server" \]; then\s+exit 0\s+fi', source)
+        self.assertIsNotNone(gate, "configure-server no se limita a la edición server")
+        code = "\n".join(line for line in source[gate.end():].splitlines()
+                         if not line.lstrip().startswith("#"))
+        code = code.replace("\\\n", " ")
+        self.assertRegex(code, r"(?m)^\s*systemctl enable churros-update\.timer\b",
+                         "configure-server no habilita el timer de sistema")
+        # El skel de escritorio sí trae el timer de usuario: server tiene que quitarlo.
+        skel = testlib.AIROOTFS / "etc/skel/.config/systemd/user"
+        removed = {
+            "/etc/skel/.config/systemd/user/churros-update.timer": (skel / "churros-update.timer").exists(),
+            "/etc/skel/.config/systemd/user/timers.target.wants/churros-update.timer":
+                (skel / "timers.target.wants/churros-update.timer").is_symlink(),
+            "/home/*/.config/systemd/user/timers.target.wants/churros-update.timer": True,
+        }
+        rm_lines = [line for line in code.splitlines() if re.match(r"\s*rm -f ", line)]
+        for path, present in removed.items():
+            self.assertTrue(present, f"el skel ya no trae {path}: revisa este test")
+            self.assertTrue(any(path in line.split() for line in rm_lines),
+                            f"[server-user-timer] configure-server no quita {path}: "
+                            "el timer de usuario falla cada día sin agente polkit")
+
     def test_configure_server_unmasks_plymouth_quit(self):
         """Server quita la máscara de plymouth-quit para que suelte tty1."""
         source = testlib.read_text(testlib.AIROOTFS / "usr/share/churros/scripts/configure-server")

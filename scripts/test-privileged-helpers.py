@@ -479,6 +479,55 @@ class UpdateTimerOnlyNotifies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(log, "", "[updates-only-newer] avisa de una versión más antigua que la instalada")
 
+class ServerUpdateReportsToJournal(unittest.TestCase):
+    """El timer de sistema del servidor deja su resultado en el journal y falla de verdad (#331)."""
+
+    def run_server(self, failing: str = ""):
+        tmp = Path(tempfile.mkdtemp(prefix="churros-auto-server-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        calls = tmp / "calls"
+        calls.write_text("")
+        executable(tmp / "bin/id", "#!/bin/sh\necho 0\n")
+        executable(tmp / "bin/flatpak", "#!/bin/sh\nexit 0\n")
+        executable(tmp / "bin/notify-send", f'#!/bin/sh\necho "NOTIFY $*" >> "{calls}"\n')
+        # churros-pkexec falso: imprime lo que haría y falla si el comando es `failing`.
+        executable(tmp / "bin/churros-pkexec",
+                   f'#!/bin/sh\necho "PKEXEC $*" >> "{calls}"\necho "salida de $1"\n'
+                   f'case "$1" in */{failing or "-"}) echo "error: $1 falló" >&2; exit 1;; esac\n')
+        log = tmp / "churros-update.log"
+        result = subprocess.run(["bash", str(OVERLAY / "usr/local/bin/churros-update-auto")],
+                                capture_output=True, text=True,
+                                env={**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}",
+                                     "CHURROS_UPDATE_LOG": str(log)})
+        return result, log.read_text() if log.exists() else "", calls.read_text()
+
+    def test_success_is_in_the_journal_and_the_log(self):
+        result, log, calls = self.run_server()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for step in ("/usr/bin/pacman -Syu --noconfirm", "/usr/bin/flatpak update -y", "/usr/bin/churros-update-utils"):
+            self.assertIn(f"PKEXEC {step}", calls)
+        # stdout del servicio = journal de churros-update.service.
+        self.assertIn("Resultado: correcto (pacman=0 flatpak=0 utilidades=0)", result.stdout,
+                      "[server-update-journal] el resultado no llega al journal")
+        self.assertIn("salida de /usr/bin/pacman", result.stdout, "[server-update-journal] falta la salida de pacman")
+        self.assertIn("Resultado: correcto", log, "la copia en /var/log tiene que seguir")
+        self.assertNotIn("NOTIFY", calls, "en un servidor no hay escritorio al que notificar")
+
+    def test_a_failed_step_fails_the_service(self):
+        result, log, calls = self.run_server(failing="pacman")
+        self.assertNotEqual(result.returncode, 0,
+                            "[server-update-exit] un pacman fallido deja churros-update.service en «success»")
+        self.assertIn("Resultado: FALLO (pacman=1 flatpak=0 utilidades=0)", result.stdout)
+        self.assertIn("error: /usr/bin/pacman falló", result.stdout, "stderr también va al journal")
+        self.assertIn("PKEXEC /usr/bin/churros-update-utils", calls, "un paso fallido no salta los siguientes")
+        self.assertIn("Resultado: FALLO", log)
+
+    def test_utils_failure_alone_also_fails(self):
+        result, _, _ = self.run_server(failing="churros-update-utils")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("utilidades=1", result.stdout)
+
+
 class UpdatesOnlyNewerAndSnapshot(unittest.TestCase):
     """Solo se instala una versión más nueva, y con snapshot btrfs antes del bundle."""
 

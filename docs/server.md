@@ -75,7 +75,16 @@ Estado de cada servicio en el sistema instalado. Lo decide `archiso/airootfs/usr
 2. `flatpak update -y`
 3. `churros-update-utils`, que descarga e instala el paquete de utilidades de ChurrOS si el manifiesto anuncia una versión distinta de la instalada ([privileged-execution.md](privileged-execution.md)).
 
-Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). La salida va a `/var/log/churros-update.log`; `journalctl -u churros-update.service` muestra cuándo se ejecutó. El script intenta avisar con una notificación de escritorio, que en un servidor no llega a ninguna parte.
+Como el timer tiene `Persistent=true`, si el servidor estaba apagado a esa hora la actualización se lanza en el siguiente arranque. No reinicia el equipo: un kernel nuevo se usa a partir del próximo reinicio. Con btrfs, el hook `50-churros-snapshot` crea un snapshot antes de cada transacción de pacman, así que una actualización que rompa algo se puede deshacer ([rollback.md](rollback.md)). Toda la salida (pacman, flatpak, utilidades y sus errores) va al journal del servicio, con una copia en `/var/log/churros-update.log`. La última línea es el resultado, con el código de cada paso; si un paso falla, los siguientes se ejecutan igual y el servicio termina en `failed` (#331). En un servidor no hay escritorio, así que no se envía ninguna notificación. Desde SSH:
+
+```bash
+systemctl status churros-update.service           # ¿la última vez fue bien? (active/inactive o failed)
+systemctl --failed                                # aparece aquí si falló
+journalctl -u churros-update.service -n 50        # salida de la última ejecución
+journalctl -u churros-update.service -g Resultado # una línea por día: correcto o FALLO (pacman=… flatpak=… utilidades=…)
+```
+
+Cuánto se conserva depende de journald: en Arch el journal es persistente (`/var/log/journal`) y se recorta solo al llegar a su límite de tamaño (`SystemMaxUse` en `journald.conf`, por defecto el 10 % del sistema de ficheros, como mucho 4 GiB). La copia de `/var/log/churros-update.log` no se rota; crece unos pocos KB por día.
 
 Si prefieres actualizar a mano:
 
