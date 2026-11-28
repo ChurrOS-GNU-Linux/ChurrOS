@@ -1769,8 +1769,8 @@ why = "Wrong checksum tool in the manifest: the client rejects the sha256 and ne
 [[mutation]]
 name = "test_release_bundle: Binary destination changed"
 file = "scripts/build-churros-release.sh"
-find = "    cp \"$binary\" \"$STAGE/usr/bin/$crate_name\""
-replace = "    cp \"$binary\" \"$STAGE/usr/local/bin/$crate_name\""
+find = "    dest=\"$STAGE/usr/bin/$crate_name\""
+replace = "    dest=\"$STAGE/usr/local/bin/$crate_name\""
 caught_by = "tests.static.test_release_bundle"
 expect = "release:crate:churros-"
 why = "Binary destination changed. validate_tarball still accepts it, but /usr/bin/churros-* is never updated."

@@ -591,7 +591,8 @@ class ReleaseBundleFits(unittest.TestCase):
             shutil.copy2(manifest, target)
         shutil.copy2(ROOT / "rust/Cargo.toml", project / "rust/Cargo.toml")
         # cargo falso: deja un ejecutable por crate desplegable, como haría
-        # `cargo build --release`, sin compilar nada.
+        # `cargo build --release`, sin compilar nada. Un ELF de verdad del
+        # equipo (/bin/true): el builder comprueba la arquitectura (#311).
         executable(tmp / "bin/cargo", '''#!/usr/bin/env bash
 set -e
 while [ "$#" -gt 0 ]; do
@@ -603,7 +604,7 @@ mkdir -p "$rust_dir/target/release"
 for toml in "$rust_dir"/*/Cargo.toml; do
     grep -q '^deploy = true$' "$toml" || continue
     name="$(sed -n 's/^name = "\\(.*\\)"/\\1/p' "$toml" | head -1)"
-    printf '#!/bin/sh\\n' > "$rust_dir/target/release/$name"
+    cp /bin/true "$rust_dir/target/release/$name"
     chmod 755 "$rust_dir/target/release/$name"
 done
 ''')

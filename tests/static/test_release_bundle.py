@@ -120,6 +120,8 @@ if triple:
 else:
     arch, out = HOST, target_dir / profile_dir
 packages = options.get("--package", []) + options.get("-p", [])
+# Simula un target mal resuelto: binarios de otra máquina en la ruta del target.
+arch = os.environ.get("CHURROS_FAKE_CARGO_FORCE_ARCH") or arch
 machine, elf_class = MACHINES[arch]
 out.mkdir(parents=True, exist_ok=True)
 stamp = os.environ.get("CHURROS_FAKE_CARGO_STAMP", "")
@@ -787,6 +789,19 @@ class ReleaseBundle(unittest.TestCase):
                 f"{'; '.join(problems)}. {RELEASE_SCRIPT} busca siempre en rust/target/release y salta "
                 f"en silencio lo que no encuentra")
         testlib.assert_findings(self, "release:cargo-target-dir", findings)
+
+    def test_builder_refuses_binaries_of_another_arch(self):
+        """El builder comprueba el ELF de cada binario, no se fía de --target (#311)."""
+        self.require()
+        project = copy_checkout(self.tmp / "project-foreign-elf")
+        env = self.release_env(CHURROS_FAKE_CARGO_FORCE_ARCH="x86_64")
+        result = subprocess.run(["bash", str(project / RELEASE_SCRIPT), "aarch64"], cwd=project, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=300)
+        self.assertNotEqual(result.returncode, 0,
+                            "[release:builder-elf] publicó un bundle aarch64 con binarios x86_64")
+        self.assertIn("no son de aarch64", result.stdout + result.stderr, "[release:builder-elf] tiene que decir por qué")
+        self.assertFalse(list((project / "release" / "aarch64").glob("*.tar.zst")) if (project / "release" / "aarch64").exists() else [],
+                         "[release:builder-elf] dejó un bundle aarch64 con binarios de otra máquina")
 
     # ------------------------------------------------------------------ firma
 

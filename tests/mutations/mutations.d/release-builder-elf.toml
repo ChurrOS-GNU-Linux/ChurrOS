@@ -1,0 +1,8 @@
+[[mutation]]
+name = "build-churros-release: vuelve a fiarse de cargo --target sin mirar el ELF"
+file = "scripts/build-churros-release.sh"
+find = 'check_elf_arch "$ARCH" "${STAGED_BINARIES[@]}"'
+replace = ':'
+caught_by = "tests.static.test_release_bundle"
+expect = "[release:builder-elf]"
+why = "Un target mal resuelto publicaría un bundle aarch64/i686 con binarios x86_64; solo lo vería el cliente al instalar (#311)."
