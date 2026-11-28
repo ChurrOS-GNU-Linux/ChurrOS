@@ -10,6 +10,8 @@ import base64
 import getpass
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -138,6 +140,76 @@ def iso_sums_files(directory: Path, version: str, text: str) -> list[Path]:
     return [versioned, current]
 
 
+# ChurrOS-<versión>-<edición>-<arch>.iso (docs/release.md).
+ISO_NAME = re.compile(r"ChurrOS-(?P<version>\d+(?:\.\d+)+)-(?P<edition>[a-z]+)-(?P<arch>x86_64|aarch64|i686)\.iso")
+EDITIONS = ("niri", "xfce", "server", "pi")
+
+
+def read_iso_identity(iso: Path) -> dict:
+    """Lo que dice la propia ISO, sin montarla ni extraerla (#344).
+
+    airootfs.sfs está contiguo dentro de la imagen ISO 9660: xorriso da su
+    primer bloque y unsquashfs lee ficheros sueltos con ese desplazamiento.
+    Devuelve {"archs": [arquitecturas con airootfs.sfs], "version": VERSION_ID
+    de os-release, "edition": /etc/churros-edition} (None si falta).
+    """
+    report = subprocess.run(["xorriso", "-indev", str(iso), "-find", "/", "-name", "airootfs.sfs",
+                             "-exec", "report_lba", "--"], capture_output=True, text=True).stdout
+    sfs = {path.split("/")[-2]: int(lba) for lba, path in
+           re.findall(r"File data lba:\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*\d+\s*,\s*'(/[^']+/airootfs\.sfs)'", report)}
+    identity = {"archs": sorted(sfs), "version": None, "edition": None}
+    if len(sfs) != 1:
+        return identity
+
+    def cat(path: str) -> str | None:
+        result = subprocess.run(["unsquashfs", "-o", str(next(iter(sfs.values())) * 2048), "-cat", str(iso), path],
+                                capture_output=True, text=True)
+        return result.stdout if result.returncode == 0 else None
+
+    os_release = dict(re.findall(r'^(\w+)="?([^"\n]*)"?$', cat("/etc/os-release") or "", re.M))
+    identity["version"] = os_release.get("VERSION_ID")
+    identity["edition"] = (cat("/etc/churros-edition") or "").strip() or None
+    return identity
+
+
+def iso_problems(name: str, version: str, identity: dict) -> list[str]:
+    """Qué no cuadra entre el nombre de la ISO, la versión que se publica y su contenido."""
+    match = ISO_NAME.fullmatch(name)
+    if not match:
+        return [f"{name}: el nombre no es ChurrOS-<versión>-<edición>-<arch>.iso"]
+    problems = []
+    if match["version"] != version:
+        problems.append(f"{name}: el nombre dice {match['version']}, pero se publica la {version}")
+    if match["edition"] not in EDITIONS:
+        problems.append(f"{name}: edición desconocida '{match['edition']}' (válidas: {', '.join(EDITIONS)})")
+    if identity["archs"] != [match["arch"]]:
+        problems.append(f"{name}: dentro hay airootfs para {identity['archs'] or 'ninguna arquitectura'}, "
+                        f"no solo para {match['arch']}")
+    if identity["version"] != match["version"]:
+        problems.append(f"{name}: su os-release dice VERSION_ID={identity['version']}")
+    if identity["edition"] != match["edition"]:
+        problems.append(f"{name}: su /etc/churros-edition dice {identity['edition']}")
+    return problems
+
+
+def sums_problems(text: str, names: list[str]) -> list[str]:
+    """SHA256SUMS: cada ISO que se sube exactamente una vez y nada más."""
+    problems, seen = [], []
+    for line in text.splitlines():
+        match = re.fullmatch(r"([0-9a-f]{64})  (\S+)", line)
+        if not match:
+            problems.append(f"SHA256SUMS: línea mal formada: {line!r}")
+            continue
+        seen.append(match[2])
+    for name in sorted(set(seen)):
+        if seen.count(name) > 1:
+            problems.append(f"SHA256SUMS: {name} aparece {seen.count(name)} veces")
+        if name not in names:
+            problems.append(f"SHA256SUMS: {name} no está entre las ISO que se suben")
+    problems += [f"SHA256SUMS: falta {name}" for name in names if name not in seen]
+    return problems
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sube ficheros de release a download.churroslinux.org")
     parser.add_argument("--url", default=DEFAULT_URL, help=f"URL base de FileBrowser (def: {DEFAULT_URL})")
@@ -215,6 +287,15 @@ def main():
                         for chunk in iter(lambda: fh.read(1 << 20), b""):
                             digest.update(chunk)
                     lines.append(f"{digest.hexdigest()}  {p.name}\n")
+                # Antes de subir nada: cada ISO es lo que dice su nombre (#344).
+                problems = []
+                for p in files:
+                    problems += iso_problems(p.name, VERSION, read_iso_identity(p))
+                problems += sums_problems("".join(lines), [p.name for p in files])
+                if problems:
+                    print("\nError: no se sube ninguna ISO:\n  " + "\n  ".join(problems), file=sys.stderr)
+                    sys.exit(1)
+                print(f"✓ {len(files)} ISO comprobadas: nombre, versión, edición y arquitectura cuadran con su contenido")
                 print("\n==> Subiendo ISOs y sumas de verificación a /...")
                 for p in files:
                     upload_tus(args.url, token, p, "")
