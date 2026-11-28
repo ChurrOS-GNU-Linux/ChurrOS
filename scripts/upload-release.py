@@ -140,6 +140,19 @@ def iso_sums_files(directory: Path, version: str, text: str) -> list[Path]:
     return [versioned, current]
 
 
+def iso_sums_text(files: list[Path]) -> str:
+    """Contenido de SHA256SUMS para `files`: «<sha256>  <nombre>» por línea."""
+    import hashlib
+    lines = []
+    for p in files:
+        digest = hashlib.sha256()
+        with p.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+        lines.append(f"{digest.hexdigest()}  {p.name}\n")
+    return "".join(lines)
+
+
 # ChurrOS-<versión>-<edición>-<arch>.iso (docs/release.md).
 ISO_NAME = re.compile(r"ChurrOS-(?P<version>\d+(?:\.\d+)+)-(?P<edition>[a-z]+)-(?P<arch>x86_64|aarch64|i686)\.iso")
 EDITIONS = ("niri", "xfce", "server", "pi")
@@ -210,6 +223,92 @@ def sums_problems(text: str, names: list[str]) -> list[str]:
     return problems
 
 
+DOWNLOAD_BASE = "https://download.churroslinux.org/"
+EDITION_TITLES = {"niri": "Niri", "xfce": "XFCE", "server": "Server", "pi": "Raspberry Pi Lite"}
+
+
+def probe(url: str, method: str = "HEAD", attempts: int = 4) -> tuple[int, str, int]:
+    """(código HTTP, cuerpo si es GET, Content-Length) de una URL del servidor.
+
+    Un 5xx se reintenta con espera: el servidor da 503 cuando está ocupado y eso
+    no significa que falte el fichero. Un 404 se devuelve tal cual.
+    """
+    status, body, length = 0, "", 0
+    for attempt in range(attempts):
+        request = urllib.request.Request(url, method=method, headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                status = response.status
+                length = int(response.headers.get("Content-Length") or 0)
+                body = response.read().decode("utf-8", "replace") if method == "GET" else ""
+        except urllib.error.HTTPError as error:
+            status, body, length = error.code, "", 0
+        except (urllib.error.URLError, TimeoutError) as error:
+            status, body, length = 0, str(error), 0
+        if 0 < status < 500:
+            break
+        time.sleep(5 * (attempt + 1))
+    return status, body, length
+
+
+def human_size(size: int) -> str:
+    return f"{size / 1024 ** 3:.1f} GiB".replace(".", ",")
+
+
+def release_notes(version: str, isos: list[tuple[str, int]], sums: str, probe=probe) -> tuple[str, list[str]]:
+    """Sección «Descargas» de las notas de la GitHub Release (#340).
+
+    Las ISO no caben en GitHub (2 GiB): la release las enlaza en el servidor
+    oficial, la única ubicación fuente, nunca en artefactos de un workflow.
+    Antes de escribir nada comprueba que cada enlace existe con el tamaño de la
+    ISO local y que el SHA256SUMS-<versión> del servidor es el local. Devuelve
+    (markdown, problemas); con algún problema el markdown va vacío.
+    """
+    names = [name for name, _ in isos]
+    problems = sums_problems(sums, names)
+    digests = {name: digest for digest, name in (line.split("  ", 1) for line in sums.splitlines() if "  " in line)}
+    rows = []
+    for name, size in isos:
+        match = ISO_NAME.fullmatch(name)
+        if not match or match["version"] != version:
+            problems.append(f"{name}: no es una ISO de la versión {version} (ChurrOS-{version}-<edición>-<arch>.iso)")
+            continue
+        url = DOWNLOAD_BASE + urllib.parse.quote(name)
+        status, _, length = probe(url, "HEAD")
+        if status != 200:
+            problems.append(f"{url}: HTTP {status or 'sin respuesta'}")
+        elif length != size:
+            problems.append(f"{url}: el servidor tiene {length} bytes y la ISO local {size}")
+        rows.append(f"| {EDITION_TITLES.get(match['edition'], match['edition'])} | {match['arch']} "
+                    f"| [{name}]({url}) | {human_size(size)} | `{digests.get(name, '?')}` |")
+    sums_name = f"SHA256SUMS-{version}"
+    sums_url = DOWNLOAD_BASE + sums_name
+    status, served, _ = probe(sums_url, "GET")
+    if status != 200:
+        problems.append(f"{sums_url}: HTTP {status or 'sin respuesta'}")
+    elif served != sums:
+        problems.append(f"{sums_url}: no coincide con las sumas de las ISO locales")
+    if problems:
+        return "", problems
+    notes = f"""## Descargas
+
+Las ISO pesan más de 2 GiB, el límite de GitHub Releases: se descargan del servidor oficial y esta release solo las enlaza.
+
+| Edición | Arquitectura | ISO | Tamaño | SHA-256 |
+|---|---|---|---|---|
+{chr(10).join(rows)}
+
+Sumas de esta versión: [{sums_name}]({sums_url}). Para comprobar la descarga, con la ISO y ese fichero en la misma carpeta:
+
+```bash
+sha256sum -c {sums_name} --ignore-missing
+```
+
+> **Las sumas no van firmadas.** Detectan una descarga corrupta, pero no prueban que la ISO sea de ChurrOS: quien pudiera cambiar la ISO en el servidor podría cambiar también su suma. La firma independiente está pendiente ([#315](https://github.com/ChurrOS-GNU-Linux/ChurrOS/issues/315)).
+"""
+    return notes, []
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sube ficheros de release a download.churroslinux.org")
     parser.add_argument("--url", default=DEFAULT_URL, help=f"URL base de FileBrowser (def: {DEFAULT_URL})")
@@ -222,9 +321,25 @@ def main():
     parser.add_argument("--iso-only", action="store_true", help="Solo subir ISOs y sumas a la raíz (/)")
     parser.add_argument("--file", help="Subir un fichero específico")
     parser.add_argument("--dest", default="", help="Directorio remoto de destino para --file (def: raíz)")
+    parser.add_argument("--release-notes", action="store_true",
+                        help="No sube nada: comprueba en el servidor las ISO de esta versión y escribe en la "
+                             "salida la sección «Descargas» de las notas de la GitHub Release")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
+
+    if args.release_notes:
+        files = sorted((repo_root / "release" / "iso").glob(f"ChurrOS-{VERSION}-*.iso"))
+        if not files:
+            print(f"Error: no hay ISO de la {VERSION} en release/iso/", file=sys.stderr)
+            sys.exit(1)
+        print(f"==> Calculando el SHA-256 de {len(files)} ISO y comprobando el servidor...", file=sys.stderr)
+        notes, problems = release_notes(VERSION, [(p.name, p.stat().st_size) for p in files], iso_sums_text(files))
+        if problems:
+            print("Error: no se escriben las notas:\n  " + "\n  ".join(problems), file=sys.stderr)
+            sys.exit(1)
+        print(notes, end="")
+        return
 
     if not args.password:
         args.password = getpass.getpass(f"Contraseña de {args.user} en {args.url}: ")
@@ -278,15 +393,8 @@ def main():
             else:
                 # SHA256SUMS cubre solo las ISO de esta versión (docs/release.md):
                 # se genera aquí para no subir el de una versión anterior.
-                import hashlib
                 import tempfile
-                lines = []
-                for p in files:
-                    digest = hashlib.sha256()
-                    with p.open("rb") as fh:
-                        for chunk in iter(lambda: fh.read(1 << 20), b""):
-                            digest.update(chunk)
-                    lines.append(f"{digest.hexdigest()}  {p.name}\n")
+                lines = iso_sums_text(files).splitlines(keepends=True)
                 # Antes de subir nada: cada ISO es lo que dice su nombre (#344).
                 problems = []
                 for p in files:

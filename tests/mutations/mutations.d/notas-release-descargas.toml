@@ -1,0 +1,31 @@
+# #340: las notas de la GitHub Release enlazan las ISO del servidor solo
+# después de comprobar que cada enlace existe, completo, con sus sumas.
+
+[[mutation]]
+name = "upload-release --release-notes: no compara el tamaño de la ISO del servidor"
+file = "scripts/upload-release.py"
+find = "        elif length != size:"
+replace = "        elif False:"
+caught_by = "tests.static.test_upload_release"
+expect = "[notes-checked]"
+why = "Una ISO a medio subir responde 200: sin comparar el tamaño, las notas enlazarían una descarga rota."
+
+[[mutation]]
+name = "upload-release --release-notes: escribe las notas aunque haya problemas"
+file = "scripts/upload-release.py"
+find = """    if problems:
+        return "", problems
+    notes = f\"\"\"## Descargas"""
+replace = """    notes = f\"\"\"## Descargas"""
+caught_by = "tests.static.test_upload_release"
+expect = "[notes-checked]"
+why = "La release enlazaría ISO que no están en el servidor."
+
+[[mutation]]
+name = "upload-release --release-notes: no compara el SHA256SUMS del servidor"
+file = "scripts/upload-release.py"
+find = "    elif served != sums:"
+replace = "    elif False:"
+caught_by = "tests.static.test_upload_release"
+expect = "[notes-checked]"
+why = "Las notas mandarían a verificar con unas sumas que no son las de estas ISO."
