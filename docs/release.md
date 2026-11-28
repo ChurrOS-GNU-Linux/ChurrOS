@@ -144,8 +144,18 @@ Después de subirlo, comprueba la actualización desde un sistema instalado con 
 
 GitHub Releases solo admite ficheros de [menos de 2 GiB](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases). Las ISO 1.5 se distribuyen desde download.churroslinux.org; la release GitHub v1.5 adjunta `SHA256SUMS-1.5`, no las ISO. En futuros tags, adjunta el manifiesto y los `.torrent`; publica la imagen en un canal que admita su tamaño.
 
-- Notas: cambios, enlaces de descarga (download.churroslinux.org, SourceForge, Internet Archive) y dónde está el código fuente (paso 9).
+- Notas: cambios, enlaces de descarga y dónde está el código fuente (paso 9).
 - `SHA256SUMS` y los `.torrent`. Adjunta una firma del manifiesto solo cuando la clave pública de confianza esté publicada y los destinatarios puedan verificarla.
+
+La sección de descargas la escribe `upload-release.py`, después de subir las ISO (#340):
+
+```bash
+python3 scripts/upload-release.py --release-notes > release/notas-descargas.md
+```
+
+No pide contraseña ni sube nada. Calcula el SHA-256 de las ISO de `VERSION` en `release/iso/` y, antes de escribir una sola línea, comprueba en download.churroslinux.org que cada ISO responde 200 con el mismo tamaño que la local y que `SHA256SUMS-<versión>` del servidor es idéntico a las sumas locales. Si algo falla, sale con 1 y dice qué enlace. Las notas tienen una tabla con edición, arquitectura, enlace, tamaño y SHA-256 de cada ISO, el enlace a `SHA256SUMS-<versión>`, el comando para comprobar la descarga y el aviso de que las sumas no van firmadas (#315). Solo enlaza el servidor oficial, nunca un artefacto de un workflow. El tamaño no demuestra que el contenido sea idéntico: para eso hay que descargar la ISO entera y comparar su SHA-256.
+
+Añade arriba los cambios y abajo el código fuente, y publica:
 
 ```bash
 gh release create vX.Y --title "ChurrOS X.Y" --notes-file <notas.md> \
