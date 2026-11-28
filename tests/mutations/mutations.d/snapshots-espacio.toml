@@ -1,0 +1,19 @@
+[[mutation]]
+name = "Ajustes: un error al listar snapshots se enseña como «sin snapshots»"
+file = "rust/preferences/src/services/update.rs"
+find = "    let value = serde_json::from_str::<serde_json::Value>(out).ok()?;"
+replace = "    let value = serde_json::from_str::<serde_json::Value>(out).unwrap_or_else(|_| serde_json::json!([]));"
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings snapshot_list_parse_failure_is_not_an_empty_list"
+requires = "container"
+expect = "[snapshot-list-failed]"
+why = "Con la contraseña cancelada o churros-snapshot roto, Ajustes diría que no hay snapshots y la persona creería que no tiene punto de vuelta (#338)."
+
+[[mutation]]
+name = "Ajustes: el resumen de snapshots deja de rotularse como estimación"
+file = "rust/preferences/src/services/update.rs"
+find = " (aproximado en btrfs)."
+replace = "."
+caught_by = "cargo test --offline --locked --manifest-path rust/Cargo.toml -p churros-settings snapshot_summary_counts_and_never_sums_sizes"
+requires = "container"
+expect = "[snapshot-summary]"
+why = "En btrfs el espacio libre es aproximado; presentarlo como exacto engaña al decidir qué borrar (#338)."
