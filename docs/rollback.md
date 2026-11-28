@@ -18,6 +18,10 @@ Los snapshots se guardan en un subvolumen contenedor `@snapshots` (creado en el
 nivel superior, id=5) aislado de `@`, de modo que un snapshot nunca contiene
 snapshots anidados.
 
+- El **instalador** deja un primer snapshot «recién instalado» (razón
+  `instalacion`) como último paso de `shellprocess@post-install` (#324). Solo
+  en btrfs; si falla (por ejemplo, sin espacio) la instalación termina igual y
+  el registro de Calamares lo dice. No es automático: la retención no lo borra.
 - Un **hook de pacman** (`/etc/pacman.d/hooks/50-churros-snapshot.hook`,
   `PreTransaction`) crea un snapshot de `@` y `@home` **antes** de cualquier
   transacción de pacman que instale, actualice o quite paquetes (también las
