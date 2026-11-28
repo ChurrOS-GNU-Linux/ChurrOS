@@ -790,7 +790,8 @@ class SnapshotRetention(unittest.TestCase):
         executable(self.bin / "btrfs", "#!/bin/sh\ncase \"$1 $2\" in\n"
                    f"    \"subvol snapshot\") {snapshot} ;;\n"
                    "    \"subvol delete\") rm -rf \"$3\" ;;\n"
-                   "    \"subvol create\") mkdir -p \"$3\" ;;\nesac\n")
+                   "    \"subvol create\") mkdir -p \"$3\" ;;\n"
+                   "    \"filesystem du\") printf 'Total Exclusive Set-shared Filename\\n4096 104857600 0 %s\\n' \"$5\" ;;\nesac\n")
 
     def snapshot(self, stamp: str, reason: str):
         d = self.top / "@snapshots" / stamp
@@ -818,6 +819,33 @@ class SnapshotRetention(unittest.TestCase):
         self.assertEqual(self.left()[2:], ["20261108-000000", "20261109-000000", "20261110-000000"],
                          "se quedan los 3 automáticos más recientes (pacman y bundle cuentan igual)")
         self.assertIn("2 snapshots manuales se conservan", result.stderr)
+
+    def test_cleanup_dry_run_shows_the_plan_and_deletes_nothing(self):
+        self.snapshot("20261101-000000", "manual")
+        for day in range(2, 7):
+            self.snapshot(f"202611{day:02d}-000000", "pacman-pre")
+        before = self.left()
+        result = self.run_snapshot("cleanup", "--dry-run", "2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.left(), before, "[cleanup-dry-run] la vista previa no puede borrar nada")
+        lines = result.stdout.splitlines()
+        drop = [l for l in lines if "BORRARÍA" in l]
+        self.assertEqual([l.split()[1] for l in drop], ["20261102-000000", "20261103-000000", "20261104-000000"],
+                         "[cleanup-dry-run] tiene que enseñar los automáticos más viejos que borraría")
+        self.assertTrue(any("20261101-000000" in l and "manual" in l and "conserva" in l for l in lines),
+                        "el manual aparece como conservado")
+        self.assertIn("unos 300.0 MiB", result.stdout, "suma solo lo exclusivo de los que borraría")
+
+    def test_cleanup_rejects_a_keep_that_is_not_a_number(self):
+        result = self.run_snapshot("cleanup", "--dry-run", "todo")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("tiene que ser un número", result.stderr)
+
+    def test_cleanup_dry_run_without_snapshots(self):
+        (self.top / "@snapshots").rmdir()
+        result = self.run_snapshot("cleanup", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("no hay snapshots", result.stderr)
 
     def test_a_failed_snapshot_says_there_is_no_way_back(self):
         self.btrfs(ok=False)

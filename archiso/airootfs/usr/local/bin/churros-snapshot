@@ -12,7 +12,7 @@
 #   churros-snapshot list [--json|--plain]
 #   churros-snapshot info <stamp>
 #   churros-snapshot delete <stamp>
-#   churros-snapshot cleanup [KEEP]   (solo los automáticos; los manuales se quedan)
+#   churros-snapshot cleanup [--dry-run] [KEEP]   (solo automáticos; --dry-run no borra)
 #   churros-snapshot restore [-d DISPOSITIVO] [--sin-home|--con-home] <stamp>
 #   churros-snapshot restore            (desde la ISO: guiado, pregunta todo)
 #
@@ -224,12 +224,33 @@ delete_snapshot() {
 # ---------------------------------------------------------------- cleanup
 
 # Asume TOP_MOUNT montado; borra los más antiguos hasta dejar KEEP.
-cleanup_inner() {
-    local keep="${1:-$KEEP_DEFAULT}"
-    [ "$keep" -lt 0 ] && keep=0
-    [ -d "$TOP_MOUNT/$SNAPSHOTS_DIR" ] || return 0
+# exclusive_bytes STAMP: bytes que solo usa ese snapshot (lo que liberaría
+# borrarlo). Lo compartido con @ u otros snapshots no cuenta (#342).
+exclusive_bytes() {
+    local dir sub total=0 n
+    dir="$(snapshot_path "$1")"
+    for sub in "$dir/root" "$dir/home"; do
+        [ -d "$sub" ] || continue
+        n="$(btrfs filesystem du -s --raw "$sub" 2>/dev/null | awk 'NR == 2 { print $2 }')"
+        [[ "$n" =~ ^[0-9]+$ ]] && total=$((total + n))
+    done
+    printf '%s\n' "$total"
+}
 
-    local stamps=() d stamp manual=0
+human_bytes() {
+    LC_ALL=C awk -v b="$1" 'BEGIN { split("B KiB MiB GiB TiB", u); i = 1; while (b >= 1024 && i < 5) { b /= 1024; i++ } printf (i == 1 ? "%d %s" : "%.1f %s"), b, u[i] }'
+}
+
+# cleanup_inner KEEP [DRY]: con DRY=yes solo enseña qué borraría (#342).
+cleanup_inner() {
+    local keep="${1:-$KEEP_DEFAULT}" dry="${2:-no}"
+    [[ "$keep" =~ ^[0-9]+$ ]] || die "KEEP tiene que ser un número de snapshots automáticos a conservar, no '$keep'"
+    if [ ! -d "$TOP_MOUNT/$SNAPSHOTS_DIR" ]; then
+        [ "$dry" = yes ] && log "cleanup: no hay snapshots ($SNAPSHOTS_DIR no existe): nada que borrar"
+        return 0
+    fi
+
+    local stamps=() d stamp manual=0 manuals=()
     for d in "$TOP_MOUNT/$SNAPSHOTS_DIR"/*/; do
         [ -d "$d" ] || continue
         [ -f "${d}${STAMP_FILE}" ] || continue
@@ -238,11 +259,31 @@ cleanup_inner() {
             stamps+=("$stamp")
         else
             manual=$((manual + 1))
+            manuals+=("$stamp")
         fi
     done
     [ "$manual" -gt 0 ] && log "cleanup: $manual snapshots manuales se conservan (se borran con 'churros-snapshot delete')"
 
     local total=${#stamps[@]}
+    if [ "$dry" = yes ]; then
+        local s meta freed=0 n drop=()
+        [ "$total" -gt "$keep" ] && drop=("${stamps[@]:0:$((total - keep))}")
+        echo "Vista previa de 'cleanup $keep' (no se borra nada):"
+        for s in "${stamps[@]}"; do
+            meta="$(snapshot_path "$s")/$STAMP_FILE"
+            if printf '%s\n' "${drop[@]}" | grep -qxF "$s"; then
+                n="$(exclusive_bytes "$s")"; freed=$((freed + n))
+                printf '  BORRARÍA  %s  %s  automático (%s)  ~%s\n' "$s" "$(sed -n 's/^date=//p' "$meta")" "$(reason_of "$s")" "$(human_bytes "$n")"
+            else
+                printf '  conserva  %s  %s  automático (%s)\n' "$s" "$(sed -n 's/^date=//p' "$meta")" "$(reason_of "$s")"
+            fi
+        done
+        for s in "${manuals[@]}"; do
+            printf '  conserva  %s  %s  manual (%s)\n' "$s" "$(sed -n 's/^date=//p' "$(snapshot_path "$s")/$STAMP_FILE")" "$(reason_of "$s")"
+        done
+        echo "Se borrarían ${#drop[@]} de $total automáticos; liberaría unos $(human_bytes "$freed") (solo lo exclusivo de cada snapshot)."
+        return 0
+    fi
     if [ "$total" -le "$keep" ]; then
         log "cleanup: $total snapshots automáticos (máx. $keep) — nada que borrar"
         return 0
@@ -258,7 +299,7 @@ cleanup_inner() {
 cleanup() {
     ensure_root_btrfs
     top_mount "$(device_of /)"
-    cleanup_inner "${1:-$KEEP_DEFAULT}"
+    cleanup_inner "${1:-$KEEP_DEFAULT}" "${2:-no}"
 }
 
 # ---------------------------------------------------------------- restore
@@ -488,7 +529,12 @@ case "$CMD" in
         ;;
     cleanup)
         shift
-        cleanup "${1:-$KEEP_DEFAULT}"
+        dry=no
+        if [ "${1:-}" = --dry-run ]; then
+            dry=yes
+            shift
+        fi
+        cleanup "${1:-$KEEP_DEFAULT}" "$dry"
         ;;
     restore)
         shift
